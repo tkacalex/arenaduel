@@ -1,0 +1,32 @@
+# Unreal generated directories
+**/Binaries/
+**/DerivedDataCache/
+**/Intermediate/
+**/Saved/
+
+# IDE generated state and project files
+.vs/
+.vscode/
+.idea/
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+*.code-workspace
+
+# Unreal generated project files
+*.xcodeproj
+*.xcworkspace
+Makefile
+CMakeLists.txt
+
+# Local operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local logs and crash artifacts
+*.log
+*.dmp

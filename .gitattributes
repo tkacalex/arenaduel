@@ -1,0 +1,19 @@
+* text=auto
+.gitattributes text eol=lf
+.gitignore text eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.sh text eol=lf
+*.cpp text eol=lf
+*.h text eol=lf
+*.cs text eol=lf
+*.ini text eol=lf
+*.md text eol=lf
+*.uproject text eol=lf
+*.uplugin text eol=lf
+
+# Unreal assets are binary and cannot be meaningfully merged by Git.
+*.uasset filter=lfs diff=lfs merge=lfs -text
+*.umap filter=lfs diff=lfs merge=lfs -text
