@@ -61,6 +61,10 @@ bool FArenaDuelPhase4MapAndAssetsTest::RunTest(const FString& Parameters)
 	bool bMantle = false;
 	AStaticMeshActor* SafetyFloorActor = nullptr;
 	TArray<AStaticMeshActor*> SafetyWallActors;
+	AStaticMeshActor* NorthSafetyWall = nullptr;
+	AStaticMeshActor* SouthSafetyWall = nullptr;
+	AStaticMeshActor* WestSafetyWall = nullptr;
+	AStaticMeshActor* EastSafetyWall = nullptr;
 	int32 PlayerStarts = 0;
 	int32 Labels = 0;
 	for (TActorIterator<AActor> It(World); It; ++It)
@@ -79,6 +83,10 @@ bool FArenaDuelPhase4MapAndAssetsTest::RunTest(const FString& Parameters)
 			if (AStaticMeshActor* SafetyWall = Cast<AStaticMeshActor>(*It))
 			{
 				SafetyWallActors.Add(SafetyWall);
+				if (Label == TEXT("Phase4_NorthSafetyWall")) NorthSafetyWall = SafetyWall;
+				if (Label == TEXT("Phase4_SouthSafetyWall")) SouthSafetyWall = SafetyWall;
+				if (Label == TEXT("Phase4_WestSafetyWall")) WestSafetyWall = SafetyWall;
+				if (Label == TEXT("Phase4_EastSafetyWall")) EastSafetyWall = SafetyWall;
 			}
 		}
 		bLeftWall |= Label == TEXT("Phase4_LeftWall");
@@ -102,6 +110,19 @@ bool FArenaDuelPhase4MapAndAssetsTest::RunTest(const FString& Parameters)
 		}
 	}
 	TestTrue(TEXT("Safety wall centers are inside the playable floor bounds"), bSafetyWallsInsideFloor);
+	bool bPerimeterCoversFloor = SafetyFloorActor && NorthSafetyWall && SouthSafetyWall && WestSafetyWall && EastSafetyWall;
+	if (bPerimeterCoversFloor)
+	{
+		const FBox FloorBounds = SafetyFloorActor->GetComponentsBoundingBox(true);
+		const float RequiredXExtent = FloorBounds.GetExtent().X * 0.99f;
+		const float RequiredYExtent = FloorBounds.GetExtent().Y * 0.99f;
+		bPerimeterCoversFloor =
+			NorthSafetyWall->GetComponentsBoundingBox(true).GetExtent().X >= RequiredXExtent &&
+			SouthSafetyWall->GetComponentsBoundingBox(true).GetExtent().X >= RequiredXExtent &&
+			WestSafetyWall->GetComponentsBoundingBox(true).GetExtent().Y >= RequiredYExtent &&
+			EastSafetyWall->GetComponentsBoundingBox(true).GetExtent().Y >= RequiredYExtent;
+	}
+	TestTrue(TEXT("Safety perimeter wall extents cover the full playable floor"), bPerimeterCoversFloor);
 	TestTrue(TEXT("Phase 4 map has left and right wall-run walls"), bLeftWall && bRightWall);
 	TestTrue(TEXT("Phase 4 map has vault and mantle stations"), bVault && bMantle);
 	TestTrue(TEXT("Phase 4 map has two PlayerStarts"), PlayerStarts >= 2);

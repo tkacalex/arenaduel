@@ -240,8 +240,8 @@ def create_phase4_map():
     ensure_cube("Phase4_RightWall", unreal.Vector(800, -450, 180), unreal.Vector(25, 0.4, 3.0), wall_material)
     ensure_cube("Phase4_NorthSafetyWall", unreal.Vector(0, 2400, 250), unreal.Vector(80, 0.4, 5.0), safety_material)
     ensure_cube("Phase4_SouthSafetyWall", unreal.Vector(0, -2400, 250), unreal.Vector(80, 0.4, 5.0), safety_material)
-    ensure_cube("Phase4_WestSafetyWall", unreal.Vector(-3900, 0, 250), unreal.Vector(0.4, 30, 5.0), safety_material)
-    ensure_cube("Phase4_EastSafetyWall", unreal.Vector(3900, 0, 250), unreal.Vector(0.4, 30, 5.0), safety_material)
+    ensure_cube("Phase4_WestSafetyWall", unreal.Vector(-3900, 0, 250), unreal.Vector(0.4, 55, 5.0), safety_material)
+    ensure_cube("Phase4_EastSafetyWall", unreal.Vector(3900, 0, 250), unreal.Vector(0.4, 55, 5.0), safety_material)
 
     def ensure_actor(label, actor_class, location, rotation):
         actors = unreal.EditorLevelLibrary.get_all_level_actors()
