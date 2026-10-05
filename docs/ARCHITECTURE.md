@@ -77,6 +77,10 @@ Remote PlayerControllers are not assumed to exist on every client.
 
 `UArenaDuelCharacterMovementComponent` is the Character's native movement component subclass. The Character constructor installs it through Unreal's default-subobject override, so existing CharacterMovement replication and server authority remain in use. It adds input-driven sprint and crouch state, a custom slide mode, slide jump momentum retention, air-control tuning, bounded momentum, stamina drain and regeneration, and basic collision-query based wall-run, wall-jump, vault, and mantle modes. There are no custom movement RPCs and no manual transform replication. The current mode transitions are intentionally small and data driven. Detailed saved-move compression or production traversal tuning will be validated before competitive use.
 
+Phase 4.1 adds UE 5.8.3 CharacterMovement saved-move prediction. Sprint intent uses `FLAG_Custom_0`; crouch/slide intent uses `FLAG_Custom_1`. `FSavedMove_ArenaDuel` prevents move combination across either intent transition, restores intent during replay, and `UpdateFromCompressedFlags` reconstructs it on the server. This keeps the server authoritative without per-frame RPCs. The saved-move implementation is deterministic for the current movement inputs, but release readiness still requires real-latency profiling.
+
+Wall runs now have a configurable same-wall reattach cooldown. Slide boost is clamped after the boost is applied. Traversal checks top-surface height, destination capsule clearance, blocking hits, and valid floor state before returning to walking.
+
 `L_Phase4MovementTest` is a temporary flat development map containing labeled sprint, slide, vault, mantle, and wall test geometry. It is not the final arena.
 
 Phase 4 input assets are `Input/IA_Sprint` and `Input/IA_Crouch`, mapped to Left Shift and Left Control in `Input/IMC_Gameplay`. Existing Phase 3 move, look, and jump assets remain unchanged.

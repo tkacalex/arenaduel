@@ -33,12 +33,18 @@ public:
 	bool IsWallRunning() const { return MovementMode == MOVE_Custom && CustomMovementMode == static_cast<uint8>(EArenaDuelCustomMovementMode::WallRun); }
 	float GetStamina() const { return Stamina; }
 	float GetMaxStamina() const { return MaxStamina; }
+	bool WantsSprintIntent() const { return bWantsSprint; }
+	bool WantsCrouchSlideIntent() const { return bWantsCrouchOrSlide; }
+	void SetSprintIntentFromNetwork(bool bWantsSprintIntent);
+	void SetCrouchSlideIntentFromNetwork(bool bWantsCrouchSlideIntent);
 	bool IsMantling() const { return MovementMode == MOVE_Custom && CustomMovementMode == static_cast<uint8>(EArenaDuelCustomMovementMode::Mantle); }
 
 	bool TrySlideJump();
 	bool TryWallJump();
 
 	virtual float GetMaxSpeed() const override;
+	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
+	virtual void UpdateFromCompressedFlags(uint8 Flags) override;
 	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
 	virtual void PhysCustom(float DeltaSeconds, int32 Iterations) override;
 	virtual void PhysFalling(float DeltaSeconds, int32 Iterations) override;
@@ -123,6 +129,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Traversal")
 	float TraversalReach = 100.0f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallRun")
+	float WallReattachCooldown = 0.25f;
+
 protected:
 	bool TryFindWall(FHitResult& OutHit, FVector& OutNormal) const;
 	bool TryStartTraversal();
@@ -141,6 +150,8 @@ protected:
 	float Stamina = 100.0f;
 	float TimeSinceStaminaUse = 0.0f;
 	float WallRunElapsed = 0.0f;
+	float WallReattachTimeRemaining = 0.0f;
+	FVector LastWallNormal = FVector::ZeroVector;
 	FVector TraversalStart = FVector::ZeroVector;
 	FVector TraversalTarget = FVector::ZeroVector;
 	float TraversalElapsed = 0.0f;

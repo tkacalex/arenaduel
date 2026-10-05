@@ -37,3 +37,5 @@ The Android File Server editor settings section is intentionally absent for this
 ## Phase 4 validation
 
 `Tools/Tests/RunPhase4Validation.ps1` builds `ArenaDuelEditor` and runs the Phase 3 regression suite plus the Phase 4 asset and movement-state suite twice. The Phase 4 suite validates the temporary movement map, input assets, Blueprint assignments, sprint and slide state transitions, slide jump, and movement bounds. Unreal's CQTest report is the source of truth; engine PIE NetGUID warnings are tolerated only when the report has no failed or not-run tests.
+
+Phase 4.1 expands the suite to 13 registered tests, including sprint, crouch, slide, slide jump, air control, stamina configuration, wall run, wall jump, vault, mantle, and a listen-server sprint/crouch intent test. The runner executes both Phase 3 and Phase 4 suites twice. Automated results are technical verification, not a replacement for feel testing or high-latency profiling.

@@ -31,7 +31,7 @@ function Invoke-Suite([string]$Suite, [string]$Name, [int]$ExpectedTests, [int]$
 
 for ($run = 1; $run -le 2; $run++) {
     Invoke-Suite 'ArenaDuel.Phase3' 'Phase3' 2 $run
-    Invoke-Suite 'ArenaDuel.Phase4' 'Phase4' 2 $run
+    Invoke-Suite 'ArenaDuel.Phase4' 'Phase4' 13 $run
 }
 
 Write-Output 'PHASE4_VALIDATION_PASS'

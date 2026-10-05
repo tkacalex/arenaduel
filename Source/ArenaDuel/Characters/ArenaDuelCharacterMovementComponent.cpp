@@ -6,6 +6,82 @@
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 
+class FSavedMove_ArenaDuel final : public FSavedMove_Character
+{
+public:
+	using Super = FSavedMove_Character;
+
+	uint8 bSavedWantsSprint : 1;
+	uint8 bSavedWantsCrouchSlide : 1;
+
+	virtual void Clear() override
+	{
+		Super::Clear();
+		bSavedWantsSprint = false;
+		bSavedWantsCrouchSlide = false;
+	}
+
+	virtual void SetMoveFor(ACharacter* Character, float InDeltaTime, FVector const& NewAccel, FNetworkPredictionData_Client_Character& ClientData) override
+	{
+		Super::SetMoveFor(Character, InDeltaTime, NewAccel, ClientData);
+		if (const AArenaDuelCharacter* ArenaCharacter = Cast<AArenaDuelCharacter>(Character))
+		{
+			if (const UArenaDuelCharacterMovementComponent* Movement = ArenaCharacter->GetArenaDuelMovementComponent())
+			{
+				bSavedWantsSprint = Movement->WantsSprintIntent();
+				bSavedWantsCrouchSlide = Movement->WantsCrouchSlideIntent();
+			}
+		}
+	}
+
+	virtual bool CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* Character, float MaxDelta) const override
+	{
+		const FSavedMove_ArenaDuel* ArenaMove = static_cast<const FSavedMove_ArenaDuel*>(NewMove.Get());
+		return ArenaMove && bSavedWantsSprint == ArenaMove->bSavedWantsSprint && bSavedWantsCrouchSlide == ArenaMove->bSavedWantsCrouchSlide && Super::CanCombineWith(NewMove, Character, MaxDelta);
+	}
+
+	virtual void PrepMoveFor(ACharacter* Character) override
+	{
+		Super::PrepMoveFor(Character);
+		if (AArenaDuelCharacter* ArenaCharacter = Cast<AArenaDuelCharacter>(Character))
+		{
+			if (UArenaDuelCharacterMovementComponent* Movement = ArenaCharacter->GetArenaDuelMovementComponent())
+			{
+				Movement->SetSprintIntentFromNetwork(bSavedWantsSprint);
+				Movement->SetCrouchSlideIntentFromNetwork(bSavedWantsCrouchSlide);
+			}
+		}
+	}
+
+	virtual uint8 GetCompressedFlags() const override
+	{
+		uint8 Result = Super::GetCompressedFlags();
+		if (bSavedWantsSprint)
+		{
+			Result |= FLAG_Custom_0;
+		}
+		if (bSavedWantsCrouchSlide)
+		{
+			Result |= FLAG_Custom_1;
+		}
+		return Result;
+	}
+};
+
+class FNetworkPredictionData_Client_ArenaDuel final : public FNetworkPredictionData_Client_Character
+{
+public:
+	explicit FNetworkPredictionData_Client_ArenaDuel(const UCharacterMovementComponent& ClientMovement)
+		: FNetworkPredictionData_Client_Character(ClientMovement)
+	{
+	}
+
+	virtual FSavedMovePtr AllocateNewMove() override
+	{
+		return FSavedMovePtr(new FSavedMove_ArenaDuel());
+	}
+};
+
 namespace ArenaDuelMovement
 {
 	static constexpr uint8 SlideMode = static_cast<uint8>(EArenaDuelCustomMovementMode::Slide);
@@ -76,9 +152,41 @@ float UArenaDuelCharacterMovementComponent::GetMaxSpeed() const
 	return WalkSpeed;
 }
 
+FNetworkPredictionData_Client* UArenaDuelCharacterMovementComponent::GetPredictionData_Client() const
+{
+	if (ClientPredictionData == nullptr)
+	{
+		UArenaDuelCharacterMovementComponent* MutableThis = const_cast<UArenaDuelCharacterMovementComponent*>(this);
+		MutableThis->ClientPredictionData = new FNetworkPredictionData_Client_ArenaDuel(*this);
+	}
+	return ClientPredictionData;
+}
+
+void UArenaDuelCharacterMovementComponent::UpdateFromCompressedFlags(uint8 Flags)
+{
+	Super::UpdateFromCompressedFlags(Flags);
+	SetSprintIntentFromNetwork((Flags & FSavedMove_Character::FLAG_Custom_0) != 0);
+	SetCrouchSlideIntentFromNetwork((Flags & FSavedMove_Character::FLAG_Custom_1) != 0);
+}
+
+void UArenaDuelCharacterMovementComponent::SetSprintIntentFromNetwork(bool bWantsSprintIntent)
+{
+	bWantsSprint = bWantsSprintIntent;
+}
+
+void UArenaDuelCharacterMovementComponent::SetCrouchSlideIntentFromNetwork(bool bWantsCrouchSlideIntent)
+{
+	bWantsCrouchOrSlide = bWantsCrouchSlideIntent;
+}
+
 void UArenaDuelCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
 {
+	if (!CharacterOwner || !UpdatedComponent)
+	{
+		return;
+	}
 	Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
+	WallReattachTimeRemaining = FMath::Max(0.0f, WallReattachTimeRemaining - DeltaSeconds);
 
 	MaxWalkSpeed = WalkSpeed;
 	MaxWalkSpeedCrouched = CrouchSpeed;
@@ -96,11 +204,11 @@ void UArenaDuelCharacterMovementComponent::UpdateCharacterStateBeforeMovement(fl
 		EnterSlide();
 	}
 
-	if (IsFalling() && bWantsSprint && Velocity.Size2D() >= WallRunMinSpeed && Stamina > 0.0f)
+	if (IsFalling() && Velocity.Size2D() >= WallRunMinSpeed)
 	{
 		FHitResult WallHit;
 		FVector CandidateNormal;
-		if (TryFindWall(WallHit, CandidateNormal))
+		if (bWantsSprint && Stamina > 0.0f && TryFindWall(WallHit, CandidateNormal))
 		{
 			EnterWallRun(CandidateNormal);
 		}
@@ -282,20 +390,26 @@ bool UArenaDuelCharacterMovementComponent::TryStartTraversal()
 	{
 		return false;
 	}
-	const float ObstacleHeight = FrontHit.Location.Z - CharacterOwner->GetActorLocation().Z;
-	if (ObstacleHeight < 10.0f || ObstacleHeight > MantleMaxHeight)
-	{
-		return false;
-	}
-	const bool bMantle = ObstacleHeight > VaultMaxHeight;
 	const FVector TopStart = FrontHit.ImpactPoint + FVector::UpVector * (MantleMaxHeight + 30.0f);
 	FHitResult TopHit;
 	if (!GetWorld()->LineTraceSingleByChannel(TopHit, TopStart, FrontHit.ImpactPoint + FVector::UpVector * 10.0f, ECC_Visibility, Params) || TopHit.ImpactNormal.Z < 0.7f)
 	{
 		return false;
 	}
+	const float ObstacleHeight = TopHit.ImpactPoint.Z - CharacterOwner->GetActorLocation().Z;
+	if (ObstacleHeight < 10.0f || ObstacleHeight > MantleMaxHeight)
+	{
+		return false;
+	}
+	const bool bMantle = ObstacleHeight > VaultMaxHeight;
 	TraversalStart = CharacterOwner->GetActorLocation();
 	TraversalTarget = TopHit.Location + FVector::UpVector * (CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.0f) + Forward * 45.0f;
+	const UCapsuleComponent* Capsule = CharacterOwner->GetCapsuleComponent();
+	const FCollisionShape CapsuleShape = FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight());
+	if (GetWorld()->OverlapBlockingTestByChannel(TraversalTarget, CharacterOwner->GetActorQuat(), ECC_Pawn, CapsuleShape, Params))
+	{
+		return false;
+	}
 	TraversalElapsed = 0.0f;
 	TraversalDuration = bMantle ? 0.28f : 0.18f;
 	SetMovementMode(MOVE_Custom, bMantle ? ArenaDuelMovement::MantleMode : ArenaDuelMovement::VaultMode);
@@ -308,11 +422,18 @@ void UArenaDuelCharacterMovementComponent::PhysTraversal(float DeltaSeconds, int
 	const float Alpha = FMath::Clamp(TraversalElapsed / FMath::Max(TraversalDuration, KINDA_SMALL_NUMBER), 0.0f, 1.0f);
 	const FVector Position = FMath::Lerp(TraversalStart, TraversalTarget, Alpha) + FVector::UpVector * (bMantle ? 35.0f * FMath::Sin(Alpha * PI) : 15.0f * FMath::Sin(Alpha * PI));
 	FHitResult Hit;
-	SafeMoveUpdatedComponent(Position - UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetComponentQuat(), true, Hit);
+	if (SafeMoveUpdatedComponent(Position - UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetComponentQuat(), true, Hit) && Hit.IsValidBlockingHit())
+	{
+		SetMovementMode(MOVE_Falling);
+		Velocity = FVector::ZeroVector;
+		return;
+	}
 	Velocity = (TraversalTarget - TraversalStart) / FMath::Max(TraversalDuration, KINDA_SMALL_NUMBER);
 	if (Alpha >= 1.0f)
 	{
-		SetMovementMode(MOVE_Walking);
+		FFindFloorResult FloorResult;
+		FindFloor(UpdatedComponent->GetComponentLocation(), FloorResult, false);
+		SetMovementMode(FloorResult.IsWalkableFloor() ? MOVE_Walking : MOVE_Falling);
 		Velocity = Velocity.GetClampedToMaxSize2D(GlobalMomentumCap);
 	}
 }
@@ -328,7 +449,7 @@ void UArenaDuelCharacterMovementComponent::EnterSlide()
 		CharacterOwner->Crouch();
 	}
 	Velocity = Velocity.GetClampedToMaxSize2D(GlobalMomentumCap);
-	Velocity += Velocity.GetSafeNormal2D() * SlideInitialBoost;
+	Velocity = (Velocity + Velocity.GetSafeNormal2D() * SlideInitialBoost).GetClampedToMaxSize2D(GlobalMomentumCap);
 	SetMovementMode(MOVE_Custom, ArenaDuelMovement::SlideMode);
 }
 
@@ -351,6 +472,10 @@ void UArenaDuelCharacterMovementComponent::EnterWallRun(const FVector& InWallNor
 	{
 		return;
 	}
+	if (WallReattachTimeRemaining > 0.0f && FVector::DotProduct(InWallNormal, LastWallNormal) > 0.95f)
+	{
+		return;
+	}
 	WallNormal = InWallNormal;
 	WallRunElapsed = 0.0f;
 	SetMovementMode(MOVE_Custom, ArenaDuelMovement::WallRunMode);
@@ -360,6 +485,8 @@ void UArenaDuelCharacterMovementComponent::ExitWallRun()
 {
 	if (IsWallRunning())
 	{
+		LastWallNormal = WallNormal;
+		WallReattachTimeRemaining = WallReattachCooldown;
 		SetMovementMode(MOVE_Falling);
 	}
 }
