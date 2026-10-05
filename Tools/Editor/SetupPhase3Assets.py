@@ -102,7 +102,16 @@ def configure_input_actions():
     for action in [move, look, jump, sprint, crouch, slide]:
         save(action)
     log("ACTION_TYPES " + str(move.get_editor_property("value_type")) + " " + str(look.get_editor_property("value_type")) + " " + str(jump.get_editor_property("value_type")) + " " + str(sprint.get_editor_property("value_type")) + " " + str(crouch.get_editor_property("value_type")) + " " + str(slide.get_editor_property("value_type")))
-    return move, look, jump, sprint, crouch, slide
+    fire = load_or_create_data_asset("IA_Fire", INPUT_PATH, unreal.InputAction)
+    reload_action = load_or_create_data_asset("IA_Reload", INPUT_PATH, unreal.InputAction)
+    weapon1 = load_or_create_data_asset("IA_Weapon1", INPUT_PATH, unreal.InputAction)
+    weapon2 = load_or_create_data_asset("IA_Weapon2", INPUT_PATH, unreal.InputAction)
+    weapon3 = load_or_create_data_asset("IA_Weapon3", INPUT_PATH, unreal.InputAction)
+    weapon4 = load_or_create_data_asset("IA_Weapon4", INPUT_PATH, unreal.InputAction)
+    for action in [fire, reload_action, weapon1, weapon2, weapon3, weapon4]:
+        action.set_editor_property("value_type", unreal.InputActionValueType.BOOLEAN)
+        save(action)
+    return move, look, jump, sprint, crouch, slide, fire, reload_action, weapon1, weapon2, weapon3, weapon4
 
 
 def modifier_swizzle(outer):
@@ -117,7 +126,7 @@ def modifier_negate(outer):
     return modifier
 
 
-def configure_mapping_context(move, look, jump, sprint, crouch, slide):
+def configure_mapping_context(move, look, jump, sprint, crouch, slide, fire, reload_action, weapon1, weapon2, weapon3, weapon4):
     context = load_or_create_data_asset("IMC_Gameplay", INPUT_PATH, unreal.InputMappingContext)
     context.unmap_all()
     entries = []
@@ -136,6 +145,12 @@ def configure_mapping_context(move, look, jump, sprint, crouch, slide):
     add(sprint, "LeftShift")
     add(crouch, "C")
     add(slide, "LeftControl")
+    add(fire, "LeftMouseButton")
+    add(reload_action, "R")
+    add(weapon1, "One")
+    add(weapon2, "Two")
+    add(weapon3, "Three")
+    add(weapon4, "Four")
 
     context.set_editor_property("mappings", entries)
     mapping_data = context.get_editor_property("default_key_mappings")
@@ -151,7 +166,7 @@ def configure_mapping_context(move, look, jump, sprint, crouch, slide):
     return context
 
 
-def configure_blueprints(context, move, look, jump, sprint, crouch, slide):
+def configure_blueprints(context, move, look, jump, sprint, crouch, slide, fire, reload_action, weapon1, weapon2, weapon3, weapon4):
     character_class = unreal.load_class(None, "/Script/ArenaDuel.ArenaDuelCharacter")
     game_mode_class = unreal.load_class(None, "/Script/ArenaDuel.ArenaDuelGameMode")
     if not character_class or not game_mode_class:
@@ -167,6 +182,12 @@ def configure_blueprints(context, move, look, jump, sprint, crouch, slide):
         "sprint_action": sprint,
         "crouch_action": crouch,
         "slide_action": slide,
+        "fire_action": fire,
+        "reload_action": reload_action,
+        "weapon1_action": weapon1,
+        "weapon2_action": weapon2,
+        "weapon3_action": weapon3,
+        "weapon4_action": weapon4,
     })
     compile_blueprint(character_bp)
 
@@ -348,9 +369,9 @@ def create_phase4_map():
 
 
 def main():
-    move, look, jump, sprint, crouch, slide = configure_input_actions()
-    context = configure_mapping_context(move, look, jump, sprint, crouch, slide)
-    character_bp, game_mode_bp, _, game_mode_class = configure_blueprints(context, move, look, jump, sprint, crouch, slide)
+    move, look, jump, sprint, crouch, slide, fire, reload_action, weapon1, weapon2, weapon3, weapon4 = configure_input_actions()
+    context = configure_mapping_context(move, look, jump, sprint, crouch, slide, fire, reload_action, weapon1, weapon2, weapon3, weapon4)
+    character_bp, game_mode_bp, _, game_mode_class = configure_blueprints(context, move, look, jump, sprint, crouch, slide, fire, reload_action, weapon1, weapon2, weapon3, weapon4)
     map_path = create_test_map()
     phase4_map_path = create_phase4_map()
     log("DONE " + character_bp.get_path_name() + " " + game_mode_bp.get_path_name() + " " + map_path + " " + phase4_map_path)
