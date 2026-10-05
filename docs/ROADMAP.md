@@ -2,7 +2,11 @@
 
 ## Foundation
 
-Audit the workspace and required tools. Establish source control, Git LFS, documentation, a fixed engine baseline, and a reproducible C++ project creation workflow. This foundation is complete: Unreal Engine 5.8.3, the C++ toolchain, the minimal project, and the repository editor target have all been verified.
+Audit the workspace and required tools. Establish source control, Git LFS, documentation, a fixed engine baseline, and a reproducible C++ project creation workflow. Complete.
+
+## Framework foundation
+
+Create the minimal server authoritative Gameplay Framework and third person Character foundation. Add GameMode, GameState, PlayerController, PlayerState, Character, camera components, and null safe Enhanced Input hooks. Complete after a clean `ArenaDuelEditor` build, static review, commit, and push.
 
 ## Later milestones
 
