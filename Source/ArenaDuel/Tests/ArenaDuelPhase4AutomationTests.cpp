@@ -159,6 +159,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelPhase4MovementStateTest, "ArenaDuel.P
 
 bool FArenaDuelPhase4MovementStateTest::RunTest(const FString& Parameters)
 {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap);
 	UClass* CharacterClass = LoadClass<AArenaDuelCharacter>(nullptr, ArenaDuelPhase4Tests::CharacterClass);
 	TestNotNull(TEXT("Character class loads"), CharacterClass);
 	if (!CharacterClass || !GEditor)
@@ -167,7 +168,7 @@ bool FArenaDuelPhase4MovementStateTest::RunTest(const FString& Parameters)
 	}
 
 	UWorld* World = GEditor->GetEditorWorldContext().World();
-	AArenaDuelCharacter* Character = World->SpawnActor<AArenaDuelCharacter>(CharacterClass, FVector::ZeroVector, FRotator::ZeroRotator);
+	AArenaDuelCharacter* Character = World->SpawnActor<AArenaDuelCharacter>(CharacterClass, FVector(0.0f, 0.0f, 1.0f), FRotator::ZeroRotator);
 	TestNotNull(TEXT("Test Character spawned"), Character);
 	if (!Character)
 	{
@@ -181,6 +182,7 @@ bool FArenaDuelPhase4MovementStateTest::RunTest(const FString& Parameters)
 		Character->Destroy();
 		return false;
 	}
+	Movement->SetUpdatedComponent(Character->GetCapsuleComponent());
 
 	Movement->SetMovementMode(MOVE_Walking);
 	Movement->Velocity = FVector(800.0f, 0.0f, 0.0f);
@@ -192,11 +194,25 @@ bool FArenaDuelPhase4MovementStateTest::RunTest(const FString& Parameters)
 	Movement->StartCrouchOrSlide();
 	TestTrue(TEXT("Fast crouch enters slide"), Movement->IsSliding());
 	const float SlideSpeed = Movement->Velocity.Size2D();
-	TestTrue(TEXT("Slide preserves horizontal momentum"), SlideSpeed >= Movement->SlideMinSpeed);
+	TestTrue(TEXT("Slide entry receives a meaningful speed kick"), SlideSpeed > Movement->SprintSpeed);
+	TestTrue(TEXT("Slide entry remains capped"), SlideSpeed <= Movement->GlobalMomentumCap);
+	const float SpeedBeforeFriction = SlideSpeed;
+	Movement->PhysCustom(0.1f, 0);
+	TestTrue(TEXT("Slide friction reduces speed over time"), Movement->Velocity.Size2D() < SpeedBeforeFriction);
+	Movement->Velocity = FVector(410.0f, 0.0f, 0.0f);
+	Movement->PhysCustom(0.1f, 0);
+	TestTrue(TEXT("Slide persists through minimum duration"), Movement->IsSliding());
+	Movement->PhysCustom(0.35f, 0);
+	TestFalse(TEXT("Slide eventually exits after minimum duration"), Movement->IsSliding());
+	Movement->SetMovementMode(MOVE_Walking);
+	Movement->Velocity = FVector(800.0f, 0.0f, 0.0f);
+	Movement->StartCrouchOrSlide();
+	const float SlideJumpSpeed = Movement->Velocity.Size2D();
 
 	TestTrue(TEXT("Slide jump transitions to falling"), Movement->TrySlideJump());
 	TestEqual(TEXT("Slide jump movement mode"), Movement->MovementMode, MOVE_Falling);
 	TestTrue(TEXT("Slide jump retains upward impulse"), Movement->Velocity.Z > 0.0f);
+	TestTrue(TEXT("Slide jump retains meaningful horizontal momentum"), Movement->Velocity.Size2D() >= SlideJumpSpeed * 0.85f);
 	TestTrue(TEXT("Stamina is bounded"), Movement->MaxStamina > 0.0f && Movement->WallRunDrain > 0.0f && Movement->StaminaRegenRate > 0.0f);
 	TestTrue(TEXT("Momentum cap is finite"), Movement->GlobalMomentumCap >= Movement->SprintSpeed);
 

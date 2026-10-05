@@ -71,16 +71,22 @@ public:
 	float SlideMinSpeed = 700.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
-	float SlideInitialBoost = 25.0f;
+	float SlideInitialBoost = 150.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
-	float SlideFriction = 1.2f;
+	float SlideEntrySpeed = 1025.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
-	float SlideSteering = 0.35f;
+	float SlideFriction = 0.72f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
-	float SlideEndSpeed = 350.0f;
+	float SlideSteering = 0.25f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
+	float SlideEndSpeed = 400.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
+	float SlideMinDuration = 0.4f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
 	float SlideInputBuffer = 0.3f;
@@ -160,6 +166,7 @@ protected:
 	bool bWantsCrouchOrSlide = false;
 	bool bSlideQueued = false;
 	float SlideInputBufferRemaining = 0.0f;
+	float SlideElapsed = 0.0f;
 	FVector WallNormal = FVector::ZeroVector;
 	UPROPERTY(Replicated)
 	float Stamina = 100.0f;

@@ -281,7 +281,7 @@ void UArenaDuelCharacterMovementComponent::UpdateCharacterStateBeforeMovement(fl
 
 	if (IsSliding())
 	{
-		if (!bWantsCrouchOrSlide || !IsMovingOnGround() || Velocity.Size2D() < SlideEndSpeed)
+		if (!bWantsCrouchOrSlide || !IsMovingOnGround() || (SlideElapsed >= SlideMinDuration && Velocity.Size2D() < SlideEndSpeed))
 		{
 			ExitSlide();
 		}
@@ -338,6 +338,7 @@ void UArenaDuelCharacterMovementComponent::PhysSlide(float DeltaSeconds, int32 I
 	}
 
 	Velocity.Z = 0.0f;
+	SlideElapsed += DeltaSeconds;
 	Velocity *= FMath::Clamp(1.0f - SlideFriction * DeltaSeconds, 0.0f, 1.0f);
 	if (!Acceleration.IsNearlyZero())
 	{
@@ -346,7 +347,7 @@ void UArenaDuelCharacterMovementComponent::PhysSlide(float DeltaSeconds, int32 I
 	Velocity = Velocity.GetClampedToMaxSize2D(GlobalMomentumCap);
 	MoveAlongFloor(Velocity, DeltaSeconds, nullptr);
 
-	if (Velocity.Size2D() < SlideEndSpeed || !bWantsCrouchOrSlide)
+	if ((SlideElapsed >= SlideMinDuration && Velocity.Size2D() < SlideEndSpeed) || !bWantsCrouchOrSlide)
 	{
 		ExitSlide();
 	}
@@ -536,8 +537,10 @@ void UArenaDuelCharacterMovementComponent::EnterSlide()
 	{
 		CharacterOwner->Crouch();
 	}
-	Velocity = Velocity.GetClampedToMaxSize2D(GlobalMomentumCap);
-	Velocity = (Velocity + Velocity.GetSafeNormal2D() * SlideInitialBoost).GetClampedToMaxSize2D(GlobalMomentumCap);
+	SlideElapsed = 0.0f;
+	const FVector HorizontalDirection = Velocity.GetSafeNormal2D();
+	const float TargetSpeed = FMath::Max(Velocity.Size2D() + SlideInitialBoost, SlideEntrySpeed);
+	Velocity = (HorizontalDirection * TargetSpeed).GetClampedToMaxSize2D(GlobalMomentumCap);
 	SetMovementMode(MOVE_Custom, ArenaDuelMovement::SlideMode);
 }
 
@@ -547,6 +550,7 @@ void UArenaDuelCharacterMovementComponent::ExitSlide()
 	{
 		return;
 	}
+	SlideElapsed = 0.0f;
 	bool bHasWalkableFloor = false;
 	if (UpdatedComponent)
 	{
