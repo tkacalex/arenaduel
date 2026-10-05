@@ -73,13 +73,17 @@ def configure_input_actions():
     move = load_or_create_data_asset("IA_Move", INPUT_PATH, unreal.InputAction)
     look = load_or_create_data_asset("IA_Look", INPUT_PATH, unreal.InputAction)
     jump = load_or_create_data_asset("IA_Jump", INPUT_PATH, unreal.InputAction)
+    sprint = load_or_create_data_asset("IA_Sprint", INPUT_PATH, unreal.InputAction)
+    crouch = load_or_create_data_asset("IA_Crouch", INPUT_PATH, unreal.InputAction)
     move.set_editor_property("value_type", unreal.InputActionValueType.AXIS2D)
     look.set_editor_property("value_type", unreal.InputActionValueType.AXIS2D)
     jump.set_editor_property("value_type", unreal.InputActionValueType.BOOLEAN)
-    for action in [move, look, jump]:
+    sprint.set_editor_property("value_type", unreal.InputActionValueType.BOOLEAN)
+    crouch.set_editor_property("value_type", unreal.InputActionValueType.BOOLEAN)
+    for action in [move, look, jump, sprint, crouch]:
         save(action)
-    log("ACTION_TYPES " + str(move.get_editor_property("value_type")) + " " + str(look.get_editor_property("value_type")) + " " + str(jump.get_editor_property("value_type")))
-    return move, look, jump
+    log("ACTION_TYPES " + str(move.get_editor_property("value_type")) + " " + str(look.get_editor_property("value_type")) + " " + str(jump.get_editor_property("value_type")) + " " + str(sprint.get_editor_property("value_type")) + " " + str(crouch.get_editor_property("value_type")))
+    return move, look, jump, sprint, crouch
 
 
 def modifier_swizzle(outer):
@@ -94,7 +98,7 @@ def modifier_negate(outer):
     return modifier
 
 
-def configure_mapping_context(move, look, jump):
+def configure_mapping_context(move, look, jump, sprint, crouch):
     context = load_or_create_data_asset("IMC_Gameplay", INPUT_PATH, unreal.InputMappingContext)
     context.unmap_all()
     entries = []
@@ -110,6 +114,8 @@ def configure_mapping_context(move, look, jump):
     add(move, "S", [modifier_swizzle(context), modifier_negate(context)])
     add(look, "Mouse2D")
     add(jump, "SpaceBar")
+    add(sprint, "LeftShift")
+    add(crouch, "LeftControl")
 
     context.set_editor_property("mappings", entries)
     mapping_data = context.get_editor_property("default_key_mappings")
@@ -125,7 +131,7 @@ def configure_mapping_context(move, look, jump):
     return context
 
 
-def configure_blueprints(context, move, look, jump):
+def configure_blueprints(context, move, look, jump, sprint, crouch):
     character_class = unreal.load_class(None, "/Script/ArenaDuel.ArenaDuelCharacter")
     game_mode_class = unreal.load_class(None, "/Script/ArenaDuel.ArenaDuelGameMode")
     if not character_class or not game_mode_class:
@@ -138,6 +144,8 @@ def configure_blueprints(context, move, look, jump):
         "move_action": move,
         "look_action": look,
         "jump_action": jump,
+        "sprint_action": sprint,
+        "crouch_action": crouch,
     })
     compile_blueprint(character_bp)
 
@@ -176,12 +184,47 @@ def create_test_map():
     return object_path
 
 
+def create_phase4_map():
+    object_path = MAP_PATH + "/L_Phase4MovementTest"
+    if not unreal.EditorAssetLibrary.does_asset_exist(object_path):
+        unreal.EditorLevelLibrary.new_level(object_path)
+    current_world = unreal.EditorLevelLibrary.get_editor_world()
+    current_package = current_world.get_outermost().get_name() if current_world else ""
+    if current_package != object_path:
+        unreal.EditorLevelLibrary.load_level(object_path)
+
+    def ensure_cube(label, location, scale):
+        actors = unreal.EditorLevelLibrary.get_all_level_actors()
+        actor = next((candidate for candidate in actors if candidate.get_actor_label() == label), None)
+        if not actor:
+            actor = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.StaticMeshActor, location, unreal.Rotator(0, 0, 0))
+            actor.set_actor_label(label)
+        component = actor.get_component_by_class(unreal.StaticMeshComponent)
+        component.set_static_mesh(unreal.load_object(None, "/Engine/BasicShapes/Cube.Cube"))
+        actor.set_actor_location(location, False, False)
+        actor.set_actor_scale3d(scale)
+
+    ensure_cube("Phase4_LongSprintLane", unreal.Vector(0, 0, -100), unreal.Vector(35, 8, 0.1))
+    ensure_cube("Phase4_SlideObstacle", unreal.Vector(700, 0, 25), unreal.Vector(1.2, 4, 1.25))
+    ensure_cube("Phase4_VaultObstacle", unreal.Vector(1100, 0, 50), unreal.Vector(1.0, 4, 2.0))
+    ensure_cube("Phase4_MantleLedge", unreal.Vector(1500, 0, 120), unreal.Vector(1.0, 4, 3.0))
+    ensure_cube("Phase4_LeftWall", unreal.Vector(800, 450, 180), unreal.Vector(8, 0.4, 3.0))
+    ensure_cube("Phase4_RightWall", unreal.Vector(800, -450, 180), unreal.Vector(8, 0.4, 3.0))
+    if not any(isinstance(actor, unreal.PlayerStart) for actor in unreal.EditorLevelLibrary.get_all_level_actors()):
+        for location in [unreal.Vector(-500, 0, 100), unreal.Vector(500, 0, 100)]:
+            unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.PlayerStart, location, unreal.Rotator(0, 0, 0))
+    unreal.EditorLevelLibrary.save_current_level()
+    log("MAP_SAVED " + object_path)
+    return object_path
+
+
 def main():
-    move, look, jump = configure_input_actions()
-    context = configure_mapping_context(move, look, jump)
-    character_bp, game_mode_bp, _, game_mode_class = configure_blueprints(context, move, look, jump)
+    move, look, jump, sprint, crouch = configure_input_actions()
+    context = configure_mapping_context(move, look, jump, sprint, crouch)
+    character_bp, game_mode_bp, _, game_mode_class = configure_blueprints(context, move, look, jump, sprint, crouch)
     map_path = create_test_map()
-    log("DONE " + character_bp.get_path_name() + " " + game_mode_bp.get_path_name() + " " + map_path)
+    phase4_map_path = create_phase4_map()
+    log("DONE " + character_bp.get_path_name() + " " + game_mode_bp.get_path_name() + " " + map_path + " " + phase4_map_path)
 
 
 main()

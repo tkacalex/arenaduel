@@ -73,6 +73,14 @@ Client A:
 
 Remote PlayerControllers are not assumed to exist on every client.
 
+## Phase 4 movement foundation
+
+`UArenaDuelCharacterMovementComponent` is the Character's native movement component subclass. The Character constructor installs it through Unreal's default-subobject override, so existing CharacterMovement replication and server authority remain in use. It adds input-driven sprint and crouch state, a custom slide mode, slide jump momentum retention, air-control tuning, bounded momentum, stamina drain and regeneration, and basic collision-query based wall-run, wall-jump, vault, and mantle modes. There are no custom movement RPCs and no manual transform replication. The current mode transitions are intentionally small and data driven. Detailed saved-move compression or production traversal tuning will be validated before competitive use.
+
+`L_Phase4MovementTest` is a temporary flat development map containing labeled sprint, slide, vault, mantle, and wall test geometry. It is not the final arena.
+
+Phase 4 input assets are `Input/IA_Sprint` and `Input/IA_Crouch`, mapped to Left Shift and Left Control in `Input/IMC_Gameplay`. Existing Phase 3 move, look, and jump assets remain unchanged.
+
 ## Phase 3 Unreal assets
 
 The Phase 3 input and Blueprint assets live under `Content/ArenaDuel/`:

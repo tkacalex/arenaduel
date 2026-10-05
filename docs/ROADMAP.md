@@ -14,7 +14,7 @@ Complete. The C++ first person camera, walk, look, jump, possession-safe Enhance
 
 ## Phase 4: Advanced movement
 
-Sprint, crouch, slide, slide jump, mantle, vault, wall run, wall jump, air control, and momentum chaining where appropriate.
+Complete as a technical foundation. Sprint, crouch, slide, slide jump, air-control tuning, stamina, momentum bounds, and basic wall-run, wall-jump, vault, and mantle modes are implemented and covered by repeatable editor automation. Human feel validation remains before Phase 5.
 
 ## Phase 5: Weapons and gunplay
 

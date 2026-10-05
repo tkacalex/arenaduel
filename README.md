@@ -10,9 +10,9 @@ Verified engine path: `C:\Program Files\Epic Games\UE_5.8`.
 
 The project contains the first multiplayer framework and first person Character foundation. Phase 3 input assets, Blueprint subclasses, and a minimal movement test map are now serialized by Unreal and versioned with Git LFS. It has no health, combat, Gameplay Ability System setup, UI, online services, or match gameplay.
 
-The generated Blank project already includes the Enhanced Input module and default input classes. ArenaDuel now contains `IA_Move`, `IA_Look`, `IA_Jump`, `IMC_Gameplay`, and configured Blueprint references created through Unreal Editor Python automation.
+The generated Blank project already includes the Enhanced Input module and default input classes. ArenaDuel now contains `IA_Move`, `IA_Look`, `IA_Jump`, `IA_Sprint`, `IA_Crouch`, `IMC_Gameplay`, and configured Blueprint references created through Unreal Editor Python automation. Phase 4 adds a C++ movement component with sprint, crouch, slide, slide jump, air control tuning, stamina, momentum bounds, and basic traversal modes.
 
-Phase 3 technical validation is reproducible with `Tools/Tests/RunPhase3Validation.ps1`. It builds the editor target and runs the CQTest map and two-player listen-server checks twice, including automated Enhanced Input move, look, and jump injection. Phase 4 advanced movement has not started.
+Phase 3 technical validation is reproducible with `Tools/Tests/RunPhase3Validation.ps1`. Phase 4 validation is reproducible with `Tools/Tests/RunPhase4Validation.ps1`, which builds the editor target and runs both suites twice. Phase 4 is a technical foundation only. Feel tuning and real two-player traversal playtesting remain separate human checks.
 
 ## Engineering direction
 

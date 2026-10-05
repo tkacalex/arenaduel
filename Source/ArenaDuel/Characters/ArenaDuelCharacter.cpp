@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "ArenaDuelCharacter.h"
+#include "ArenaDuelCharacterMovementComponent.h"
 
 #include "../ArenaDuel.h"
 #include "Camera/CameraComponent.h"
@@ -15,7 +16,7 @@
 #include "Engine/LocalPlayer.h"
 
 AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer)
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<UArenaDuelCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
 	FirstPersonCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
 	FirstPersonCamera->SetupAttachment(GetCapsuleComponent());
@@ -28,6 +29,11 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 
 	GetCharacterMovement()->bOrientRotationToMovement = false;
 	GetCharacterMovement()->bUseControllerDesiredRotation = false;
+}
+
+UArenaDuelCharacterMovementComponent* AArenaDuelCharacter::GetArenaDuelMovementComponent() const
+{
+	return Cast<UArenaDuelCharacterMovementComponent>(GetCharacterMovement());
 }
 
 void AArenaDuelCharacter::PawnClientRestart()
@@ -107,6 +113,28 @@ void AArenaDuelCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 	{
 		UE_LOG(LogArenaDuel, Warning, TEXT("ArenaDuelCharacter has no JumpAction configured."));
 	}
+
+	if (SprintAction)
+	{
+		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &AArenaDuelCharacter::SprintStarted);
+		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &AArenaDuelCharacter::SprintCompleted);
+		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Canceled, this, &AArenaDuelCharacter::SprintCompleted);
+	}
+	else
+	{
+		UE_LOG(LogArenaDuel, Warning, TEXT("ArenaDuelCharacter has no SprintAction configured."));
+	}
+
+	if (CrouchAction)
+	{
+		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &AArenaDuelCharacter::CrouchStarted);
+		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Completed, this, &AArenaDuelCharacter::CrouchCompleted);
+		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Canceled, this, &AArenaDuelCharacter::CrouchCompleted);
+	}
+	else
+	{
+		UE_LOG(LogArenaDuel, Warning, TEXT("ArenaDuelCharacter has no CrouchAction configured."));
+	}
 }
 
 void AArenaDuelCharacter::Move(const FInputActionValue& Value)
@@ -143,6 +171,13 @@ void AArenaDuelCharacter::JumpStarted()
 		return;
 	}
 
+	if (UArenaDuelCharacterMovementComponent* MovementComponent = GetArenaDuelMovementComponent())
+	{
+		if (MovementComponent->TrySlideJump() || MovementComponent->TryWallJump())
+		{
+			return;
+		}
+	}
 	Jump();
 }
 
@@ -154,4 +189,42 @@ void AArenaDuelCharacter::JumpCompleted()
 	}
 
 	StopJumping();
+}
+
+void AArenaDuelCharacter::SprintStarted()
+{
+	if (IsLocallyControlled())
+	{
+		if (UArenaDuelCharacterMovementComponent* MovementComponent = GetArenaDuelMovementComponent())
+		{
+			MovementComponent->StartSprint();
+		}
+	}
+}
+
+void AArenaDuelCharacter::SprintCompleted()
+{
+	if (UArenaDuelCharacterMovementComponent* MovementComponent = GetArenaDuelMovementComponent())
+	{
+		MovementComponent->StopSprint();
+	}
+}
+
+void AArenaDuelCharacter::CrouchStarted()
+{
+	if (IsLocallyControlled())
+	{
+		if (UArenaDuelCharacterMovementComponent* MovementComponent = GetArenaDuelMovementComponent())
+		{
+			MovementComponent->StartCrouchOrSlide();
+		}
+	}
+}
+
+void AArenaDuelCharacter::CrouchCompleted()
+{
+	if (UArenaDuelCharacterMovementComponent* MovementComponent = GetArenaDuelMovementComponent())
+	{
+		MovementComponent->StopCrouchOrSlide();
+	}
 }

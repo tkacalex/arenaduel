@@ -44,7 +44,7 @@ V1 abilities do not directly damage opponents.
 
 ## Movement target
 
-Sprint, slide, slide jump, mantle, vault, wall run, wall jump, and air control are planned future movement features. The current phase implements only walk, look, and jump.
+Sprint, crouch, slide, slide jump, mantle, vault, wall run, wall jump, and air control are the Phase 4 movement foundation. The implementation is intentionally a technical base with conservative initial tuning. Sprint, crouch, slide, slide jump, stamina, momentum bounds, and basic traversal state exist in C++; advanced traversal feel and competitive tuning still require playtesting. Weapons, combat, GAS, and match systems remain out of scope.
 
 ## RPG
 

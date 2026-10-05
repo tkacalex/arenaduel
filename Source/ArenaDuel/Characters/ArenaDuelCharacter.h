@@ -9,6 +9,7 @@
 class UCameraComponent;
 class UInputAction;
 class UInputMappingContext;
+class UArenaDuelCharacterMovementComponent;
 struct FInputActionValue;
 
 UCLASS()
@@ -20,6 +21,7 @@ public:
 	AArenaDuelCharacter(const FObjectInitializer& ObjectInitializer);
 
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
+	UArenaDuelCharacterMovementComponent* GetArenaDuelMovementComponent() const;
 
 protected:
 	virtual void PawnClientRestart() override;
@@ -28,6 +30,10 @@ protected:
 	void Look(const FInputActionValue& Value);
 	void JumpStarted();
 	void JumpCompleted();
+	void SprintStarted();
+	void SprintCompleted();
+	void CrouchStarted();
+	void CrouchCompleted();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCameraComponent> FirstPersonCamera;
@@ -43,4 +49,10 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> JumpAction;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> SprintAction;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> CrouchAction;
 };

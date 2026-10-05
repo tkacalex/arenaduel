@@ -33,3 +33,7 @@ Current state: `REPOSITORY BUILD = PASS`.
 The automation plugins are editor only and are not listed in `ArenaDuel.uproject` after setup. If the script must be rerun, enable `PythonScriptPlugin` and `EditorScriptingUtilities` temporarily, run the script with `UnrealEditor-Cmd.exe`, run the validation script, and remove those temporary project plugin entries before committing.
 
 The Android File Server editor settings section is intentionally absent for this Win64-only development milestone. ArenaDuel does not use Android File Server, so removing that project-owned section prevents Unreal from regenerating a local `SecurityToken` in tracked configuration.
+
+## Phase 4 validation
+
+`Tools/Tests/RunPhase4Validation.ps1` builds `ArenaDuelEditor` and runs the Phase 3 regression suite plus the Phase 4 asset and movement-state suite twice. The Phase 4 suite validates the temporary movement map, input assets, Blueprint assignments, sprint and slide state transitions, slide jump, and movement bounds. Unreal's CQTest report is the source of truth; engine PIE NetGUID warnings are tolerated only when the report has no failed or not-run tests.
