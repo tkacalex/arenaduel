@@ -59,6 +59,8 @@ bool FArenaDuelPhase4MapAndAssetsTest::RunTest(const FString& Parameters)
 	bool bRightWall = false;
 	bool bVault = false;
 	bool bMantle = false;
+	AStaticMeshActor* SafetyFloorActor = nullptr;
+	TArray<AStaticMeshActor*> SafetyWallActors;
 	int32 PlayerStarts = 0;
 	int32 Labels = 0;
 	for (TActorIterator<AActor> It(World); It; ++It)
@@ -68,6 +70,17 @@ bool FArenaDuelPhase4MapAndAssetsTest::RunTest(const FString& Parameters)
 		bSkyLight |= Cast<ASkyLight>(*It) != nullptr && It->GetActorLabel() == TEXT("Phase4_SkyLight");
 		bSkyAtmosphere |= Cast<ASkyAtmosphere>(*It) != nullptr && It->GetActorLabel() == TEXT("Phase4_SkyAtmosphere");
 		bSafetyFloor |= Label == TEXT("Phase4_LongSprintLane") && It->GetActorScale3D().X >= 70.0f && It->GetActorScale3D().Y >= 20.0f;
+		if (Label == TEXT("Phase4_LongSprintLane"))
+		{
+			SafetyFloorActor = Cast<AStaticMeshActor>(*It);
+		}
+		if (Label == TEXT("Phase4_NorthSafetyWall") || Label == TEXT("Phase4_SouthSafetyWall") || Label == TEXT("Phase4_WestSafetyWall") || Label == TEXT("Phase4_EastSafetyWall"))
+		{
+			if (AStaticMeshActor* SafetyWall = Cast<AStaticMeshActor>(*It))
+			{
+				SafetyWallActors.Add(SafetyWall);
+			}
+		}
 		bLeftWall |= Label == TEXT("Phase4_LeftWall");
 		bRightWall |= Label == TEXT("Phase4_RightWall");
 		bVault |= Label == TEXT("Phase4_VaultObstacle");
@@ -79,6 +92,16 @@ bool FArenaDuelPhase4MapAndAssetsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Phase 4 map has actor Phase4_SkyLight"), bSkyLight);
 	TestTrue(TEXT("Phase 4 map has actor Phase4_SkyAtmosphere"), bSkyAtmosphere);
 	TestTrue(TEXT("Phase 4 map has a large safety floor"), bSafetyFloor);
+	bool bSafetyWallsInsideFloor = SafetyFloorActor != nullptr && SafetyWallActors.Num() == 4;
+	if (bSafetyWallsInsideFloor)
+	{
+		const FBox FloorBounds = SafetyFloorActor->GetComponentsBoundingBox(true);
+		for (const AStaticMeshActor* SafetyWall : SafetyWallActors)
+		{
+			bSafetyWallsInsideFloor &= FloorBounds.IsInsideXY(SafetyWall->GetActorLocation());
+		}
+	}
+	TestTrue(TEXT("Safety wall centers are inside the playable floor bounds"), bSafetyWallsInsideFloor);
 	TestTrue(TEXT("Phase 4 map has left and right wall-run walls"), bLeftWall && bRightWall);
 	TestTrue(TEXT("Phase 4 map has vault and mantle stations"), bVault && bMantle);
 	TestTrue(TEXT("Phase 4 map has two PlayerStarts"), PlayerStarts >= 2);

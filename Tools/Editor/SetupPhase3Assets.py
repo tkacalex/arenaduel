@@ -230,7 +230,9 @@ def create_phase4_map():
             component.set_material(0, material)
         return actor
 
-    ensure_cube("Phase4_LongSprintLane", unreal.Vector(0, 0, -100), unreal.Vector(80, 30, 0.1), floor_material)
+    # The default Engine Cube is 100 uu wide. Keep a generous floor margin inside
+    # the safety perimeter so ordinary movement testing cannot fall into the void.
+    ensure_cube("Phase4_LongSprintLane", unreal.Vector(0, 0, -100), unreal.Vector(80, 55, 0.1), floor_material)
     ensure_cube("Phase4_SlideObstacle", unreal.Vector(700, 0, 25), unreal.Vector(1.2, 4, 1.25), obstacle_material)
     ensure_cube("Phase4_VaultObstacle", unreal.Vector(1100, 0, 50), unreal.Vector(1.0, 4, 2.0), obstacle_material)
     ensure_cube("Phase4_MantleLedge", unreal.Vector(1500, 0, 120), unreal.Vector(1.0, 4, 3.0), mantle_material)
