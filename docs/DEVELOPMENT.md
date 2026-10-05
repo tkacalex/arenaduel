@@ -6,11 +6,11 @@ ArenaDuel uses the same project directory for Unreal Editor, VS Code, Codex, Git
 
 ## Engine baseline
 
-Unreal Engine 5.8 is the planned baseline because its official documentation is current and an Epic Games Launcher installation is already in progress on this machine. Do not change the engine association silently. A version change requires an explicit decision and a verified migration.
+The verified engine is Unreal Engine 5.8.3 at `C:\Program Files\Epic Games\UE_5.8`. The project uses the generated EngineAssociation for that installation. Do not change the engine association silently. A version change requires an explicit decision and a verified migration.
 
 ## Windows toolchain baseline
 
-Unreal Engine 5.8 supports Visual Studio 2022 version 17.14 or later and Visual Studio 2026 version 18.0 or later. Epic recommends Visual Studio 2026 for general development. For the intended VS Code workflow, Visual Studio 2022 Build Tools version 17.14 or later remains a supported lean choice. Install the Desktop development with C++ and Game development with C++ workloads, MSVC, and a Windows 10 or 11 SDK version 10.0.18362 or newer. The current machine has not yet passed this toolchain check.
+The verified compiler environment is Visual Studio Community 2026 Insiders 18.11 with MSVC 14.50.35739 and MSBuild 18.11. The verified Windows SDK used by UnrealBuildTool is 10.0.22621.0. Windows SDK 10.0.26100.0 is also installed. UnrealBuildTool selected MSVC 14.50 and SDK 10.0.22621.0 during the verified build.
 
 ## Source control
 
@@ -20,6 +20,6 @@ Keep `Config/`, `Content/`, `Source/`, `Build/`, `ArenaDuel.uproject`, and proje
 
 ## Build verification
 
-The first valid build should use the Unreal supplied build tooling for the generated `ArenaDuelEditor` target in the Win64 Development configuration. Record the exact command and result when the project exists.
+The verified build used Unreal supplied tooling for `ArenaDuelEditor`, Win64, Development, from `C:\Users\Dima\Desktop\arenaduel\ArenaDuel.uproject`.
 
-Current state: `BUILD NOT YET VERIFIED`.
+Current state: `REPOSITORY BUILD = PASS`.

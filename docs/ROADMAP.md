@@ -2,7 +2,7 @@
 
 ## Foundation
 
-Audit the workspace and required tools. Establish source control, Git LFS, documentation, a fixed engine baseline, and a reproducible C++ project creation workflow. Complete only after the engine and compiler toolchain are installed, Unreal creates the project, and the initial editor target builds.
+Audit the workspace and required tools. Establish source control, Git LFS, documentation, a fixed engine baseline, and a reproducible C++ project creation workflow. This foundation is complete: Unreal Engine 5.8.3, the C++ toolchain, the minimal project, and the repository editor target have all been verified.
 
 ## Later milestones
 

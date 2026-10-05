@@ -4,9 +4,11 @@ ArenaDuel is planned as a competitive one versus one third person action RPG are
 
 ## Current status
 
-The repository currently contains foundation documentation and source control rules only. No Unreal project, gameplay code, assets, or generated project files exist yet.
+The repository contains a minimal Unreal Engine 5.8.3 Blank C++ project. The `ArenaDuelEditor` Win64 Development target builds successfully from this repository.
 
-The planned engine baseline is Unreal Engine 5.8. This choice is not locked until the pending Epic Games Launcher installation completes and the generated C++ project builds successfully.
+Verified engine path: `C:\Program Files\Epic Games\UE_5.8`.
+
+The project contains no gameplay classes, assets, Starter Content, marketplace plugins, Gameplay Ability System setup, Enhanced Input additions, or multiplayer gameplay.
 
 ## Engineering direction
 
