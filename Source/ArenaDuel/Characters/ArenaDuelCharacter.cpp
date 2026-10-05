@@ -135,6 +135,17 @@ void AArenaDuelCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 	{
 		UE_LOG(LogArenaDuel, Warning, TEXT("ArenaDuelCharacter has no CrouchAction configured."));
 	}
+
+	if (SlideAction)
+	{
+		EnhancedInputComponent->BindAction(SlideAction, ETriggerEvent::Started, this, &AArenaDuelCharacter::SlideStarted);
+		EnhancedInputComponent->BindAction(SlideAction, ETriggerEvent::Completed, this, &AArenaDuelCharacter::SlideCompleted);
+		EnhancedInputComponent->BindAction(SlideAction, ETriggerEvent::Canceled, this, &AArenaDuelCharacter::SlideCompleted);
+	}
+	else
+	{
+		UE_LOG(LogArenaDuel, Warning, TEXT("ArenaDuelCharacter has no SlideAction configured."));
+	}
 }
 
 void AArenaDuelCharacter::Move(const FInputActionValue& Value)
@@ -238,17 +249,38 @@ void AArenaDuelCharacter::CrouchStarted()
 {
 	if (IsLocallyControlled())
 	{
-		if (UArenaDuelCharacterMovementComponent* MovementComponent = GetArenaDuelMovementComponent())
-		{
-			MovementComponent->StartCrouchOrSlide();
-		}
+		bCrouchInputHeld = true;
+		Crouch();
 	}
 }
 
 void AArenaDuelCharacter::CrouchCompleted()
 {
+	if (IsLocallyControlled())
+	{
+		bCrouchInputHeld = false;
+		if (!GetArenaDuelMovementComponent() || !GetArenaDuelMovementComponent()->IsSliding())
+		{
+			UnCrouch();
+		}
+	}
+}
+
+void AArenaDuelCharacter::SlideStarted()
+{
+	if (IsLocallyControlled())
+	{
+		if (UArenaDuelCharacterMovementComponent* MovementComponent = GetArenaDuelMovementComponent())
+		{
+			MovementComponent->StartSlide();
+		}
+	}
+}
+
+void AArenaDuelCharacter::SlideCompleted()
+{
 	if (UArenaDuelCharacterMovementComponent* MovementComponent = GetArenaDuelMovementComponent())
 	{
-		MovementComponent->StopCrouchOrSlide();
+		MovementComponent->StopSlide();
 	}
 }

@@ -59,6 +59,12 @@ bool FArenaDuelPhase4MapAndAssetsTest::RunTest(const FString& Parameters)
 	bool bRightWall = false;
 	bool bVault = false;
 	bool bMantle = false;
+	bool bCentralObstacles = false;
+	bool bRamp = false;
+	bool bRaisedPlatform = false;
+	bool bSlideTunnel = false;
+	bool bSlideMarkers = false;
+	bool bLabelsOriented = true;
 	AStaticMeshActor* SafetyFloorActor = nullptr;
 	TArray<AStaticMeshActor*> SafetyWallActors;
 	AStaticMeshActor* NorthSafetyWall = nullptr;
@@ -93,8 +99,22 @@ bool FArenaDuelPhase4MapAndAssetsTest::RunTest(const FString& Parameters)
 		bRightWall |= Label == TEXT("Phase4_RightWall");
 		bVault |= Label == TEXT("Phase4_VaultObstacle");
 		bMantle |= Label == TEXT("Phase4_MantleLedge");
+		bCentralObstacles |= Label == TEXT("Phase4_CentralCrateA");
+		bRamp |= Label == TEXT("Phase4_Ramp");
+		bRaisedPlatform |= Label == TEXT("Phase4_RaisedPlatform");
+		bSlideTunnel |= Label == TEXT("Phase4_SlideTunnelRoof");
+		bSlideMarkers |= Label == TEXT("Phase4_LabelSlide5m") || Label == TEXT("Phase4_LabelSlide7m");
 		PlayerStarts += Cast<APlayerStart>(*It) != nullptr ? 1 : 0;
-		Labels += Cast<ATextRenderActor>(*It) != nullptr ? 1 : 0;
+		if (Cast<ATextRenderActor>(*It))
+		{
+			Labels++;
+			if (Label.StartsWith(TEXT("Phase4_Label")))
+			{
+				const FRotator Rotation = It->GetActorRotation();
+				const FVector Scale = It->GetActorScale3D();
+				bLabelsOriented &= FMath::Abs(FRotator::NormalizeAxis(Rotation.Pitch)) < 1.0f && FMath::Abs(FRotator::NormalizeAxis(Rotation.Roll)) < 1.0f && Scale.GetAbsMax() > 0.1f;
+			}
+		}
 	}
 	TestTrue(TEXT("Phase 4 map has actor Phase4_DirectionalLight"), bDirectional);
 	TestTrue(TEXT("Phase 4 map has actor Phase4_SkyLight"), bSkyLight);
@@ -125,12 +145,17 @@ bool FArenaDuelPhase4MapAndAssetsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Safety perimeter wall extents cover the full playable floor"), bPerimeterCoversFloor);
 	TestTrue(TEXT("Phase 4 map has left and right wall-run walls"), bLeftWall && bRightWall);
 	TestTrue(TEXT("Phase 4 map has vault and mantle stations"), bVault && bMantle);
+	TestTrue(TEXT("Phase 4 map has a central obstacle cluster"), bCentralObstacles);
+	TestTrue(TEXT("Phase 4 map has a ramp and raised platform"), bRamp && bRaisedPlatform);
+	TestTrue(TEXT("Phase 4 map has a slide tunnel"), bSlideTunnel);
+	TestTrue(TEXT("Phase 4 map has slide distance markers"), bSlideMarkers);
 	TestTrue(TEXT("Phase 4 map has two PlayerStarts"), PlayerStarts >= 2);
-	TestTrue(TEXT("Phase 4 map has development labels"), Labels >= 6);
+	TestTrue(TEXT("Phase 4 map has development labels"), Labels >= 10);
+	TestTrue(TEXT("Phase 4 labels are upright with readable scale"), bLabelsOriented);
 	UClass* GameModeClass = LoadClass<AGameModeBase>(nullptr, ArenaDuelPhase4Tests::GameModeClass);
 	TestTrue(TEXT("Development HUD is configured on the native GameMode"), GameModeClass && GameModeClass->GetDefaultObject<AGameModeBase>()->HUDClass == AArenaDuelMovementDebugHUD::StaticClass());
 
-	for (const TCHAR* AssetName : { TEXT("IA_Move"), TEXT("IA_Look"), TEXT("IA_Jump"), TEXT("IA_Sprint"), TEXT("IA_Crouch"), TEXT("IMC_Gameplay") })
+	for (const TCHAR* AssetName : { TEXT("IA_Move"), TEXT("IA_Look"), TEXT("IA_Jump"), TEXT("IA_Sprint"), TEXT("IA_Crouch"), TEXT("IA_Slide"), TEXT("IMC_Gameplay") })
 	{
 		TestNotNull(FString::Printf(TEXT("Input asset %s"), AssetName), LoadObject<UObject>(nullptr, *FString::Printf(TEXT("%s%s.%s"), ArenaDuelPhase4Tests::InputRoot, AssetName, AssetName)));
 	}
@@ -143,7 +168,7 @@ bool FArenaDuelPhase4MapAndAssetsTest::RunTest(const FString& Parameters)
 	}
 
 	const AArenaDuelCharacter* CharacterCDO = CharacterClass->GetDefaultObject<AArenaDuelCharacter>();
-	for (const TCHAR* PropertyName : { TEXT("DefaultMappingContext"), TEXT("MoveAction"), TEXT("LookAction"), TEXT("JumpAction"), TEXT("SprintAction"), TEXT("CrouchAction") })
+	for (const TCHAR* PropertyName : { TEXT("DefaultMappingContext"), TEXT("MoveAction"), TEXT("LookAction"), TEXT("JumpAction"), TEXT("SprintAction"), TEXT("CrouchAction"), TEXT("SlideAction") })
 	{
 		const FObjectProperty* Property = FindFProperty<FObjectProperty>(AArenaDuelCharacter::StaticClass(), PropertyName);
 		TestNotNull(FString::Printf(TEXT("Character property %s"), PropertyName), Property);
@@ -168,7 +193,7 @@ bool FArenaDuelPhase4MovementStateTest::RunTest(const FString& Parameters)
 	}
 
 	UWorld* World = GEditor->GetEditorWorldContext().World();
-	AArenaDuelCharacter* Character = World->SpawnActor<AArenaDuelCharacter>(CharacterClass, FVector(0.0f, 0.0f, 1.0f), FRotator::ZeroRotator);
+	AArenaDuelCharacter* Character = World->SpawnActor<AArenaDuelCharacter>(CharacterClass, FVector(0.0f, 0.0f, 88.0f), FRotator::ZeroRotator);
 	TestNotNull(TEXT("Test Character spawned"), Character);
 	if (!Character)
 	{
@@ -185,17 +210,42 @@ bool FArenaDuelPhase4MovementStateTest::RunTest(const FString& Parameters)
 	Movement->SetUpdatedComponent(Character->GetCapsuleComponent());
 
 	Movement->SetMovementMode(MOVE_Walking);
+	Movement->CurrentFloor.bWalkableFloor = true;
+	Movement->CurrentFloor.FloorDist = 0.0f;
 	Movement->Velocity = FVector(800.0f, 0.0f, 0.0f);
 	TestTrue(TEXT("Movement test starts grounded"), Movement->IsMovingOnGround());
 	TestTrue(TEXT("Movement test has speed"), Movement->Velocity.Size2D() >= Movement->SlideMinSpeed);
 	Movement->StartSprint();
 	TestTrue(TEXT("Sprint raises configured speed"), Movement->GetMaxSpeed() > Movement->WalkSpeed);
 
-	Movement->StartCrouchOrSlide();
+	Movement->StartSlide();
 	TestTrue(TEXT("Fast crouch enters slide"), Movement->IsSliding());
 	const float SlideSpeed = Movement->Velocity.Size2D();
 	TestTrue(TEXT("Slide entry receives a meaningful speed kick"), SlideSpeed > Movement->SprintSpeed);
 	TestTrue(TEXT("Slide entry remains capped"), SlideSpeed <= Movement->GlobalMomentumCap);
+	const FVector SlideStart = Character->GetActorLocation();
+	int32 SlideFrames = 0;
+	while (Movement->IsSliding() && SlideFrames < 180 && FVector::Dist2D(Character->GetActorLocation(), SlideStart) < 760.0f)
+	{
+		const FVector RuntimeVelocity = Movement->Velocity;
+		Movement->PhysCustom(0.016f, SlideFrames);
+		if (Movement->IsSliding())
+		{
+			FHitResult SlideHit;
+			Character->GetRootComponent()->MoveComponent(RuntimeVelocity * 0.016f, Character->GetActorQuat(), true, &SlideHit);
+		}
+		++SlideFrames;
+	}
+	const float SlideDistance = FVector::Dist2D(Character->GetActorLocation(), SlideStart);
+	AddInfo(FString::Printf(TEXT("Measured full-speed slide distance: %.1f uu over %d frames"), SlideDistance, SlideFrames));
+	TestTrue(TEXT("Full-speed slide travels at least 450 uu"), SlideDistance >= 450.0f);
+	TestTrue(TEXT("Full-speed slide remains within 800 uu"), SlideDistance <= 800.0f);
+	Movement->StopSlide();
+	TestFalse(TEXT("Full-speed slide exits cleanly"), Movement->IsSliding());
+	Movement->SetMovementMode(MOVE_Walking);
+	Movement->Velocity = FVector(800.0f, 0.0f, 0.0f);
+	Movement->StartSprint();
+	Movement->StartSlide();
 	const float SpeedBeforeFriction = SlideSpeed;
 	Movement->PhysCustom(0.1f, 0);
 	TestTrue(TEXT("Slide friction reduces speed over time"), Movement->Velocity.Size2D() < SpeedBeforeFriction);
@@ -206,7 +256,7 @@ bool FArenaDuelPhase4MovementStateTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Slide eventually exits after minimum duration"), Movement->IsSliding());
 	Movement->SetMovementMode(MOVE_Walking);
 	Movement->Velocity = FVector(800.0f, 0.0f, 0.0f);
-	Movement->StartCrouchOrSlide();
+	Movement->StartSlide();
 	const float SlideJumpSpeed = Movement->Velocity.Size2D();
 
 	TestTrue(TEXT("Slide jump transitions to falling"), Movement->TrySlideJump());
@@ -246,30 +296,27 @@ bool FArenaDuelPhase4SlideBufferTest::RunTest(const FString& Parameters)
 
 	UArenaDuelCharacterMovementComponent* SlowMovement = SlowCharacter->GetArenaDuelMovementComponent();
 	SlowMovement->SetMovementMode(MOVE_Walking);
-	SlowMovement->StartCrouchOrSlide();
+	SlowMovement->StartSlide();
 	TestFalse(TEXT("Slow Ctrl press does not slide"), SlowMovement->IsSliding());
 	TestFalse(TEXT("Slow Ctrl press does not queue slide"), SlowMovement->IsSlideQueued());
-	TestTrue(TEXT("Slow Ctrl press retains crouch intent"), SlowMovement->WantsCrouchSlideIntent());
-	SlowMovement->StopCrouchOrSlide();
+	TestFalse(TEXT("Slow Ctrl press does not crouch"), SlowCharacter->IsCrouched());
+	TestTrue(TEXT("Slow Ctrl press retains slide intent"), SlowMovement->WantsSlideIntent());
+	SlowMovement->StopSlide();
 
 	UArenaDuelCharacterMovementComponent* BufferedMovement = BufferedCharacter->GetArenaDuelMovementComponent();
 	BufferedMovement->SetMovementMode(MOVE_Walking);
 	BufferedMovement->StartSprint();
 	BufferedMovement->Velocity = FVector(600.0f, 0.0f, 0.0f);
-	BufferedMovement->StartCrouchOrSlide();
+	BufferedMovement->StartSlide();
 	TestFalse(TEXT("Early Ctrl press does not immediately crouch"), BufferedMovement->IsCrouching());
 	TestTrue(TEXT("Early Ctrl press queues slide"), BufferedMovement->IsSlideQueued());
-	BufferedMovement->StopCrouchOrSlide();
+	BufferedMovement->StopSlide();
 	BufferedMovement->SetMovementMode(MOVE_Walking);
 	BufferedMovement->Velocity = FVector(720.0f, 0.0f, 0.0f);
-	BufferedMovement->StartCrouchOrSlide();
+	BufferedMovement->StartSlide();
 	TestTrue(TEXT("Valid speed enters slide immediately"), BufferedMovement->IsSliding());
-	BufferedMovement->StopCrouchOrSlide();
+	BufferedMovement->StopSlide();
 
-	BufferedMovement->Velocity = FVector(600.0f, 0.0f, 0.0f);
-	BufferedMovement->StartCrouchOrSlide();
-	TestTrue(TEXT("Second early Ctrl press queues slide"), BufferedMovement->IsSlideQueued());
-	BufferedMovement->StopCrouchOrSlide();
 	TestFalse(TEXT("Releasing Ctrl cancels queued slide"), BufferedMovement->IsSlideQueued());
 
 	SlowCharacter->Destroy();
@@ -289,7 +336,12 @@ namespace ArenaDuelPhase4HardeningTests
 	static AArenaDuelCharacter* SpawnCharacter(UWorld* World, const FVector& Location)
 	{
 		UClass* CharacterClass = LoadClass<AArenaDuelCharacter>(nullptr, ArenaDuelPhase4Tests::CharacterClass);
-		AArenaDuelCharacter* Character = World && CharacterClass ? World->SpawnActor<AArenaDuelCharacter>(CharacterClass, Location, FRotator::ZeroRotator) : nullptr;
+		FVector SpawnLocation = Location;
+		if (SpawnLocation.Z < 50.0f)
+		{
+			SpawnLocation.Z = 88.0f;
+		}
+		AArenaDuelCharacter* Character = World && CharacterClass ? World->SpawnActor<AArenaDuelCharacter>(CharacterClass, SpawnLocation, FRotator::ZeroRotator) : nullptr;
 		if (Character)
 		{
 			Character->GetCharacterMovement()->SetUpdatedComponent(Character->GetCapsuleComponent());
@@ -367,22 +419,23 @@ ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4SprintTest, "ArenaDuel.Phase4.Sprint
 
 ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4CrouchTest, "ArenaDuel.Phase4.Crouch", {
 	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap);
-	UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(ArenaDuelPhase4HardeningTests::SpawnCharacter(GEditor->GetEditorWorldContext().World(), FVector::ZeroVector));
+	AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnCharacter(GEditor->GetEditorWorldContext().World(), FVector::ZeroVector);
+	UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character);
 	TestNotNull(TEXT("Crouch movement"), Move);
-	if (Move) { Move->StartCrouchOrSlide(); TestTrue(TEXT("Crouch intent retained"), Move->WantsCrouchSlideIntent()); Move->StopCrouchOrSlide(); TestFalse(TEXT("Crouch intent released"), Move->WantsCrouchSlideIntent()); } return true;
+	if (Move && Character) { Move->NavAgentProps.bCanCrouch = true; Move->SetMovementMode(MOVE_Walking); Character->Crouch(); Move->TickComponent(0.016f, LEVELTICK_All, nullptr); TestTrue(TEXT("Native crouch enters crouched state"), Character->IsCrouched()); TestFalse(TEXT("Native crouch never enters slide"), Move->IsSliding()); Character->UnCrouch(); Move->TickComponent(0.016f, LEVELTICK_All, nullptr); TestFalse(TEXT("Native crouch release uncrouches"), Character->IsCrouched()); } return true;
 })
 
 ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4SlideTest, "ArenaDuel.Phase4.Slide", {
 	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap);
 	UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(ArenaDuelPhase4HardeningTests::SpawnCharacter(GEditor->GetEditorWorldContext().World(), FVector::ZeroVector));
-	Move->SetMovementMode(MOVE_Walking); Move->Velocity = FVector(800.0f, 0.0f, 0.0f); Move->StartCrouchOrSlide();
+	Move->SetMovementMode(MOVE_Walking); Move->Velocity = FVector(800.0f, 0.0f, 0.0f); Move->StartSlide();
 	TestTrue(TEXT("Slide entered above threshold"), Move->IsSliding()); TestTrue(TEXT("Slide is capped"), Move->Velocity.Size2D() <= Move->GlobalMomentumCap); return true;
 })
 
 ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4SlideJumpTest, "ArenaDuel.Phase4.SlideJump", {
 	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap);
 	UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(ArenaDuelPhase4HardeningTests::SpawnCharacter(GEditor->GetEditorWorldContext().World(), FVector::ZeroVector));
-	Move->SetMovementMode(MOVE_Walking); Move->Velocity = FVector(800.0f, 0.0f, 0.0f); Move->StartCrouchOrSlide(); const bool bJumped = Move->TrySlideJump();
+	Move->SetMovementMode(MOVE_Walking); Move->Velocity = FVector(800.0f, 0.0f, 0.0f); Move->StartSlide(); const bool bJumped = Move->TrySlideJump();
 	TestTrue(TEXT("Slide jump accepted"), bJumped); TestEqual(TEXT("Slide jump falls"), Move->MovementMode, MOVE_Falling); TestTrue(TEXT("Slide jump rises"), Move->Velocity.Z > 0.0f); return true;
 })
 
@@ -606,7 +659,7 @@ namespace ArenaDuelPhase4NetworkTests
 			State.RemoteStartMovementMode = State.RemotePawn->GetCharacterMovement()->MovementMode;
 			State.RemoteStartCustomMovementMode = State.RemotePawn->GetCharacterMovement()->CustomMovementMode;
 			State.RemoteStartSprintIntent = State.RemotePawn->GetArenaDuelMovementComponent()->WantsSprintIntent();
-			State.RemoteStartCrouchIntent = State.RemotePawn->GetArenaDuelMovementComponent()->WantsCrouchSlideIntent();
+			State.RemoteStartCrouchIntent = State.RemotePawn->GetArenaDuelMovementComponent()->WantsSlideIntent();
 		}
 		if (State.FloorActor) ConfigureFixtureMesh(*State.FloorActor, FVector(0.0f, 0.0f, -50.0f), FVector(80.0f, 8.0f, 1.0f));
 		if (State.LeftWallActor) ConfigureFixtureMesh(*State.LeftWallActor, FVector(800.0f, 450.0f, 180.0f), FVector(8.0f, 0.4f, 3.0f));
@@ -661,7 +714,7 @@ namespace ArenaDuelPhase4NetworkTests
 			if (UArenaDuelCharacterMovementComponent* Movement = Pawn->GetArenaDuelMovementComponent())
 			{
 				Movement->StopSprint();
-				Movement->StopCrouchOrSlide();
+				Movement->StopSlide();
 				Movement->Velocity = InitialVelocity;
 				Movement->SetMovementMode(MOVE_Walking);
 			}
@@ -705,6 +758,16 @@ namespace ArenaDuelPhase4NetworkTests
 		}
 	}
 
+	static void StartSlide(FArenaDuelPhase4NetworkState& State)
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Input = ArenaDuelPhase4HardeningTests::GetLocalInputSubsystem(State.World->GetFirstPlayerController()))
+		{
+			UInputAction* SlideAction = LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Slide.IA_Slide"));
+			Input->StartContinuousInputInjectionForAction(SlideAction, FInputActionValue(true), {}, {});
+			Input->InjectInputForAction(SlideAction, FInputActionValue(true), {}, {});
+		}
+	}
+
 	static void InjectJump(FArenaDuelPhase4NetworkState& State)
 	{
 		if (UEnhancedInputLocalPlayerSubsystem* Input = ArenaDuelPhase4HardeningTests::GetLocalInputSubsystem(State.World->GetFirstPlayerController()))
@@ -738,12 +801,13 @@ namespace ArenaDuelPhase4NetworkTests
 			Input->StopContinuousInputInjectionForAction(LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Move.IA_Move")));
 			Input->StopContinuousInputInjectionForAction(LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Sprint.IA_Sprint")));
 			Input->StopContinuousInputInjectionForAction(LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Crouch.IA_Crouch")));
+			Input->StopContinuousInputInjectionForAction(LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Slide.IA_Slide")));
 			Input->StopContinuousInputInjectionForAction(LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Jump.IA_Jump")));
 		}
 		if (State.OwnedPawn)
 		{
 			State.OwnedPawn->GetArenaDuelMovementComponent()->StopSprint();
-			State.OwnedPawn->GetArenaDuelMovementComponent()->StopCrouchOrSlide();
+			State.OwnedPawn->GetArenaDuelMovementComponent()->StopSlide();
 		}
 	}
 
@@ -778,7 +842,7 @@ namespace ArenaDuelPhase4NetworkTests
 		LastServerSnapshot.MovementMode = Movement->MovementMode;
 		LastServerSnapshot.CustomMovementMode = Movement->CustomMovementMode;
 		LastServerSnapshot.bSprintIntent = Movement->WantsSprintIntent();
-		LastServerSnapshot.bCrouchIntent = Movement->WantsCrouchSlideIntent();
+		LastServerSnapshot.bCrouchIntent = Movement->WantsSlideIntent();
 	}
 
 	static bool CaptureServerSnapshotAfterSettle(FArenaDuelPhase4NetworkState& State)
@@ -825,7 +889,7 @@ namespace ArenaDuelPhase4NetworkTests
 			State.RemoteStartMovementMode = Remote->GetCharacterMovement()->MovementMode;
 			State.RemoteStartCustomMovementMode = Remote->GetCharacterMovement()->CustomMovementMode;
 			State.RemoteStartSprintIntent = Remote->GetArenaDuelMovementComponent()->WantsSprintIntent();
-			State.RemoteStartCrouchIntent = Remote->GetArenaDuelMovementComponent()->WantsCrouchSlideIntent();
+			State.RemoteStartCrouchIntent = Remote->GetArenaDuelMovementComponent()->WantsSlideIntent();
 		}
 	}
 
@@ -842,7 +906,7 @@ namespace ArenaDuelPhase4NetworkTests
 			return false;
 		}
 		const UArenaDuelCharacterMovementComponent* Movement = RemotePawn->GetArenaDuelMovementComponent();
-		const bool bIsolated = Movement && FVector::Dist2D(RemotePawn->GetActorLocation(), State.RemoteStartLocation) <= 100.0f && FVector::Dist2D(Movement->Velocity, State.RemoteStartVelocity) <= 100.0f && Movement->MovementMode == State.RemoteStartMovementMode && Movement->CustomMovementMode == State.RemoteStartCustomMovementMode && Movement->WantsSprintIntent() == State.RemoteStartSprintIntent && Movement->WantsCrouchSlideIntent() == State.RemoteStartCrouchIntent;
+		const bool bIsolated = Movement && FVector::Dist2D(RemotePawn->GetActorLocation(), State.RemoteStartLocation) <= 100.0f && FVector::Dist2D(Movement->Velocity, State.RemoteStartVelocity) <= 100.0f && Movement->MovementMode == State.RemoteStartMovementMode && Movement->CustomMovementMode == State.RemoteStartCustomMovementMode && Movement->WantsSprintIntent() == State.RemoteStartSprintIntent && Movement->WantsSlideIntent() == State.RemoteStartCrouchIntent;
 		return bIsolated;
 	}
 
@@ -914,10 +978,10 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 			{
 				ArenaDuelPhase4NetworkTests::StartCrouch(State);
 			})
-			.UntilServer(TEXT("Server reconstructs crouch slide intent"), [](FArenaDuelPhase4NetworkState& State)
+			.UntilServer(TEXT("Server reconstructs native crouch"), [](FArenaDuelPhase4NetworkState& State)
 			{
 				AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State);
-				return Pawn && Pawn->GetArenaDuelMovementComponent()->WantsCrouchSlideIntent();
+				return Pawn && Pawn->IsCrouched();
 			}, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Clean sprint and crouch input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StopAllInput(State); })
 			.UntilServer(TEXT("Capture sprint and crouch authority"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::CaptureServerSnapshotAfterSettle(State); })
@@ -931,7 +995,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 			.UntilClient(TEXT("Prepare slide client"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State) && ArenaDuelPhase4NetworkTests::HasInitialReplication(State); }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Build slide speed through Enhanced Input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
 			.UntilClient(TEXT("Client reaches slide speed"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->IsMovingOnGround() && State.OwnedPawn->GetCharacterMovement()->Velocity.Size2D() >= State.OwnedPawn->GetArenaDuelMovementComponent()->SlideMinSpeed; }, FTimespan::FromSeconds(5.0))
-			.ThenClient(TEXT("Trigger slide through crouch input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartCrouch(State); })
+			.ThenClient(TEXT("Trigger slide through dedicated slide input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartSlide(State); })
 			.UntilClient(TEXT("Client enters slide"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetArenaDuelMovementComponent()->IsSliding(); }, FTimespan::FromSeconds(5.0))
 			.UntilServer(TEXT("Server reconstructs slide"), [](FArenaDuelPhase4NetworkState& State) { AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); return Pawn && Pawn->GetArenaDuelMovementComponent()->IsSliding(); }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Release slide input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StopAllInput(State); })
@@ -947,10 +1011,10 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 			.UntilClient(TEXT("Prepare slide jump client"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State) && ArenaDuelPhase4NetworkTests::HasInitialReplication(State); }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Build slide jump speed through Enhanced Input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
 			.UntilClient(TEXT("Client reaches slide speed"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->IsMovingOnGround() && State.OwnedPawn->GetCharacterMovement()->Velocity.Size2D() >= State.OwnedPawn->GetArenaDuelMovementComponent()->SlideMinSpeed; }, FTimespan::FromSeconds(5.0))
-			.ThenClient(TEXT("Enter slide through crouch input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartCrouch(State); })
+			.ThenClient(TEXT("Enter slide through dedicated slide input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartSlide(State); })
 			.UntilClient(TEXT("Client is actually sliding"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetArenaDuelMovementComponent()->IsSliding(); }, FTimespan::FromSeconds(5.0))
 			.UntilServer(TEXT("Server is actually sliding"), [](FArenaDuelPhase4NetworkState& State) { AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); return Pawn && Pawn->GetArenaDuelMovementComponent()->IsSliding(); }, FTimespan::FromSeconds(5.0))
-			.UntilClient(TEXT("Client remains sliding at jump boundary"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartCrouch(State); return State.OwnedPawn && State.OwnedPawn->GetArenaDuelMovementComponent()->IsSliding(); }, FTimespan::FromSeconds(2.0))
+			.UntilClient(TEXT("Client remains sliding at jump boundary"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartSlide(State); return State.OwnedPawn && State.OwnedPawn->GetArenaDuelMovementComponent()->IsSliding(); }, FTimespan::FromSeconds(2.0))
 			.UntilClient(TEXT("Client predicts slide jump"), 0, [](FArenaDuelPhase4NetworkState& State) { if (State.OwnedPawn && State.OwnedPawn->GetArenaDuelMovementComponent()->IsSliding() && !State.bSlideJumpInjected) { State.bSlideJumpInjected = true; ArenaDuelPhase4NetworkTests::InjectJump(State); } return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->IsFalling() && State.OwnedPawn->GetCharacterMovement()->Velocity.Z > 0.0f; }, FTimespan::FromSeconds(5.0))
 			.UntilServer(TEXT("Server executes slide jump"), [](FArenaDuelPhase4NetworkState& State) { AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); return Pawn && Pawn->GetCharacterMovement()->IsFalling() && Pawn->GetCharacterMovement()->Velocity.Z > 0.0f && Pawn->GetCharacterMovement()->Velocity.Size2D() >= 500.0f; }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Stop slide jump input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StopAllInput(State); })
@@ -1042,12 +1106,12 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 	TEST_METHOD(CrossControlIsolation)
 	{
 		Network
-			.UntilServer(TEXT("Place cross-control fixture"), [](FArenaDuelPhase4NetworkState& State) { if (!ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(-2500.0f, 0.0f, 100.0f))) return false; AArenaDuelCharacter* Owned = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); AArenaDuelCharacter* Remote = ArenaDuelPhase4NetworkTests::FindRemoteCharacter(State.World, Owned); if (!Remote) return false; Remote->SetActorLocation(FVector(-2500.0f, 300.0f, 100.0f), false, nullptr, ETeleportType::TeleportPhysics); Remote->GetArenaDuelMovementComponent()->Velocity = FVector::ZeroVector; Remote->GetArenaDuelMovementComponent()->SetMovementMode(MOVE_Walking); Remote->GetArenaDuelMovementComponent()->StopSprint(); Remote->GetArenaDuelMovementComponent()->StopCrouchOrSlide(); Remote->ForceNetUpdate(); State.RemoteStartMovementMode = MOVE_None; return true; }, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Place cross-control fixture"), [](FArenaDuelPhase4NetworkState& State) { if (!ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(-2500.0f, 0.0f, 100.0f))) return false; AArenaDuelCharacter* Owned = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); AArenaDuelCharacter* Remote = ArenaDuelPhase4NetworkTests::FindRemoteCharacter(State.World, Owned); if (!Remote) return false; Remote->SetActorLocation(FVector(-2500.0f, 300.0f, 100.0f), false, nullptr, ETeleportType::TeleportPhysics); Remote->GetArenaDuelMovementComponent()->Velocity = FVector::ZeroVector; Remote->GetArenaDuelMovementComponent()->SetMovementMode(MOVE_Walking); Remote->GetArenaDuelMovementComponent()->StopSprint(); Remote->GetArenaDuelMovementComponent()->StopSlide(); Remote->ForceNetUpdate(); State.RemoteStartMovementMode = MOVE_None; return true; }, FTimespan::FromSeconds(5.0))
 			.UntilClient(TEXT("Prepare cross-control pawns"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State); }, FTimespan::FromSeconds(5.0))
-			.UntilServer(TEXT("Stabilize remote pawn before advanced input"), [](FArenaDuelPhase4NetworkState& State) { AArenaDuelCharacter* Owned = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); AArenaDuelCharacter* Remote = ArenaDuelPhase4NetworkTests::FindRemoteCharacter(State.World, Owned); if (!Remote) return false; Remote->SetActorLocation(FVector(-2500.0f, 300.0f, 100.0f), false, nullptr, ETeleportType::TeleportPhysics); Remote->GetArenaDuelMovementComponent()->Velocity = FVector::ZeroVector; Remote->GetArenaDuelMovementComponent()->SetMovementMode(MOVE_Walking); Remote->GetArenaDuelMovementComponent()->StopSprint(); Remote->GetArenaDuelMovementComponent()->StopCrouchOrSlide(); Remote->ForceNetUpdate(); State.RemoteStartLocation = Remote->GetActorLocation(); State.RemoteStartVelocity = Remote->GetArenaDuelMovementComponent()->Velocity; State.RemoteStartMovementMode = Remote->GetArenaDuelMovementComponent()->MovementMode; State.RemoteStartCustomMovementMode = Remote->GetArenaDuelMovementComponent()->CustomMovementMode; State.RemoteStartSprintIntent = false; State.RemoteStartCrouchIntent = false; return true; }, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Stabilize remote pawn before advanced input"), [](FArenaDuelPhase4NetworkState& State) { AArenaDuelCharacter* Owned = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); AArenaDuelCharacter* Remote = ArenaDuelPhase4NetworkTests::FindRemoteCharacter(State.World, Owned); if (!Remote) return false; Remote->SetActorLocation(FVector(-2500.0f, 300.0f, 100.0f), false, nullptr, ETeleportType::TeleportPhysics); Remote->GetArenaDuelMovementComponent()->Velocity = FVector::ZeroVector; Remote->GetArenaDuelMovementComponent()->SetMovementMode(MOVE_Walking); Remote->GetArenaDuelMovementComponent()->StopSprint(); Remote->GetArenaDuelMovementComponent()->StopSlide(); Remote->ForceNetUpdate(); State.RemoteStartLocation = Remote->GetActorLocation(); State.RemoteStartVelocity = Remote->GetArenaDuelMovementComponent()->Velocity; State.RemoteStartMovementMode = Remote->GetArenaDuelMovementComponent()->MovementMode; State.RemoteStartCustomMovementMode = Remote->GetArenaDuelMovementComponent()->CustomMovementMode; State.RemoteStartSprintIntent = false; State.RemoteStartCrouchIntent = false; return true; }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Build advanced movement speed on owning pawn"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
 			.UntilClient(TEXT("Owning pawn reaches slide speed"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->Velocity.Size2D() >= State.OwnedPawn->GetArenaDuelMovementComponent()->SlideMinSpeed; }, FTimespan::FromSeconds(5.0))
-			.ThenClient(TEXT("Trigger owning pawn slide"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartCrouch(State); })
+			.ThenClient(TEXT("Trigger owning pawn slide"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartSlide(State); })
 			.UntilClient(TEXT("Owning pawn enters slide without remote movement"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetArenaDuelMovementComponent()->IsSliding() && ArenaDuelPhase4NetworkTests::RemotePawnIsIsolated(State); }, FTimespan::FromSeconds(5.0))
 			.UntilServer(TEXT("Server observes owning slide without remote movement"), [](FArenaDuelPhase4NetworkState& State) { AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); if (Pawn && Pawn->GetArenaDuelMovementComponent()->IsSliding() && ArenaDuelPhase4NetworkTests::RemotePawnIsIsolated(State)) State.bServerAdvancedMovementObserved = true; return Pawn && State.bServerAdvancedMovementObserved; }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Trigger owning pawn slide jump"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::InjectJump(State); })

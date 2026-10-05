@@ -26,18 +26,18 @@ public:
 
 	void StartSprint();
 	void StopSprint();
-	void StartCrouchOrSlide();
-	void StopCrouchOrSlide();
+	void StartSlide();
+	void StopSlide();
 	bool IsSprinting() const { return bWantsSprint && IsMovingOnGround() && !IsSliding(); }
 	bool IsSliding() const { return MovementMode == MOVE_Custom && CustomMovementMode == static_cast<uint8>(EArenaDuelCustomMovementMode::Slide); }
 	bool IsWallRunning() const { return MovementMode == MOVE_Custom && CustomMovementMode == static_cast<uint8>(EArenaDuelCustomMovementMode::WallRun); }
 	float GetStamina() const { return Stamina; }
 	float GetMaxStamina() const { return MaxStamina; }
 	bool WantsSprintIntent() const { return bWantsSprint; }
-	bool WantsCrouchSlideIntent() const { return bWantsCrouchOrSlide; }
+	bool WantsSlideIntent() const { return bWantsSlide; }
 	bool IsSlideQueued() const { return bSlideQueued; }
 	void SetSprintIntentFromNetwork(bool bWantsSprintIntent);
-	void SetCrouchSlideIntentFromNetwork(bool bWantsCrouchSlideIntent);
+	void SetSlideIntentFromNetwork(bool bWantsSlideIntent);
 	void ConsumeStamina(float Amount);
 	bool IsMantling() const { return MovementMode == MOVE_Custom && CustomMovementMode == static_cast<uint8>(EArenaDuelCustomMovementMode::Mantle); }
 
@@ -163,7 +163,7 @@ protected:
 	void ExitWallRun();
 
 	bool bWantsSprint = false;
-	bool bWantsCrouchOrSlide = false;
+	bool bWantsSlide = false;
 	bool bSlideQueued = false;
 	float SlideInputBufferRemaining = 0.0f;
 	float SlideElapsed = 0.0f;

@@ -13,7 +13,7 @@ public:
 	using Super = FSavedMove_Character;
 
 	uint8 bSavedWantsSprint : 1;
-	uint8 bSavedWantsCrouchSlide : 1;
+	uint8 bSavedWantsSlide : 1;
 	uint8 bSavedAdvancedJump : 1;
 	uint8 bSavedWallJump : 1;
 
@@ -21,7 +21,7 @@ public:
 	{
 		Super::Clear();
 		bSavedWantsSprint = false;
-		bSavedWantsCrouchSlide = false;
+		bSavedWantsSlide = false;
 		bSavedAdvancedJump = false;
 		bSavedWallJump = false;
 	}
@@ -34,7 +34,7 @@ public:
 			if (const UArenaDuelCharacterMovementComponent* Movement = ArenaCharacter->GetArenaDuelMovementComponent())
 			{
 				bSavedWantsSprint = Movement->WantsSprintIntent();
-				bSavedWantsCrouchSlide = Movement->WantsCrouchSlideIntent();
+				bSavedWantsSlide = Movement->WantsSlideIntent();
 				bSavedAdvancedJump = Movement->HasAdvancedJumpIntent();
 				bSavedWallJump = Movement->WantsWallJumpIntent();
 			}
@@ -44,7 +44,7 @@ public:
 	virtual bool CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* Character, float MaxDelta) const override
 	{
 		const FSavedMove_ArenaDuel* ArenaMove = static_cast<const FSavedMove_ArenaDuel*>(NewMove.Get());
-		return ArenaMove && bSavedWantsSprint == ArenaMove->bSavedWantsSprint && bSavedWantsCrouchSlide == ArenaMove->bSavedWantsCrouchSlide && bSavedAdvancedJump == ArenaMove->bSavedAdvancedJump && bSavedWallJump == ArenaMove->bSavedWallJump && Super::CanCombineWith(NewMove, Character, MaxDelta);
+		return ArenaMove && bSavedWantsSprint == ArenaMove->bSavedWantsSprint && bSavedWantsSlide == ArenaMove->bSavedWantsSlide && bSavedAdvancedJump == ArenaMove->bSavedAdvancedJump && bSavedWallJump == ArenaMove->bSavedWallJump && Super::CanCombineWith(NewMove, Character, MaxDelta);
 	}
 
 	virtual void PrepMoveFor(ACharacter* Character) override
@@ -55,7 +55,7 @@ public:
 			if (UArenaDuelCharacterMovementComponent* Movement = ArenaCharacter->GetArenaDuelMovementComponent())
 			{
 				Movement->SetSprintIntentFromNetwork(bSavedWantsSprint);
-				Movement->SetCrouchSlideIntentFromNetwork(bSavedWantsCrouchSlide);
+				Movement->SetSlideIntentFromNetwork(bSavedWantsSlide);
 				Movement->QueueAdvancedJump(bSavedWallJump);
 				if (!bSavedAdvancedJump)
 				{
@@ -72,7 +72,7 @@ public:
 		{
 			Result |= FLAG_Custom_0;
 		}
-		if (bSavedWantsCrouchSlide)
+		if (bSavedWantsSlide)
 		{
 			Result |= FLAG_Custom_1;
 		}
@@ -137,9 +137,9 @@ void UArenaDuelCharacterMovementComponent::StopSprint()
 	bWantsSprint = false;
 }
 
-void UArenaDuelCharacterMovementComponent::StartCrouchOrSlide()
+void UArenaDuelCharacterMovementComponent::StartSlide()
 {
-	bWantsCrouchOrSlide = true;
+	bWantsSlide = true;
 	if (!IsFalling() && Velocity.Size2D() >= SlideMinSpeed)
 	{
 		bSlideQueued = false;
@@ -151,26 +151,21 @@ void UArenaDuelCharacterMovementComponent::StartCrouchOrSlide()
 		bSlideQueued = true;
 		SlideInputBufferRemaining = SlideInputBuffer;
 	}
-	else if (CharacterOwner)
+	else
 	{
 		bSlideQueued = false;
 		SlideInputBufferRemaining = 0.0f;
-		CharacterOwner->Crouch();
 	}
 }
 
-void UArenaDuelCharacterMovementComponent::StopCrouchOrSlide()
+void UArenaDuelCharacterMovementComponent::StopSlide()
 {
-	bWantsCrouchOrSlide = false;
+	bWantsSlide = false;
 	bSlideQueued = false;
 	SlideInputBufferRemaining = 0.0f;
 	if (IsSliding())
 	{
 		ExitSlide();
-	}
-	else if (CharacterOwner)
-	{
-		CharacterOwner->UnCrouch();
 	}
 }
 
@@ -205,7 +200,7 @@ void UArenaDuelCharacterMovementComponent::UpdateFromCompressedFlags(uint8 Flags
 {
 	Super::UpdateFromCompressedFlags(Flags);
 	SetSprintIntentFromNetwork((Flags & FSavedMove_Character::FLAG_Custom_0) != 0);
-	SetCrouchSlideIntentFromNetwork((Flags & FSavedMove_Character::FLAG_Custom_1) != 0);
+	SetSlideIntentFromNetwork((Flags & FSavedMove_Character::FLAG_Custom_1) != 0);
 	if ((Flags & FSavedMove_Character::FLAG_Custom_2) != 0)
 	{
 		QueueAdvancedJump((Flags & FSavedMove_Character::FLAG_Custom_3) != 0);
@@ -221,9 +216,9 @@ void UArenaDuelCharacterMovementComponent::SetSprintIntentFromNetwork(bool bWant
 	bWantsSprint = bWantsSprintIntent;
 }
 
-void UArenaDuelCharacterMovementComponent::SetCrouchSlideIntentFromNetwork(bool bWantsCrouchSlideIntent)
+void UArenaDuelCharacterMovementComponent::SetSlideIntentFromNetwork(bool bWantsSlideIntent)
 {
-	bWantsCrouchOrSlide = bWantsCrouchSlideIntent;
+	bWantsSlide = bWantsSlideIntent;
 }
 
 void UArenaDuelCharacterMovementComponent::QueueAdvancedJump(bool bWallJump)
@@ -262,7 +257,7 @@ void UArenaDuelCharacterMovementComponent::UpdateCharacterStateBeforeMovement(fl
 	if (bSlideQueued)
 	{
 		SlideInputBufferRemaining = FMath::Max(0.0f, SlideInputBufferRemaining - DeltaSeconds);
-		if (!bWantsCrouchOrSlide || IsFalling())
+		if (!bWantsSlide || IsFalling())
 		{
 			bSlideQueued = false;
 		}
@@ -281,12 +276,12 @@ void UArenaDuelCharacterMovementComponent::UpdateCharacterStateBeforeMovement(fl
 
 	if (IsSliding())
 	{
-		if (!bWantsCrouchOrSlide || !IsMovingOnGround() || (SlideElapsed >= SlideMinDuration && Velocity.Size2D() < SlideEndSpeed))
+		if (!bWantsSlide || !IsMovingOnGround() || (SlideElapsed >= SlideMinDuration && Velocity.Size2D() < SlideEndSpeed))
 		{
 			ExitSlide();
 		}
 	}
-	else if (bWantsCrouchOrSlide && (MovementMode == MOVE_Walking || MovementMode == MOVE_NavWalking) && Velocity.Size2D() >= SlideMinSpeed)
+	else if (bWantsSlide && (MovementMode == MOVE_Walking || MovementMode == MOVE_NavWalking) && Velocity.Size2D() >= SlideMinSpeed)
 	{
 		EnterSlide();
 	}
@@ -347,7 +342,7 @@ void UArenaDuelCharacterMovementComponent::PhysSlide(float DeltaSeconds, int32 I
 	Velocity = Velocity.GetClampedToMaxSize2D(GlobalMomentumCap);
 	MoveAlongFloor(Velocity, DeltaSeconds, nullptr);
 
-	if ((SlideElapsed >= SlideMinDuration && Velocity.Size2D() < SlideEndSpeed) || !bWantsCrouchOrSlide)
+	if ((SlideElapsed >= SlideMinDuration && Velocity.Size2D() < SlideEndSpeed) || !bWantsSlide)
 	{
 		ExitSlide();
 	}
@@ -559,7 +554,8 @@ void UArenaDuelCharacterMovementComponent::ExitSlide()
 		bHasWalkableFloor = FloorResult.IsWalkableFloor();
 	}
 	SetMovementMode(bHasWalkableFloor ? MOVE_Walking : MOVE_Falling);
-	if (!bWantsCrouchOrSlide && CharacterOwner)
+	const AArenaDuelCharacter* ArenaCharacter = Cast<AArenaDuelCharacter>(CharacterOwner);
+	if (CharacterOwner && (!ArenaCharacter || !ArenaCharacter->IsCrouchInputHeld()))
 	{
 		CharacterOwner->UnCrouch();
 	}

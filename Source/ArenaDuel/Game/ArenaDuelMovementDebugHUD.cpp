@@ -41,7 +41,7 @@ void AArenaDuelMovementDebugHUD::DrawHUD()
 
 	const float Speed = Movement->Velocity.Size2D();
 	const FString Text = FString::Printf(
-		TEXT("SPEED: %03d\nSTATE: %s\nSTAMINA: %02d / %02d\n\nWASD  MOVE\nMOUSE  LOOK\nSHIFT  SPRINT\nCTRL  CROUCH / SLIDE\nSPACE  JUMP / SLIDE JUMP / WALL JUMP"),
+		TEXT("SPEED: %03d\nSTATE: %s\nSTAMINA: %02d / %02d\n\nWASD  MOVE\nMOUSE  LOOK\nSHIFT  SPRINT\nCTRL  SLIDE\nC  CROUCH\nSPACE  JUMP / SLIDE JUMP / WALL JUMP"),
 		FMath::RoundToInt(Speed),
 		*MovementState(Movement),
 		FMath::RoundToInt(Movement->GetStamina()),

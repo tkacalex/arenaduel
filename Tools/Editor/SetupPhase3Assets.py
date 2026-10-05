@@ -92,15 +92,17 @@ def configure_input_actions():
     jump = load_or_create_data_asset("IA_Jump", INPUT_PATH, unreal.InputAction)
     sprint = load_or_create_data_asset("IA_Sprint", INPUT_PATH, unreal.InputAction)
     crouch = load_or_create_data_asset("IA_Crouch", INPUT_PATH, unreal.InputAction)
+    slide = load_or_create_data_asset("IA_Slide", INPUT_PATH, unreal.InputAction)
     move.set_editor_property("value_type", unreal.InputActionValueType.AXIS2D)
     look.set_editor_property("value_type", unreal.InputActionValueType.AXIS2D)
     jump.set_editor_property("value_type", unreal.InputActionValueType.BOOLEAN)
     sprint.set_editor_property("value_type", unreal.InputActionValueType.BOOLEAN)
     crouch.set_editor_property("value_type", unreal.InputActionValueType.BOOLEAN)
-    for action in [move, look, jump, sprint, crouch]:
+    slide.set_editor_property("value_type", unreal.InputActionValueType.BOOLEAN)
+    for action in [move, look, jump, sprint, crouch, slide]:
         save(action)
-    log("ACTION_TYPES " + str(move.get_editor_property("value_type")) + " " + str(look.get_editor_property("value_type")) + " " + str(jump.get_editor_property("value_type")) + " " + str(sprint.get_editor_property("value_type")) + " " + str(crouch.get_editor_property("value_type")))
-    return move, look, jump, sprint, crouch
+    log("ACTION_TYPES " + str(move.get_editor_property("value_type")) + " " + str(look.get_editor_property("value_type")) + " " + str(jump.get_editor_property("value_type")) + " " + str(sprint.get_editor_property("value_type")) + " " + str(crouch.get_editor_property("value_type")) + " " + str(slide.get_editor_property("value_type")))
+    return move, look, jump, sprint, crouch, slide
 
 
 def modifier_swizzle(outer):
@@ -115,7 +117,7 @@ def modifier_negate(outer):
     return modifier
 
 
-def configure_mapping_context(move, look, jump, sprint, crouch):
+def configure_mapping_context(move, look, jump, sprint, crouch, slide):
     context = load_or_create_data_asset("IMC_Gameplay", INPUT_PATH, unreal.InputMappingContext)
     context.unmap_all()
     entries = []
@@ -132,7 +134,8 @@ def configure_mapping_context(move, look, jump, sprint, crouch):
     add(look, "Mouse2D")
     add(jump, "SpaceBar")
     add(sprint, "LeftShift")
-    add(crouch, "LeftControl")
+    add(crouch, "C")
+    add(slide, "LeftControl")
 
     context.set_editor_property("mappings", entries)
     mapping_data = context.get_editor_property("default_key_mappings")
@@ -148,7 +151,7 @@ def configure_mapping_context(move, look, jump, sprint, crouch):
     return context
 
 
-def configure_blueprints(context, move, look, jump, sprint, crouch):
+def configure_blueprints(context, move, look, jump, sprint, crouch, slide):
     character_class = unreal.load_class(None, "/Script/ArenaDuel.ArenaDuelCharacter")
     game_mode_class = unreal.load_class(None, "/Script/ArenaDuel.ArenaDuelGameMode")
     if not character_class or not game_mode_class:
@@ -163,6 +166,7 @@ def configure_blueprints(context, move, look, jump, sprint, crouch):
         "jump_action": jump,
         "sprint_action": sprint,
         "crouch_action": crouch,
+        "slide_action": slide,
     })
     compile_blueprint(character_bp)
 
@@ -230,6 +234,16 @@ def create_phase4_map():
             component.set_material(0, material)
         return actor
 
+    def explicit_rotation(pitch=0.0, yaw=0.0, roll=0.0):
+        rotation = unreal.Rotator()
+        rotation.set_editor_properties({"pitch": pitch, "yaw": yaw, "roll": roll})
+        return rotation
+
+    def ensure_rotated_cube(label, location, scale, rotation, material=None):
+        actor = ensure_cube(label, location, scale, material)
+        actor.set_actor_rotation(rotation, False)
+        return actor
+
     # The default Engine Cube is 100 uu wide. Keep a generous floor margin inside
     # the safety perimeter so ordinary movement testing cannot fall into the void.
     ensure_cube("Phase4_LongSprintLane", unreal.Vector(0, 0, -100), unreal.Vector(80, 55, 0.1), floor_material)
@@ -238,6 +252,28 @@ def create_phase4_map():
     ensure_cube("Phase4_MantleLedge", unreal.Vector(1500, 0, 120), unreal.Vector(1.0, 4, 3.0), mantle_material)
     ensure_cube("Phase4_LeftWall", unreal.Vector(800, 450, 180), unreal.Vector(25, 0.4, 3.0), wall_material)
     ensure_cube("Phase4_RightWall", unreal.Vector(800, -450, 180), unreal.Vector(25, 0.4, 3.0), wall_material)
+    # Compact graybox routes: cover, pillars, a ramp, raised platforms, and a
+    # low slide tunnel. These remain simple Engine BasicShapes with dev colors.
+    for label, location, scale in [
+        ("Phase4_CentralCrateA", unreal.Vector(250, 500, 50), unreal.Vector(2.0, 2.0, 1.0)),
+        ("Phase4_CentralCrateB", unreal.Vector(250, 700, 100), unreal.Vector(2.0, 2.0, 2.0)),
+        ("Phase4_CentralCrateC", unreal.Vector(650, -500, 50), unreal.Vector(2.0, 2.0, 1.0)),
+        ("Phase4_CoverWall", unreal.Vector(1250, -550, 90), unreal.Vector(5.0, 0.5, 1.8)),
+        ("Phase4_PillarA", unreal.Vector(1750, 500, 150), unreal.Vector(1.2, 1.2, 3.0)),
+        ("Phase4_PillarB", unreal.Vector(2050, 500, 150), unreal.Vector(1.2, 1.2, 3.0)),
+        ("Phase4_RaisedPlatform", unreal.Vector(2150, -700, 170), unreal.Vector(8.0, 6.0, 0.35)),
+        ("Phase4_MantleStepA", unreal.Vector(1750, -700, 45), unreal.Vector(3.0, 5.0, 0.9)),
+        ("Phase4_MantleStepB", unreal.Vector(1950, -700, 90), unreal.Vector(3.0, 5.0, 1.8)),
+        ("Phase4_MantleStepC", unreal.Vector(2150, -700, 135), unreal.Vector(3.0, 5.0, 2.7)),
+        ("Phase4_VaultRowA", unreal.Vector(1200, 450, 30), unreal.Vector(1.2, 2.5, 0.6)),
+        ("Phase4_VaultRowB", unreal.Vector(1450, 450, 45), unreal.Vector(1.2, 2.5, 0.9)),
+        ("Phase4_VaultRowC", unreal.Vector(1700, 450, 60), unreal.Vector(1.2, 2.5, 1.2)),
+    ]:
+        ensure_cube(label, location, scale, obstacle_material if "Crate" in label or "Vault" in label or "Cover" in label else mantle_material)
+    ensure_rotated_cube("Phase4_Ramp", unreal.Vector(950, -850, 70), unreal.Vector(7.0, 5.0, 1.0), explicit_rotation(0.0, 0.0, -12.0), wall_material)
+    for label, location in [("Phase4_SlideTunnelLeft", unreal.Vector(450, 180, 110)), ("Phase4_SlideTunnelRight", unreal.Vector(450, -180, 110))]:
+        ensure_cube(label, location, unreal.Vector(8.0, 0.4, 2.2), wall_material)
+    ensure_cube("Phase4_SlideTunnelRoof", unreal.Vector(450, 0, 220), unreal.Vector(8.0, 4.0, 0.25), safety_material)
     ensure_cube("Phase4_NorthSafetyWall", unreal.Vector(0, 2400, 250), unreal.Vector(80, 0.4, 5.0), safety_material)
     ensure_cube("Phase4_SouthSafetyWall", unreal.Vector(0, -2400, 250), unreal.Vector(80, 0.4, 5.0), safety_material)
     ensure_cube("Phase4_WestSafetyWall", unreal.Vector(-3900, 0, 250), unreal.Vector(0.4, 55, 5.0), safety_material)
@@ -253,14 +289,14 @@ def create_phase4_map():
         actor.set_actor_rotation(rotation, False)
         return actor
 
-    def ensure_label(label, text, location, rotation=unreal.Rotator(0, 180, 0), scale=2.0):
+    def ensure_label(label, text, location, yaw=180.0, scale=2.0):
         actors = unreal.EditorLevelLibrary.get_all_level_actors()
         actor = next((candidate for candidate in actors if candidate.get_actor_label() == label and isinstance(candidate, unreal.TextRenderActor)), None)
         if not actor:
-            actor = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.TextRenderActor, location, rotation)
+            actor = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.TextRenderActor, location, explicit_rotation(0.0, yaw, 0.0))
             actor.set_actor_label(label)
         actor.set_actor_location(location, False, False)
-        actor.set_actor_rotation(rotation, False)
+        actor.set_actor_rotation(explicit_rotation(0.0, yaw, 0.0), False)
         actor.set_actor_scale3d(unreal.Vector(scale, scale, scale))
         component = actor.get_component_by_class(unreal.TextRenderComponent)
         component.set_editor_property("text", text)
@@ -296,21 +332,25 @@ def create_phase4_map():
         starts[1].set_actor_location(unreal.Vector(-2500, 300, 100), False, False)
         starts[1].set_actor_rotation(unreal.Rotator(0, 0, 0), False)
 
-    ensure_label("Phase4_LabelSprint", "SPRINT  SHIFT + W", unreal.Vector(-1900, 0, 220))
+    ensure_label("Phase4_LabelSprint", "SPRINT  SHIFT", unreal.Vector(-1900, 0, 220))
     ensure_label("Phase4_LabelSlide", "SLIDE  CTRL WHILE SPRINTING", unreal.Vector(500, 0, 220), scale=1.5)
-    ensure_label("Phase4_LabelVault", "VAULT  JUMP AT LOW OBSTACLE", unreal.Vector(1050, 0, 260), scale=1.5)
-    ensure_label("Phase4_LabelMantle", "MANTLE  JUMP AT HIGH LEDGE", unreal.Vector(1450, 0, 380), scale=1.5)
-    ensure_label("Phase4_LabelWallRun", "WALL RUN  SPRINT + JUMP ALONG WALL", unreal.Vector(800, 650, 260), scale=1.5)
-    ensure_label("Phase4_LabelWallJump", "WALL JUMP  SPACE DURING WALL RUN", unreal.Vector(800, 800, 220), scale=1.5)
+    ensure_label("Phase4_LabelCrouch", "CROUCH  C", unreal.Vector(-900, 400, 220), scale=1.5)
+    ensure_label("Phase4_LabelJump", "JUMP  SPACE", unreal.Vector(-400, 400, 220), scale=1.5)
+    ensure_label("Phase4_LabelSlide5m", "5 M", unreal.Vector(500, 260, 220), scale=1.3)
+    ensure_label("Phase4_LabelSlide7m", "7 M", unreal.Vector(700, 260, 220), scale=1.3)
+    ensure_label("Phase4_LabelVault", "VAULT  JUMP TOWARD LOW OBSTACLE", unreal.Vector(1050, 0, 260), scale=1.4)
+    ensure_label("Phase4_LabelMantle", "MANTLE  JUMP TOWARD HIGH LEDGE", unreal.Vector(1450, 0, 380), scale=1.3)
+    ensure_label("Phase4_LabelWallRun", "WALL RUN  SPRINT + JUMP ALONG WALL", unreal.Vector(800, 650, 260), scale=1.3)
+    ensure_label("Phase4_LabelWallJump", "WALL JUMP  SPACE DURING WALL RUN", unreal.Vector(800, 800, 220), scale=1.3)
     unreal.EditorLevelLibrary.save_current_level()
     log("MAP_SAVED " + object_path)
     return object_path
 
 
 def main():
-    move, look, jump, sprint, crouch = configure_input_actions()
-    context = configure_mapping_context(move, look, jump, sprint, crouch)
-    character_bp, game_mode_bp, _, game_mode_class = configure_blueprints(context, move, look, jump, sprint, crouch)
+    move, look, jump, sprint, crouch, slide = configure_input_actions()
+    context = configure_mapping_context(move, look, jump, sprint, crouch, slide)
+    character_bp, game_mode_bp, _, game_mode_class = configure_blueprints(context, move, look, jump, sprint, crouch, slide)
     map_path = create_test_map()
     phase4_map_path = create_phase4_map()
     log("DONE " + character_bp.get_path_name() + " " + game_mode_bp.get_path_name() + " " + map_path + " " + phase4_map_path)

@@ -22,6 +22,7 @@ public:
 
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	UArenaDuelCharacterMovementComponent* GetArenaDuelMovementComponent() const;
+	bool IsCrouchInputHeld() const { return bCrouchInputHeld; }
 
 protected:
 	virtual void PawnClientRestart() override;
@@ -34,6 +35,8 @@ protected:
 	void SprintCompleted();
 	void CrouchStarted();
 	void CrouchCompleted();
+	void SlideStarted();
+	void SlideCompleted();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCameraComponent> FirstPersonCamera;
@@ -55,4 +58,9 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> CrouchAction;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> SlideAction;
+
+	bool bCrouchInputHeld = false;
 };
