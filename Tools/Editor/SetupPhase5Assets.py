@@ -14,12 +14,21 @@ def spawn_cube(label, location, scale, material=None):
 
 def spawn_actor(class_path, label, location, rotation=(0, 0, 0)):
     actor_class = unreal.load_class(None, class_path)
-    actor = unreal.EditorLevelLibrary.spawn_actor_from_class(actor_class, unreal.Vector(*location), unreal.Rotator(*rotation))
+    actor_rotation = unreal.Rotator()
+    actor_rotation.pitch = rotation[0]
+    actor_rotation.yaw = rotation[1]
+    actor_rotation.roll = rotation[2]
+    actor = unreal.EditorLevelLibrary.spawn_actor_from_class(actor_class, unreal.Vector(*location), actor_rotation)
     actor.set_actor_label(label)
     return actor
 
 def main():
-    unreal.EditorLevelLibrary.new_level(MAP)
+    if unreal.EditorAssetLibrary.does_asset_exist(MAP):
+        unreal.EditorLoadingAndSavingUtils.load_map(MAP)
+        for actor in unreal.EditorLevelLibrary.get_all_level_actors():
+            unreal.EditorLevelLibrary.destroy_actor(actor)
+    else:
+        unreal.EditorLevelLibrary.new_level(MAP)
     spawn_cube("Phase5_Floor", (0, 0, -50), (80, 40, 0.5))
     for x, label in [(500, "5m"), (1000, "10m"), (2000, "20m"), (3000, "30m"), (5000, "50m")]:
         spawn_cube("Phase5_Cover_" + label, (x, 450, 100), (1, 3, 2))
@@ -35,10 +44,10 @@ def main():
     spawn_actor("/Script/Engine.DirectionalLight", "Phase5_DirectionalLight", (0, 0, 1000), (-45, 0, 0))
     spawn_actor("/Script/Engine.SkyLight", "Phase5_SkyLight", (0, 0, 500), (0, 0, 0))
     for x, label in [(500, "Phase5_Label_5m"), (1000, "Phase5_Label_10m"), (2000, "Phase5_Label_20m"), (3000, "Phase5_Label_30m"), (5000, "Phase5_Label_50m")]:
-        label_actor = spawn_actor("/Script/Engine.TextRenderActor", label, (x, 350, 20), (0, 0, -90))
+        label_actor = spawn_actor("/Script/Engine.TextRenderActor", label, (x, 350, 20), (0, 90, 0))
         label_actor.text_render.set_text(unreal.Text(label.replace("Phase5_Label_", "")))
         label_actor.text_render.set_world_size(48.0)
-    unreal.EditorLevelLibrary.save_current_level()
+    unreal.EditorLoadingAndSavingUtils.save_map(unreal.EditorLevelLibrary.get_editor_world(), MAP)
     print("PHASE5_SETUP DONE", MAP)
 
 main()

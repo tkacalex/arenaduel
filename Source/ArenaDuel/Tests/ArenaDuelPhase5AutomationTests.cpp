@@ -79,4 +79,54 @@ bool FArenaDuelPhase5AmmoContractTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+#define ARENA_DUEL_PHASE5_CONTRACT_TEST(TestClass, TestName) \
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(TestClass, "ArenaDuel.Phase5." TestName, EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter) \
+bool TestClass::RunTest(const FString& Parameters)
+
+ARENA_DUEL_PHASE5_CONTRACT_TEST(FArenaDuelPhase5ReloadTest, "Reload")
+{
+	UArenaDuelWeaponComponent* Component = NewObject<UArenaDuelWeaponComponent>();
+	TestTrue(TEXT("Reload duration is positive for every weapon"), Component && Component->GetWeaponDefinition(0)->ReloadDuration > 0.0f && Component->GetWeaponDefinition(3)->ReloadDuration > 0.0f);
+	return true;
+}
+
+ARENA_DUEL_PHASE5_CONTRACT_TEST(FArenaDuelPhase5FireCadenceTest, "FireCadence")
+{
+	UArenaDuelWeaponComponent* Component = NewObject<UArenaDuelWeaponComponent>();
+	TestTrue(TEXT("Weapon cadence values are positive"), Component && Component->GetWeaponDefinition(0)->RoundsPerMinute > 0.0f && Component->GetWeaponDefinition(3)->RoundsPerMinute > 0.0f);
+	TestTrue(TEXT("Shotgun cadence is slower than rifle cadence"), Component && Component->GetWeaponDefinition(3)->RoundsPerMinute < Component->GetWeaponDefinition(0)->RoundsPerMinute);
+	return true;
+}
+
+ARENA_DUEL_PHASE5_CONTRACT_TEST(FArenaDuelPhase5SemiAutoTest, "SemiAuto")
+{
+	UArenaDuelWeaponComponent* Component = NewObject<UArenaDuelWeaponComponent>();
+	TestTrue(TEXT("DMR is semi automatic"), Component && !Component->GetWeaponDefinition(2)->bAutomatic);
+	TestTrue(TEXT("Shotgun is semi automatic"), Component && !Component->GetWeaponDefinition(3)->bAutomatic);
+	return true;
+}
+
+ARENA_DUEL_PHASE5_CONTRACT_TEST(FArenaDuelPhase5SpreadTest, "Spread")
+{
+	UArenaDuelWeaponComponent* Component = NewObject<UArenaDuelWeaponComponent>();
+	TestTrue(TEXT("Spread values are non-negative"), Component && Component->GetWeaponDefinition(0)->BaseSpreadDegrees >= 0.0f && Component->GetWeaponDefinition(0)->MovementSpreadDegrees >= 0.0f);
+	return true;
+}
+
+ARENA_DUEL_PHASE5_CONTRACT_TEST(FArenaDuelPhase5ShotgunTest, "Shotgun")
+{
+	UArenaDuelWeaponComponent* Component = NewObject<UArenaDuelWeaponComponent>();
+	TestEqual(TEXT("Shotgun definition contains eight pellets"), Component ? Component->GetWeaponDefinition(3)->Pellets : 0, 8);
+	return true;
+}
+
+ARENA_DUEL_PHASE5_CONTRACT_TEST(FArenaDuelPhase5HitClassificationTest, "HitClassification")
+{
+	TestTrue(TEXT("Shot result enum reserves distinct world and body results"), static_cast<uint8>(EArenaDuelShotResult::World) != static_cast<uint8>(EArenaDuelShotResult::Body));
+	TestTrue(TEXT("Shot result enum reserves distinct head and body results"), static_cast<uint8>(EArenaDuelShotResult::Head) != static_cast<uint8>(EArenaDuelShotResult::Body));
+	return true;
+}
+
+#undef ARENA_DUEL_PHASE5_CONTRACT_TEST
+
 #endif

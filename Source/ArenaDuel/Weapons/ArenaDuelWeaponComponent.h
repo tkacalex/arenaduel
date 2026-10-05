@@ -94,6 +94,7 @@ public:
 	UArenaDuelWeaponComponent();
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	void StartFire();
@@ -117,6 +118,7 @@ public:
 	int32 GetLastPelletsHit() const { return LastPelletsHit; }
 	int32 GetLastHeadPellets() const { return LastHeadPellets; }
 	float GetCurrentSpreadDegrees() const;
+	float GetCrosshairKick() const;
 
 protected:
 	UFUNCTION(Server, Unreliable)
@@ -135,6 +137,8 @@ protected:
 	void StartAuthoritativeFire();
 	void StopAuthoritativeFire();
 	void ApplyLocalRecoil();
+	void LocalCosmeticShot();
+	void RecoverCosmeticKick();
 	void CompleteReload();
 	void RefreshWeaponVisual();
 	void SetLastShot(EArenaDuelShotResult Result, float Distance, AActor* Target);
@@ -170,6 +174,13 @@ protected:
 	bool bServerFireHeld = false;
 	float FireCooldownRemaining = 0.0f;
 	FTimerHandle AutomaticFireTimerHandle;
+	FTimerHandle LocalCosmeticFireTimerHandle;
+	FTimerHandle LocalCosmeticRecoveryTimerHandle;
+	TArray<double> NextAllowedFireServerTimes;
+	float LocalWeaponKick = 0.0f;
+	float LocalRecoilPitchRemaining = 0.0f;
+	float LocalRecoilYawRemaining = 0.0f;
+	float LastCosmeticShotWorldTime = -1.0f;
 
 	UFUNCTION()
 	void OnRep_EquippedWeapon();

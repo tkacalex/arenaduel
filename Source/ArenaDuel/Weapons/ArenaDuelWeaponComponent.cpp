@@ -59,8 +59,21 @@ void UArenaDuelWeaponComponent::BeginPlay()
 		FirstPersonWeaponMesh->AttachToComponent(Character->GetFirstPersonCamera(), FAttachmentTransformRules::KeepRelativeTransform);
 		FirstPersonWeaponMesh->SetVisibility(Character->IsLocallyControlled());
 	}
-	if (GetOwnerRole() == ROLE_Authority) InitializeRuntimeAmmo();
+	if (GetOwnerRole() == ROLE_Authority) { InitializeRuntimeAmmo(); NextAllowedFireServerTimes.SetNum(WeaponDefinitions.Num()); }
 	RefreshWeaponVisual();
+}
+
+void UArenaDuelWeaponComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (GetWorld())
+	{
+		FTimerManager& TimerManager = GetWorld()->GetTimerManager();
+		TimerManager.ClearTimer(ReloadTimerHandle);
+		TimerManager.ClearTimer(AutomaticFireTimerHandle);
+		TimerManager.ClearTimer(LocalCosmeticFireTimerHandle);
+		TimerManager.ClearTimer(LocalCosmeticRecoveryTimerHandle);
+	}
+	Super::EndPlay(EndPlayReason);
 }
 
 void UArenaDuelWeaponComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -88,6 +101,7 @@ FName UArenaDuelWeaponComponent::GetCurrentWeaponName() const { return GetCurren
 int32 UArenaDuelWeaponComponent::GetCurrentMagazineAmmo() const { const FArenaDuelWeaponRuntimeState* State = GetCurrentRuntimeState(); return State ? State->MagazineAmmo : GetCurrentDefinition().MagazineCapacity; }
 int32 UArenaDuelWeaponComponent::GetReserveAmmo() const { const FArenaDuelWeaponRuntimeState* State = GetCurrentRuntimeState(); return State ? State->ReserveAmmo : GetCurrentDefinition().ReserveCapacity; }
 float UArenaDuelWeaponComponent::GetLastShotAge() const { return (GetWorld() && LastShotWorldTime >= 0.0f) ? GetWorld()->GetTimeSeconds() - LastShotWorldTime : BIG_NUMBER; }
+float UArenaDuelWeaponComponent::GetCrosshairKick() const { return (GetWorld() && LastCosmeticShotWorldTime >= 0.0f) ? FMath::Clamp(1.0f - (GetWorld()->GetTimeSeconds() - LastCosmeticShotWorldTime) / 0.18f, 0.0f, 1.0f) : 0.0f; }
 float UArenaDuelWeaponComponent::GetCurrentSpreadDegrees() const
 {
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
@@ -97,10 +111,33 @@ float UArenaDuelWeaponComponent::GetCurrentSpreadDegrees() const
 	return GetCurrentDefinition().BaseSpreadDegrees + GetCurrentDefinition().MovementSpreadDegrees * (SpeedFactor + AirFactor);
 }
 
-void UArenaDuelWeaponComponent::StartFire() { bFireHeld = true; ApplyLocalRecoil(); if (GetOwnerRole() == ROLE_Authority) StartAuthoritativeFire(); else ServerRequestStartFire(); }
-void UArenaDuelWeaponComponent::StopFire() { bFireHeld = false; if (GetOwnerRole() == ROLE_Authority) StopAuthoritativeFire(); else ServerRequestStopFire(); }
+void UArenaDuelWeaponComponent::StartFire()
+{
+	if (bFireHeld) return;
+	bFireHeld = true;
+	if (AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled())
+	{
+		LocalCosmeticShot();
+		if (GetCurrentDefinition().bAutomatic && GetWorld())
+		{
+			const float Interval = 60.0f / FMath::Max(GetCurrentDefinition().RoundsPerMinute, 1.0f);
+			GetWorld()->GetTimerManager().SetTimer(LocalCosmeticFireTimerHandle, this, &UArenaDuelWeaponComponent::LocalCosmeticShot, Interval, true, Interval);
+		}
+	}
+	if (GetOwnerRole() == ROLE_Authority) StartAuthoritativeFire(); else ServerRequestStartFire();
+}
+void UArenaDuelWeaponComponent::StopFire()
+{
+	bFireHeld = false;
+	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticFireTimerHandle);
+	if (GetOwnerRole() == ROLE_Authority) StopAuthoritativeFire(); else ServerRequestStopFire();
+}
 void UArenaDuelWeaponComponent::Reload() { if (GetOwnerRole() == ROLE_Authority) ServerRequestReload_Implementation(); else ServerRequestReload(); }
-void UArenaDuelWeaponComponent::EquipWeapon(int32 Index) { if (GetOwnerRole() == ROLE_Authority) ServerRequestEquip_Implementation(Index); else ServerRequestEquip(Index); }
+void UArenaDuelWeaponComponent::EquipWeapon(int32 Index)
+{
+	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticFireTimerHandle);
+	if (GetOwnerRole() == ROLE_Authority) ServerRequestEquip_Implementation(Index); else ServerRequestEquip(Index);
+}
 void UArenaDuelWeaponComponent::ServerRequestStartFire_Implementation() { StartAuthoritativeFire(); }
 void UArenaDuelWeaponComponent::ServerRequestStopFire_Implementation() { StopAuthoritativeFire(); }
 void UArenaDuelWeaponComponent::StartAuthoritativeFire()
@@ -115,6 +152,7 @@ void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 {
 	FArenaDuelWeaponRuntimeState* State = GetMutableCurrentRuntimeState();
 	if (!State || bReloading || State->MagazineAmmo >= GetCurrentDefinition().MagazineCapacity || State->ReserveAmmo <= 0) return;
+	StopAuthoritativeFire();
 	bReloading = true;
 	FTimerDelegate ReloadDelegate; ReloadDelegate.BindUObject(this, &UArenaDuelWeaponComponent::CompleteReload);
 	GetWorld()->GetTimerManager().SetTimer(ReloadTimerHandle, ReloadDelegate, GetCurrentDefinition().ReloadDuration, false);
@@ -129,11 +167,15 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 	if (!bServerFireHeld && GetCurrentDefinition().bAutomatic) return;
 	FArenaDuelWeaponRuntimeState* State = GetMutableCurrentRuntimeState();
 	const FArenaDuelWeaponDefinition& Definition = GetCurrentDefinition();
-	if (!State || bReloading || State->MagazineAmmo <= 0 || !GetOwner()) return;
-	State->MagazineAmmo--;
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	const AController* Controller = Character ? Character->GetController() : nullptr;
-	if (!Character || !Controller || !GetWorld()) return;
+	if (!State || bReloading || State->MagazineAmmo <= 0 || !GetOwner() || !Character || !Controller || !GetWorld()) return;
+	const int32 DefinitionIndex = static_cast<int32>(EquippedWeaponIndex);
+	const double ServerTime = GetWorld()->GetTimeSeconds();
+	if (!NextAllowedFireServerTimes.IsValidIndex(DefinitionIndex)) NextAllowedFireServerTimes.SetNum(WeaponDefinitions.Num());
+	if (NextAllowedFireServerTimes.IsValidIndex(DefinitionIndex) && ServerTime + KINDA_SMALL_NUMBER < NextAllowedFireServerTimes[DefinitionIndex]) return;
+	State->MagazineAmmo--;
+	NextAllowedFireServerTimes[DefinitionIndex] = ServerTime + 60.0 / FMath::Max(static_cast<double>(Definition.RoundsPerMinute), 1.0);
 	const FVector Origin = Character->GetPawnViewLocation();
 	const FVector Direction = Controller->GetControlRotation().Vector();
 	FRandomStream Random(++LastShotSequence);
@@ -170,6 +212,20 @@ void UArenaDuelWeaponComponent::ApplyLocalRecoil()
 	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character || !Character->IsLocallyControlled()) return;
 	if (APlayerController* Controller = Cast<APlayerController>(Character->GetController())) { Controller->AddPitchInput(-GetCurrentDefinition().RecoilVertical); Controller->AddYawInput(GetCurrentDefinition().RecoilHorizontal * ((LastShotSequence & 1) ? 1.0f : -1.0f)); }
+}
+void UArenaDuelWeaponComponent::LocalCosmeticShot()
+{
+	if (!bFireHeld) return;
+	LastCosmeticShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
+	LocalWeaponKick = 1.0f;
+	ApplyLocalRecoil();
+	if (GetWorld()) GetWorld()->GetTimerManager().SetTimer(LocalCosmeticRecoveryTimerHandle, this, &UArenaDuelWeaponComponent::RecoverCosmeticKick, 0.02f, true);
+}
+void UArenaDuelWeaponComponent::RecoverCosmeticKick()
+{
+	LocalWeaponKick = FMath::FInterpTo(LocalWeaponKick, 0.0f, 0.02f, 12.0f);
+	if (FirstPersonWeaponMesh && LocalWeaponKick > KINDA_SMALL_NUMBER) FirstPersonWeaponMesh->SetRelativeLocation(FVector(35.0f - 5.0f * LocalWeaponKick, 18.0f, -18.0f + 2.0f * LocalWeaponKick));
+	else if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticRecoveryTimerHandle);
 }
 void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 {
