@@ -8,7 +8,7 @@
 4. Foundational systems belong in C++.
 5. Designer facing configuration and presentation may use Blueprint and Data Assets where appropriate.
 6. Future abilities, attributes, costs, cooldowns, buffs, and debuffs should use the Gameplay Ability System where appropriate.
-7. The generated Blank project already includes the Enhanced Input module and default input classes. ArenaDuel custom Input Actions and Mapping Context assets are configured later through Unreal Editor.
+7. The generated Blank project already includes the Enhanced Input module and default input classes. ArenaDuel's Phase 3 Input Actions and Mapping Context are serialized Unreal assets; their bindings remain data driven rather than hardcoded in C++.
 8. Systems should avoid unnecessary Tick, RPCs, hard references, and broad ownership.
 9. Gameplay code must not depend on cosmetic VFX execution.
 
@@ -72,3 +72,17 @@ Client A:
 4. Relevant replicated `AArenaDuelCharacter` actors
 
 Remote PlayerControllers are not assumed to exist on every client.
+
+## Phase 3 Unreal assets
+
+The Phase 3 input and Blueprint assets live under `Content/ArenaDuel/`:
+
+1. `Input/IA_Move` is Axis2D.
+2. `Input/IA_Look` is Axis2D.
+3. `Input/IA_Jump` is Boolean.
+4. `Input/IMC_Gameplay` maps WASD, Mouse2D, and SpaceBar.
+5. `Characters/BP_ArenaDuelCharacter` derives from `AArenaDuelCharacter` and owns the four input references.
+6. `Game/BP_ArenaDuelGameMode` derives from `AArenaDuelGameMode` and selects the Character Blueprint as its default pawn.
+7. `Maps/L_Phase3Test` is a temporary flat movement and two PlayerStart test map.
+
+These assets were created and saved through the official Unreal Python Editor API. `Tools/Editor/SetupPhase3Assets.py` is idempotent. To rerun it, temporarily enable the UE `PythonScriptPlugin` and `EditorScriptingUtilities` editor plugins in the project, run the script with UnrealEditor-Cmd, then restore the project plugin list. The runtime project does not retain an editor scripting dependency.

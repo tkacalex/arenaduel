@@ -23,3 +23,11 @@ Keep `Config/`, `Content/`, `Source/`, `Build/`, `ArenaDuel.uproject`, and proje
 The verified build used Unreal supplied tooling for `ArenaDuelEditor`, Win64, Development, from `C:\Users\Dima\Desktop\arenaduel\ArenaDuel.uproject`. The current Phase 3 first person refactor also builds successfully.
 
 Current state: `REPOSITORY BUILD = PASS`.
+
+## Phase 3 asset automation
+
+`Tools/Editor/SetupPhase3Assets.py` creates or repairs the Phase 3 Input Actions, Mapping Context, Character Blueprint, GameMode Blueprint, and temporary test map through Unreal Engine 5.8.3 itself. `Tools/Editor/ValidatePhase3Assets.py` reloads those packages and verifies value types, serialized modifiers, Blueprint defaults, parent classes, GameMode pawn selection, and map actors.
+
+The automation plugins are editor only and are not listed in `ArenaDuel.uproject` after setup. If the script must be rerun, enable `PythonScriptPlugin` and `EditorScriptingUtilities` temporarily, run the script with `UnrealEditor-Cmd.exe`, run the validation script, and remove those temporary project plugin entries before committing.
+
+The Android File Server editor setting is disabled for this Win64-only development milestone. This prevents UE from regenerating a local `SecurityToken` in `Config/DefaultEngine.ini`.

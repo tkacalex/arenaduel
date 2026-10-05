@@ -8,9 +8,9 @@ The repository contains a minimal Unreal Engine 5.8.3 C++ gameplay framework fou
 
 Verified engine path: `C:\Program Files\Epic Games\UE_5.8`.
 
-The project contains the first multiplayer framework and first person Character foundation. It has no health, combat, Gameplay Ability System setup, custom Input Actions, Mapping Context assets, UI, online services, or match gameplay.
+The project contains the first multiplayer framework and first person Character foundation. Phase 3 input assets, Blueprint subclasses, and a minimal movement test map are now serialized by Unreal and versioned with Git LFS. It has no health, combat, Gameplay Ability System setup, UI, online services, or match gameplay.
 
-The generated Blank project already includes the Enhanced Input module and default input classes. ArenaDuel does not yet contain custom Input Actions, Mapping Contexts, or configured asset references.
+The generated Blank project already includes the Enhanced Input module and default input classes. ArenaDuel now contains `IA_Move`, `IA_Look`, `IA_Jump`, `IMC_Gameplay`, and configured Blueprint references created through Unreal Editor Python automation.
 
 ## Engineering direction
 
