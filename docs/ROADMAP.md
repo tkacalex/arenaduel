@@ -20,7 +20,7 @@ Phase 4.4 human-playtest fixes are implemented: mouse-up/mouse-down behavior fol
 
 ## Phase 5: Weapons and gunplay
 
-Weapon handling, aiming, firing, reloads, hit validation, and the initial weapon pool.
+Weapon handling, aiming, firing, reloads, hit validation, and the initial weapon pool. The current foundation contains four native weapon definitions, persistent per-weapon ammo state, server cadence, spread, recoil, shotgun pellet aggregation, primitive first-person visuals, and a temporary gun-range map. Runtime/network validation and human gunplay tuning remain before Phase 5 can be marked complete.
 
 ## Phase 6: GAS, combat attributes, damage, and death
 

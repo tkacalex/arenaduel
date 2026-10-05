@@ -45,14 +45,16 @@ void AArenaDuelMovementDebugHUD::DrawHUD()
 	const FString WeaponName = Weapon ? Weapon->GetCurrentWeaponName().ToString().ToUpper() : TEXT("NONE");
 	const int32 Magazine = Weapon ? Weapon->GetCurrentMagazineAmmo() : 0;
 	const int32 Reserve = Weapon ? Weapon->GetReserveAmmo() : 0;
-	const FString LastShot = Weapon ? (Weapon->GetLastShotResult() == EArenaDuelShotResult::Head ? TEXT("HEAD") : Weapon->GetLastShotResult() == EArenaDuelShotResult::Body ? TEXT("BODY") : TEXT("MISS")) : TEXT("MISS");
+	const FString LastShot = Weapon ? (Weapon->GetLastShotResult() == EArenaDuelShotResult::Head ? TEXT("HEAD") : Weapon->GetLastShotResult() == EArenaDuelShotResult::Body ? TEXT("BODY") : Weapon->GetLastShotResult() == EArenaDuelShotResult::World ? TEXT("WORLD") : TEXT("MISS")) : TEXT("MISS");
 	const FString Text = FString::Printf(
-		TEXT("WEAPON: %s\nAMMO: %d / %d\nRELOADING: %s\nLAST SHOT: %s\nDISTANCE: %03d m\n\nSPEED: %03d\nSTATE: %s\nSTAMINA: %02d / %02d\n\nWASD  MOVE\nMOUSE  LOOK\nSHIFT  SPRINT\nCTRL  SLIDE\nC  CROUCH\nSPACE  JUMP / SLIDE JUMP / WALL JUMP\nLMB FIRE   R RELOAD   1-4 SWITCH"),
+		TEXT("WEAPON: %s\nAMMO: %d / %d\nRELOADING: %s\nLAST SHOT: %s\nPELLETS: %d  HEAD: %d\nDISTANCE: %03d m\n\nSPEED: %03d\nSTATE: %s\nSTAMINA: %02d / %02d\n\nWASD  MOVE\nMOUSE  LOOK\nSHIFT  SPRINT\nCTRL  SLIDE\nC  CROUCH\nSPACE  JUMP / SLIDE JUMP / WALL JUMP\nLMB FIRE   R RELOAD   1-4 SWITCH"),
 		*WeaponName,
 		Magazine,
 		Reserve,
 		Weapon && Weapon->IsReloading() ? TEXT("YES") : TEXT("NO"),
 		*LastShot,
+		Weapon ? Weapon->GetLastPelletsHit() : 0,
+		Weapon ? Weapon->GetLastHeadPellets() : 0,
 		Weapon ? FMath::RoundToInt(Weapon->GetLastShotDistance() / 100.0f) : 0,
 		FMath::RoundToInt(Speed),
 		*MovementState(Movement),
@@ -62,5 +64,19 @@ void AArenaDuelMovementDebugHUD::DrawHUD()
 	FCanvasTextItem Item(FVector2D(32.0f, 32.0f), FText::FromString(Text), GEngine->GetSmallFont(), FLinearColor::White);
 	Item.EnableShadow(FLinearColor::Black);
 	Canvas->DrawItem(Item);
+	const FVector2D Center(Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f);
+	const FLinearColor CrosshairColor = FLinearColor::White;
+	Canvas->K2_DrawLine(Center + FVector2D(-8.0f, 0.0f), Center + FVector2D(-2.0f, 0.0f), 1.5f, CrosshairColor);
+	Canvas->K2_DrawLine(Center + FVector2D(2.0f, 0.0f), Center + FVector2D(8.0f, 0.0f), 1.5f, CrosshairColor);
+	Canvas->K2_DrawLine(Center + FVector2D(0.0f, -8.0f), Center + FVector2D(0.0f, -2.0f), 1.5f, CrosshairColor);
+	Canvas->K2_DrawLine(Center + FVector2D(0.0f, 2.0f), Center + FVector2D(0.0f, 8.0f), 1.5f, CrosshairColor);
+	if (Weapon && Weapon->GetLastShotAge() < 0.16f && Weapon->GetLastShotResult() != EArenaDuelShotResult::Miss && Weapon->GetLastShotResult() != EArenaDuelShotResult::World)
+	{
+		const FLinearColor MarkerColor = Weapon->GetLastShotResult() == EArenaDuelShotResult::Head ? FLinearColor::Yellow : FLinearColor::Red;
+		Canvas->K2_DrawLine(Center + FVector2D(-14.0f, -14.0f), Center + FVector2D(-5.0f, -5.0f), 2.0f, MarkerColor);
+		Canvas->K2_DrawLine(Center + FVector2D(14.0f, -14.0f), Center + FVector2D(5.0f, -5.0f), 2.0f, MarkerColor);
+		Canvas->K2_DrawLine(Center + FVector2D(-14.0f, 14.0f), Center + FVector2D(-5.0f, 5.0f), 2.0f, MarkerColor);
+		Canvas->K2_DrawLine(Center + FVector2D(14.0f, 14.0f), Center + FVector2D(5.0f, 5.0f), 2.0f, MarkerColor);
+	}
 #endif
 }

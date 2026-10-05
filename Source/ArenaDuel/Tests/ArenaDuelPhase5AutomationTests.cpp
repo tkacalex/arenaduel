@@ -47,4 +47,36 @@ bool FArenaDuelPhase5WeaponIdentityTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelPhase5WeaponBehaviorContractTest, "ArenaDuel.Phase5.WeaponBehaviorContract", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FArenaDuelPhase5WeaponBehaviorContractTest::RunTest(const FString& Parameters)
+{
+	UArenaDuelWeaponComponent* Component = NewObject<UArenaDuelWeaponComponent>();
+	const FArenaDuelWeaponDefinition* Arc = Component ? Component->GetWeaponDefinition(0) : nullptr;
+	const FArenaDuelWeaponDefinition* Smg = Component ? Component->GetWeaponDefinition(1) : nullptr;
+	const FArenaDuelWeaponDefinition* Dmr = Component ? Component->GetWeaponDefinition(2) : nullptr;
+	const FArenaDuelWeaponDefinition* Shotgun = Component ? Component->GetWeaponDefinition(3) : nullptr;
+	TestTrue(TEXT("Arc Rifle is automatic"), Arc && Arc->bAutomatic);
+	TestTrue(TEXT("Shade SMG is automatic"), Smg && Smg->bAutomatic);
+	TestTrue(TEXT("Rune DMR is semi automatic"), Dmr && !Dmr->bAutomatic);
+	TestEqual(TEXT("Hex Shotgun uses eight pellets"), Shotgun ? Shotgun->Pellets : 0, 8);
+	TestTrue(TEXT("All weapons have spread and recoil values"), Arc && Arc->BaseSpreadDegrees >= 0.0f && Arc->RecoilVertical > 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelPhase5AmmoContractTest, "ArenaDuel.Phase5.AmmoPersistence", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FArenaDuelPhase5AmmoContractTest::RunTest(const FString& Parameters)
+{
+	UArenaDuelWeaponComponent* Component = NewObject<UArenaDuelWeaponComponent>();
+	TestNotNull(TEXT("Weapon component created for ammo contract"), Component);
+	if (!Component) return false;
+	TestEqual(TEXT("Arc Rifle magazine capacity"), Component->GetWeaponDefinition(0)->MagazineCapacity, 30);
+	TestEqual(TEXT("Shade SMG magazine capacity"), Component->GetWeaponDefinition(1)->MagazineCapacity, 32);
+	TestEqual(TEXT("Rune DMR magazine capacity"), Component->GetWeaponDefinition(2)->MagazineCapacity, 12);
+	TestEqual(TEXT("Hex Shotgun magazine capacity"), Component->GetWeaponDefinition(3)->MagazineCapacity, 6);
+	TestNotEqual(TEXT("Weapon capacities are not all identical"), Component->GetWeaponDefinition(0)->MagazineCapacity, Component->GetWeaponDefinition(3)->MagazineCapacity);
+	return true;
+}
+
 #endif

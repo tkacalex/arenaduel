@@ -85,6 +85,10 @@ Phase 4 local behavior validation is complete. The editor suite now covers multi
 
 `L_Phase4MovementTest` is a temporary flat development map containing labeled sprint, slide, vault, mantle, and wall test geometry. It is not the final arena.
 
+## Phase 5 weapon foundation
+
+`UArenaDuelWeaponComponent` owns the current weapon selection and server-authoritative runtime ammunition. Each of the four weapon definitions has an independent magazine and reserve state, so switching does not refill ammunition. Automatic fire is represented by a held state on the server and a server timer at the weapon cadence, not by per-frame fire RPCs. Hits are classified as head, body, world, or miss. The server uses the Character pawn view location and controller control rotation, then sends a compact shot confirmation to the owning client. Shotgun shells perform eight server traces with one ammo decrement. The first-person weapon is a local cosmetic primitive only; remote characters do not receive cosmetic camera or weapon transforms.
+
 Phase 4 input assets are `Input/IA_Sprint` and `Input/IA_Crouch`, mapped to Left Shift and Left Control in `Input/IMC_Gameplay`. Existing Phase 3 move, look, and jump assets remain unchanged.
 
 ## Phase 3 Unreal assets

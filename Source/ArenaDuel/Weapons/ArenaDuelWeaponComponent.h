@@ -23,8 +23,21 @@ UENUM(BlueprintType)
 enum class EArenaDuelShotResult : uint8
 {
 	Miss,
+	World,
 	Body,
 	Head
+};
+
+USTRUCT(BlueprintType)
+struct ARENADUEL_API FArenaDuelWeaponRuntimeState
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly)
+	int32 MagazineAmmo = 0;
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly)
+	int32 ReserveAmmo = 0;
 };
 
 USTRUCT(BlueprintType)
@@ -81,7 +94,6 @@ public:
 	UArenaDuelWeaponComponent();
 
 	virtual void BeginPlay() override;
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	void StartFire();
@@ -94,16 +106,24 @@ public:
 	const FArenaDuelWeaponDefinition* GetWeaponDefinition(int32 Index) const { return WeaponDefinitions.IsValidIndex(Index) ? &WeaponDefinitions[Index] : nullptr; }
 	EArenaDuelWeaponId GetCurrentWeaponId() const;
 	FName GetCurrentWeaponName() const;
-	int32 GetCurrentMagazineAmmo() const { return CurrentMagazineAmmo; }
-	int32 GetReserveAmmo() const { return ReserveAmmo; }
+	int32 GetCurrentMagazineAmmo() const;
+	int32 GetReserveAmmo() const;
 	bool IsReloading() const { return bReloading; }
 	bool IsFireHeld() const { return bFireHeld; }
 	EArenaDuelShotResult GetLastShotResult() const { return LastShotResult; }
 	float GetLastShotDistance() const { return LastShotDistance; }
+	float GetLastShotAge() const;
+	int32 GetLastShotSequence() const { return LastShotSequence; }
+	int32 GetLastPelletsHit() const { return LastPelletsHit; }
+	int32 GetLastHeadPellets() const { return LastHeadPellets; }
+	float GetCurrentSpreadDegrees() const;
 
 protected:
 	UFUNCTION(Server, Unreliable)
-	void ServerRequestFire();
+	void ServerRequestStartFire();
+
+	UFUNCTION(Server, Unreliable)
+	void ServerRequestStopFire();
 
 	UFUNCTION(Server, Reliable)
 	void ServerRequestReload();
@@ -112,9 +132,15 @@ protected:
 	void ServerRequestEquip(int32 Index);
 
 	void FireAuthoritative();
+	void StartAuthoritativeFire();
+	void StopAuthoritativeFire();
+	void ApplyLocalRecoil();
 	void CompleteReload();
 	void RefreshWeaponVisual();
 	void SetLastShot(EArenaDuelShotResult Result, float Distance, AActor* Target);
+	void InitializeRuntimeAmmo();
+	FArenaDuelWeaponRuntimeState* GetMutableCurrentRuntimeState();
+	const FArenaDuelWeaponRuntimeState* GetCurrentRuntimeState() const;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Weapons")
 	TArray<FArenaDuelWeaponDefinition> WeaponDefinitions;
@@ -123,10 +149,7 @@ protected:
 	uint8 EquippedWeaponIndex = 0;
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Weapons")
-	int32 CurrentMagazineAmmo = 30;
-
-	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Weapons")
-	int32 ReserveAmmo = 120;
+	TArray<FArenaDuelWeaponRuntimeState> RuntimeAmmo;
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Weapons")
 	bool bReloading = false;
@@ -139,9 +162,18 @@ protected:
 	EArenaDuelShotResult LastShotResult = EArenaDuelShotResult::Miss;
 	float LastShotDistance = 0.0f;
 	TWeakObjectPtr<AActor> LastShotTarget;
+	int32 LastShotSequence = 0;
+	int32 LastPelletsHit = 0;
+	int32 LastHeadPellets = 0;
+	float LastShotWorldTime = -1.0f;
 	bool bFireHeld = false;
+	bool bServerFireHeld = false;
 	float FireCooldownRemaining = 0.0f;
+	FTimerHandle AutomaticFireTimerHandle;
 
 	UFUNCTION()
 	void OnRep_EquippedWeapon();
+
+	UFUNCTION(Client, Unreliable)
+	void ClientShotConfirmation(int32 Sequence, EArenaDuelShotResult Result, float Distance, int32 PelletsHit, int32 HeadPellets);
 };

@@ -7,6 +7,7 @@
 #include "ArenaDuelWeaponTarget.generated.h"
 
 class UBoxComponent;
+class UStaticMeshComponent;
 
 UCLASS()
 class ARENADUEL_API AArenaDuelWeaponTarget : public AActor
@@ -21,4 +22,10 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<UBoxComponent> HeadHitZone;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TObjectPtr<UStaticMeshComponent> BodyVisual;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TObjectPtr<UStaticMeshComponent> HeadVisual;
 };
