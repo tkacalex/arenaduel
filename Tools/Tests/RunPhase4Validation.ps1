@@ -18,7 +18,7 @@ function Remove-GeneratedSecurityToken {
     $engineConfig = Join-Path $ProjectRoot 'Config\DefaultEngine.ini'
     if (-not (Test-Path -LiteralPath $engineConfig)) { return }
     $contents = [IO.File]::ReadAllText($engineConfig)
-    $cleaned = [regex]::Replace($contents, '(?ms)^\[/Script/AndroidFileServerEditor\.AndroidFileServerRuntimeSettings\].*?\z', '')
+    $cleaned = [regex]::Replace($contents, '(?ms)^\[/Script/AndroidFileServerEditor\.AndroidFileServerRuntimeSettings\].*?(?=^\[|\z)', '')
     $cleaned = $cleaned.TrimEnd("`r", "`n") + "`r`n"
     if ($cleaned -ne $contents) {
         [IO.File]::WriteAllText($engineConfig, $cleaned, (New-Object Text.UTF8Encoding($false)))
@@ -68,7 +68,16 @@ $Phase4Tests = @(
     'ArenaDuel.Phase4.VaultInvalidCases',
     'ArenaDuel.Phase4.MantleProgression',
     'ArenaDuel.Phase4.MantleInvalidCases',
-    'ArenaDuel.Phase4.TraversalCollisionSafety'
+    'ArenaDuel.Phase4.TraversalCollisionSafety',
+    'ArenaDuel.Phase4.Network.FArenaDuelPhase4NetworkTest.SprintAndCrouchIntent',
+    'ArenaDuel.Phase4.Network.FArenaDuelPhase4NetworkTest.Slide',
+    'ArenaDuel.Phase4.Network.FArenaDuelPhase4NetworkTest.SlideJump',
+    'ArenaDuel.Phase4.Network.FArenaDuelPhase4NetworkTest.WallRun',
+    'ArenaDuel.Phase4.Network.FArenaDuelPhase4NetworkTest.WallJump',
+    'ArenaDuel.Phase4.Network.FArenaDuelPhase4NetworkTest.Stamina',
+    'ArenaDuel.Phase4.Network.FArenaDuelPhase4NetworkTest.Traversal',
+    'ArenaDuel.Phase4.Network.FArenaDuelPhase4NetworkTest.ClientServerConvergence',
+    'ArenaDuel.Phase4.Network.FArenaDuelPhase4NetworkTest.CrossControlIsolation'
 )
 
 for ($run = 1; $run -le 2; $run++) {

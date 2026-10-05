@@ -5,6 +5,7 @@
 #include "ArenaDuelCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
+#include "Net/UnrealNetwork.h"
 
 class FSavedMove_ArenaDuel final : public FSavedMove_Character
 {
@@ -116,6 +117,13 @@ UArenaDuelCharacterMovementComponent::UArenaDuelCharacterMovementComponent(const
 	MaxWalkSpeedCrouched = CrouchSpeed;
 	AirControl = AirControlTuning;
 	bCanWalkOffLedgesWhenCrouching = true;
+	SetIsReplicatedByDefault(true);
+}
+
+void UArenaDuelCharacterMovementComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(UArenaDuelCharacterMovementComponent, Stamina);
 }
 
 void UArenaDuelCharacterMovementComponent::StartSprint()

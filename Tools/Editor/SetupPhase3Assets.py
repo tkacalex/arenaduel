@@ -210,6 +210,32 @@ def create_phase4_map():
     ensure_cube("Phase4_MantleLedge", unreal.Vector(1500, 0, 120), unreal.Vector(1.0, 4, 3.0))
     ensure_cube("Phase4_LeftWall", unreal.Vector(800, 450, 180), unreal.Vector(8, 0.4, 3.0))
     ensure_cube("Phase4_RightWall", unreal.Vector(800, -450, 180), unreal.Vector(8, 0.4, 3.0))
+
+    def ensure_actor(label, actor_class, location, rotation):
+        actors = unreal.EditorLevelLibrary.get_all_level_actors()
+        actor = next((candidate for candidate in actors if candidate.get_actor_label() == label and isinstance(candidate, actor_class)), None)
+        if not actor:
+            actor = unreal.EditorLevelLibrary.spawn_actor_from_class(actor_class, location, rotation)
+            actor.set_actor_label(label)
+        actor.set_actor_location(location, False, False)
+        actor.set_actor_rotation(rotation, False)
+        return actor
+
+    directional = ensure_actor("Phase4_DirectionalLight", unreal.DirectionalLight, unreal.Vector(0, 0, 500), unreal.Rotator(-45, -35, 0))
+    directional_component = directional.get_component_by_class(unreal.DirectionalLightComponent)
+    directional_component.set_editor_property("mobility", unreal.ComponentMobility.MOVABLE)
+    directional_component.set_editor_property("intensity", 8.0)
+
+    sky_light = ensure_actor("Phase4_SkyLight", unreal.SkyLight, unreal.Vector(0, 0, 300), unreal.Rotator(0, 0, 0))
+    sky_component = sky_light.get_component_by_class(unreal.SkyLightComponent)
+    sky_component.set_editor_property("mobility", unreal.ComponentMobility.MOVABLE)
+    if hasattr(sky_component, "set_editor_property"):
+        try:
+            sky_component.set_editor_property("real_time_capture", True)
+        except Exception:
+            pass
+
+    ensure_actor("Phase4_SkyAtmosphere", unreal.SkyAtmosphere, unreal.Vector(0, 0, 0), unreal.Rotator(0, 0, 0))
     if not any(isinstance(actor, unreal.PlayerStart) for actor in unreal.EditorLevelLibrary.get_all_level_actors()):
         for location in [unreal.Vector(-500, 0, 100), unreal.Vector(500, 0, 100)]:
             unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.PlayerStart, location, unreal.Rotator(0, 0, 0))

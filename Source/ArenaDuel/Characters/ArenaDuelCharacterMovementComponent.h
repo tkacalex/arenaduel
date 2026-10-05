@@ -55,6 +55,7 @@ public:
 	virtual void PhysFalling(float DeltaSeconds, int32 Iterations) override;
 	virtual void OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode) override;
 	virtual void TickComponent(float DeltaSeconds, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Ground")
 	float WalkSpeed = 600.0f;
@@ -151,6 +152,7 @@ protected:
 	bool bWantsSprint = false;
 	bool bWantsCrouchOrSlide = false;
 	FVector WallNormal = FVector::ZeroVector;
+	UPROPERTY(Replicated)
 	float Stamina = 100.0f;
 	float TimeSinceStaminaUse = 0.0f;
 	float WallRunElapsed = 0.0f;

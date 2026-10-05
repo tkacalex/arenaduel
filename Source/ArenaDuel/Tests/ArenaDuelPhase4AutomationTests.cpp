@@ -13,8 +13,15 @@
 #include "Tests/AutomationEditorCommon.h"
 #include "UObject/UnrealType.h"
 #include "EngineUtils.h"
+#include "Engine/DirectionalLight.h"
+#include "Engine/SkyLight.h"
+#include "Components/SkyAtmosphereComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/GameModeBase.h"
+#include "GameFramework/PlayerState.h"
+#include "GameFramework/GameStateBase.h"
+#include "Engine/StaticMeshActor.h"
+#include "Engine/NetConnection.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 
@@ -40,6 +47,18 @@ bool FArenaDuelPhase4MapAndAssetsTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("Phase 4 editor startup map"), UGameMapsSettings::GetGameDefaultMap(), FString(ArenaDuelPhase4Tests::MovementMap));
 	TestEqual(TEXT("Phase 4 GameMode"), UGameMapsSettings::GetGlobalDefaultGameMode(), FString(ArenaDuelPhase4Tests::GameModeClass));
+	bool bDirectional = false;
+	bool bSkyLight = false;
+	bool bSkyAtmosphere = false;
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		bDirectional |= Cast<ADirectionalLight>(*It) != nullptr && It->GetActorLabel() == TEXT("Phase4_DirectionalLight");
+		bSkyLight |= Cast<ASkyLight>(*It) != nullptr && It->GetActorLabel() == TEXT("Phase4_SkyLight");
+		bSkyAtmosphere |= Cast<ASkyAtmosphere>(*It) != nullptr && It->GetActorLabel() == TEXT("Phase4_SkyAtmosphere");
+	}
+	TestTrue(TEXT("Phase 4 map has actor Phase4_DirectionalLight"), bDirectional);
+	TestTrue(TEXT("Phase 4 map has actor Phase4_SkyLight"), bSkyLight);
+	TestTrue(TEXT("Phase 4 map has actor Phase4_SkyAtmosphere"), bSkyAtmosphere);
 
 	for (const TCHAR* AssetName : { TEXT("IA_Move"), TEXT("IA_Look"), TEXT("IA_Jump"), TEXT("IA_Sprint"), TEXT("IA_Crouch"), TEXT("IMC_Gameplay") })
 	{
@@ -287,7 +306,316 @@ ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4TraversalCollisionSafetyTest, "Arena
 struct FArenaDuelPhase4NetworkState : public FBasePIENetworkComponentState
 {
 	AArenaDuelCharacter* OwnedPawn = nullptr;
+	AArenaDuelCharacter* RemotePawn = nullptr;
+	AStaticMeshActor* FloorActor = nullptr;
+	AStaticMeshActor* LeftWallActor = nullptr;
+	AStaticMeshActor* RightWallActor = nullptr;
+	AStaticMeshActor* VaultActor = nullptr;
+	FVector ClientStart = FVector::ZeroVector;
+	FVector RemoteStartLocation = FVector::ZeroVector;
+	FVector RemoteStartVelocity = FVector::ZeroVector;
+	EMovementMode RemoteStartMovementMode = MOVE_None;
+	uint8 RemoteStartCustomMovementMode = 0;
+	bool RemoteStartSprintIntent = false;
+	bool RemoteStartCrouchIntent = false;
+	float InitialClientStamina = 0.0f;
+	float InitialServerStamina = 0.0f;
+	float LowestClientStamina = 0.0f;
+	float LowestServerStamina = 0.0f;
+	int32 ServerSettleFrames = 0;
+	bool bSlideJumpInjected = false;
 };
+
+namespace ArenaDuelPhase4NetworkTests
+{
+	struct FAuthoritativeSnapshot
+	{
+		bool bValid = false;
+		bool bStaminaValid = false;
+		float Stamina = 0.0f;
+		FVector Location = FVector::ZeroVector;
+		FVector Velocity = FVector::ZeroVector;
+		EMovementMode MovementMode = MOVE_None;
+		uint8 CustomMovementMode = 0;
+		bool bSprintIntent = false;
+		bool bCrouchIntent = false;
+	};
+
+	static FAuthoritativeSnapshot LastServerSnapshot;
+
+	static void ConfigureFixtureMesh(AStaticMeshActor& Actor, const FVector& Location, const FVector& Scale);
+
+	static UInputAction* LoadAction(const TCHAR* Path)
+	{
+		return LoadObject<UInputAction>(nullptr, Path);
+	}
+
+	static AArenaDuelCharacter* FindServerClientPawn(FArenaDuelPhase4NetworkState& State)
+	{
+		if (State.ClientConnections.Num() > 0 && State.ClientConnections[0])
+		{
+			APlayerController* ClientController = State.ClientConnections[0]->PlayerController;
+			for (TActorIterator<AArenaDuelCharacter> It(State.World); It; ++It)
+			{
+				if (*It && ClientController && ((*It)->GetController() == ClientController || ((*It)->GetPlayerState() && (*It)->GetPlayerState() == ClientController->PlayerState)))
+				{
+					return *It;
+				}
+			}
+			if (ClientController)
+			{
+				return Cast<AArenaDuelCharacter>(ClientController->GetPawn());
+			}
+			if (AArenaDuelCharacter* ViewPawn = Cast<AArenaDuelCharacter>(State.ClientConnections[0]->ViewTarget))
+			{
+				return ViewPawn;
+			}
+		}
+		return nullptr;
+	}
+
+	static AArenaDuelCharacter* FindRemoteCharacter(UWorld* World, AArenaDuelCharacter* Owned)
+	{
+		if (!World || !Owned)
+		{
+			return nullptr;
+		}
+		APlayerState* RemotePlayerState = nullptr;
+		if (AGameStateBase* GameState = World->GetGameState())
+		{
+			for (const TObjectPtr<APlayerState>& PlayerStateObject : GameState->PlayerArray)
+			{
+				APlayerState* PlayerState = PlayerStateObject.Get();
+				if (PlayerState && PlayerState != Owned->GetPlayerState() && (!RemotePlayerState || PlayerState->GetPlayerId() < RemotePlayerState->GetPlayerId()))
+				{
+					RemotePlayerState = PlayerState;
+				}
+			}
+		}
+		if (!RemotePlayerState)
+		{
+			return nullptr;
+		}
+		for (TActorIterator<AArenaDuelCharacter> It(World); It; ++It)
+		{
+			if (*It != Owned && (*It)->GetPlayerState() == RemotePlayerState)
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	}
+
+	static void PrepareClient(FArenaDuelPhase4NetworkState& State)
+	{
+		APlayerController* Controller = State.World->GetFirstPlayerController();
+		State.OwnedPawn = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
+		State.RemotePawn = FindRemoteCharacter(State.World, State.OwnedPawn);
+		if (State.OwnedPawn)
+		{
+			Controller->SetControlRotation(FRotator(0.0f, 0.0f, 0.0f));
+			State.ClientStart = State.OwnedPawn->GetActorLocation();
+			State.InitialClientStamina = State.OwnedPawn->GetArenaDuelMovementComponent()->GetStamina();
+			State.LowestClientStamina = State.InitialClientStamina;
+		}
+		if (State.RemotePawn)
+		{
+			State.RemoteStartLocation = State.RemotePawn->GetActorLocation();
+			State.RemoteStartVelocity = State.RemotePawn->GetCharacterMovement()->Velocity;
+			State.RemoteStartMovementMode = State.RemotePawn->GetCharacterMovement()->MovementMode;
+			State.RemoteStartCustomMovementMode = State.RemotePawn->GetCharacterMovement()->CustomMovementMode;
+			State.RemoteStartSprintIntent = State.RemotePawn->GetArenaDuelMovementComponent()->WantsSprintIntent();
+			State.RemoteStartCrouchIntent = State.RemotePawn->GetArenaDuelMovementComponent()->WantsCrouchSlideIntent();
+		}
+		if (State.FloorActor) ConfigureFixtureMesh(*State.FloorActor, FVector(0.0f, 0.0f, -50.0f), FVector(80.0f, 8.0f, 1.0f));
+		if (State.LeftWallActor) ConfigureFixtureMesh(*State.LeftWallActor, FVector(800.0f, 450.0f, 180.0f), FVector(8.0f, 0.4f, 3.0f));
+		if (State.RightWallActor) ConfigureFixtureMesh(*State.RightWallActor, FVector(800.0f, -450.0f, 180.0f), FVector(8.0f, 0.4f, 3.0f));
+		if (State.VaultActor) ConfigureFixtureMesh(*State.VaultActor, FVector(1100.0f, 0.0f, 50.0f), FVector(1.0f, 4.0f, 2.0f));
+	}
+
+	static bool HasInputMapping(FArenaDuelPhase4NetworkState& State)
+	{
+		APlayerController* Controller = State.World ? State.World->GetFirstPlayerController() : nullptr;
+		UEnhancedInputLocalPlayerSubsystem* Input = ArenaDuelPhase4HardeningTests::GetLocalInputSubsystem(Controller);
+		UInputMappingContext* Context = LoadObject<UInputMappingContext>(nullptr, TEXT("/Game/ArenaDuel/Input/IMC_Gameplay.IMC_Gameplay"));
+		return Input && Context && Input->HasMappingContext(Context);
+	}
+
+	static bool HasInitialReplication(FArenaDuelPhase4NetworkState& State)
+	{
+		const FVector Location = State.OwnedPawn ? State.OwnedPawn->GetActorLocation() : FVector::ZeroVector;
+		const FVector ReplicatedLocation = State.OwnedPawn ? State.OwnedPawn->GetReplicatedMovement().Location : FVector::ZeroVector;
+		return State.OwnedPawn && ArenaDuelPhase4HardeningTests::IsFinite(Location) && ArenaDuelPhase4HardeningTests::IsFinite(ReplicatedLocation) && FVector::Dist2D(Location, ReplicatedLocation) <= 200.0f;
+	}
+
+	static bool HasFixtureGeometry(const FArenaDuelPhase4NetworkState& State)
+	{
+		return State.FloorActor && State.LeftWallActor && State.RightWallActor && State.VaultActor;
+	}
+
+	static bool PlaceServerPawn(FArenaDuelPhase4NetworkState& State, const FVector& Location, const FVector& InitialVelocity = FVector::ZeroVector)
+	{
+		if (AArenaDuelCharacter* Pawn = FindServerClientPawn(State))
+		{
+			Pawn->SetActorLocation(Location, false, nullptr, ETeleportType::TeleportPhysics);
+			Pawn->SetActorRotation(FRotator::ZeroRotator);
+			if (UArenaDuelCharacterMovementComponent* Movement = Pawn->GetArenaDuelMovementComponent())
+			{
+				Movement->StopSprint();
+				Movement->StopCrouchOrSlide();
+				Movement->Velocity = InitialVelocity;
+				Movement->SetMovementMode(MOVE_Walking);
+			}
+			Pawn->ForceNetUpdate();
+			return true;
+		}
+		return false;
+	}
+
+	static void StartInput(FArenaDuelPhase4NetworkState& State, bool bSprint = true)
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Input = ArenaDuelPhase4HardeningTests::GetLocalInputSubsystem(State.World->GetFirstPlayerController()))
+		{
+			if (bSprint)
+			{
+				Input->StartContinuousInputInjectionForAction(LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Sprint.IA_Sprint")), FInputActionValue(true), {}, {});
+				Input->InjectInputForAction(LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Sprint.IA_Sprint")), FInputActionValue(true), {}, {});
+			}
+			Input->StartContinuousInputInjectionForAction(LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Move.IA_Move")), FInputActionValue(FVector2D(0.0f, 1.0f)), {}, {});
+			Input->InjectInputForAction(LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Move.IA_Move")), FInputActionValue(FVector2D(0.0f, 1.0f)), {}, {});
+		}
+	}
+
+	static void StartCrouch(FArenaDuelPhase4NetworkState& State)
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Input = ArenaDuelPhase4HardeningTests::GetLocalInputSubsystem(State.World->GetFirstPlayerController()))
+		{
+			Input->StartContinuousInputInjectionForAction(LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Crouch.IA_Crouch")), FInputActionValue(true), {}, {});
+			Input->InjectInputForAction(LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Crouch.IA_Crouch")), FInputActionValue(true), {}, {});
+		}
+	}
+
+	static void InjectJump(FArenaDuelPhase4NetworkState& State)
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Input = ArenaDuelPhase4HardeningTests::GetLocalInputSubsystem(State.World->GetFirstPlayerController()))
+		{
+			Input->InjectInputForAction(LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Jump.IA_Jump")), FInputActionValue(true), {}, {});
+		}
+	}
+
+	static void StartHeldJump(FArenaDuelPhase4NetworkState& State)
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Input = ArenaDuelPhase4HardeningTests::GetLocalInputSubsystem(State.World->GetFirstPlayerController()))
+		{
+			UInputAction* JumpAction = LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Jump.IA_Jump"));
+			Input->StartContinuousInputInjectionForAction(JumpAction, FInputActionValue(true), {}, {});
+			Input->InjectInputForAction(JumpAction, FInputActionValue(true), {}, {});
+		}
+	}
+
+	static void StopHeldJump(FArenaDuelPhase4NetworkState& State)
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Input = ArenaDuelPhase4HardeningTests::GetLocalInputSubsystem(State.World->GetFirstPlayerController()))
+		{
+			Input->StopContinuousInputInjectionForAction(LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Jump.IA_Jump")));
+		}
+	}
+
+	static void StopAllInput(FArenaDuelPhase4NetworkState& State)
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Input = ArenaDuelPhase4HardeningTests::GetLocalInputSubsystem(State.World->GetFirstPlayerController()))
+		{
+			Input->StopContinuousInputInjectionForAction(LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Move.IA_Move")));
+			Input->StopContinuousInputInjectionForAction(LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Sprint.IA_Sprint")));
+			Input->StopContinuousInputInjectionForAction(LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Crouch.IA_Crouch")));
+			Input->StopContinuousInputInjectionForAction(LoadAction(TEXT("/Game/ArenaDuel/Input/IA_Jump.IA_Jump")));
+		}
+		if (State.OwnedPawn)
+		{
+			State.OwnedPawn->GetArenaDuelMovementComponent()->StopSprint();
+			State.OwnedPawn->GetArenaDuelMovementComponent()->StopCrouchOrSlide();
+		}
+	}
+
+	static bool IsFinite(const FVector& Value)
+	{
+		return FMath::IsFinite(Value.X) && FMath::IsFinite(Value.Y) && FMath::IsFinite(Value.Z);
+	}
+
+	static bool HasConverged(FArenaDuelPhase4NetworkState& State)
+	{
+		if (!State.OwnedPawn || !LastServerSnapshot.bValid)
+		{
+			return false;
+		}
+		const UArenaDuelCharacterMovementComponent* ClientMove = State.OwnedPawn->GetArenaDuelMovementComponent();
+		return ClientMove && IsFinite(State.OwnedPawn->GetActorLocation()) && IsFinite(LastServerSnapshot.Location) && IsFinite(ClientMove->Velocity) && IsFinite(LastServerSnapshot.Velocity) && FVector::Dist2D(State.OwnedPawn->GetActorLocation(), LastServerSnapshot.Location) <= 200.0f && FVector::Dist2D(ClientMove->Velocity, LastServerSnapshot.Velocity) <= 350.0f && ClientMove->MovementMode == LastServerSnapshot.MovementMode && ClientMove->CustomMovementMode == LastServerSnapshot.CustomMovementMode;
+	}
+
+	static void CaptureServerSnapshot(FArenaDuelPhase4NetworkState& State)
+	{
+		AArenaDuelCharacter* ServerPawn = FindServerClientPawn(State);
+		if (!ServerPawn || !ServerPawn->GetArenaDuelMovementComponent())
+		{
+			return;
+		}
+		const UArenaDuelCharacterMovementComponent* Movement = ServerPawn->GetArenaDuelMovementComponent();
+		LastServerSnapshot.bValid = true;
+		LastServerSnapshot.Location = ServerPawn->GetActorLocation();
+		LastServerSnapshot.Velocity = Movement->Velocity;
+		LastServerSnapshot.MovementMode = Movement->MovementMode;
+		LastServerSnapshot.CustomMovementMode = Movement->CustomMovementMode;
+		LastServerSnapshot.bSprintIntent = Movement->WantsSprintIntent();
+		LastServerSnapshot.bCrouchIntent = Movement->WantsCrouchSlideIntent();
+	}
+
+	static bool CaptureServerSnapshotAfterSettle(FArenaDuelPhase4NetworkState& State)
+	{
+		if (++State.ServerSettleFrames < 10)
+		{
+			return false;
+		}
+		CaptureServerSnapshot(State);
+		return LastServerSnapshot.bValid;
+	}
+
+	static bool RemotePawnIsIsolated(const FArenaDuelPhase4NetworkState& State)
+	{
+		if (!State.RemotePawn)
+		{
+			return false;
+		}
+		const UArenaDuelCharacterMovementComponent* Movement = State.RemotePawn->GetArenaDuelMovementComponent();
+		return Movement && FVector::Dist2D(State.RemotePawn->GetActorLocation(), State.RemoteStartLocation) <= 100.0f && FVector::Dist2D(Movement->Velocity, State.RemoteStartVelocity) <= 100.0f && Movement->MovementMode == State.RemoteStartMovementMode && Movement->CustomMovementMode == State.RemoteStartCustomMovementMode && Movement->WantsSprintIntent() == State.RemoteStartSprintIntent && Movement->WantsCrouchSlideIntent() == State.RemoteStartCrouchIntent;
+	}
+
+	static bool IsVault(AArenaDuelCharacter* Pawn)
+	{
+		if (!Pawn)
+		{
+			return false;
+		}
+		const UArenaDuelCharacterMovementComponent* Movement = Pawn->GetArenaDuelMovementComponent();
+		return Movement && Movement->MovementMode == MOVE_Custom && Movement->CustomMovementMode == static_cast<uint8>(EArenaDuelCustomMovementMode::Vault);
+	}
+
+	static void ConfigureFixtureMesh(AStaticMeshActor& Actor, const FVector& Location, const FVector& Scale)
+	{
+		if (Actor.HasAuthority())
+		{
+			Actor.SetReplicates(true);
+		}
+		Actor.GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
+		Actor.GetStaticMeshComponent()->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")));
+		Actor.GetStaticMeshComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		Actor.GetStaticMeshComponent()->SetCollisionProfileName(TEXT("BlockAll"));
+		Actor.GetStaticMeshComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+		Actor.SetActorEnableCollision(true);
+		Actor.GetStaticMeshComponent()->RecreatePhysicsState();
+		Actor.SetActorLocation(Location);
+		Actor.SetActorScale3D(Scale);
+	}
+}
 
 NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 {
@@ -295,70 +623,172 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 
 	BEFORE_EACH()
 	{
+		ArenaDuelPhase4NetworkTests::LastServerSnapshot = {};
+		FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap);
 		UClass* GameModeClass = LoadClass<AGameModeBase>(nullptr, ArenaDuelPhase4HardeningTests::GameModeClass);
 		FNetworkComponentBuilder<FArenaDuelPhase4NetworkState>()
 			.WithClients(1)
 			.AsListenServer()
 			.WithGameMode(GameModeClass)
 			.Build(Network);
+		Network.SpawnAndReplicate<AStaticMeshActor, &FArenaDuelPhase4NetworkState::FloorActor>([](AStaticMeshActor& Actor) { ArenaDuelPhase4NetworkTests::ConfigureFixtureMesh(Actor, FVector(0.0f, 0.0f, -50.0f), FVector(80.0f, 8.0f, 1.0f)); });
+		Network.SpawnAndReplicate<AStaticMeshActor, &FArenaDuelPhase4NetworkState::LeftWallActor>([](AStaticMeshActor& Actor) { ArenaDuelPhase4NetworkTests::ConfigureFixtureMesh(Actor, FVector(800.0f, 450.0f, 180.0f), FVector(8.0f, 0.4f, 3.0f)); });
+		Network.SpawnAndReplicate<AStaticMeshActor, &FArenaDuelPhase4NetworkState::RightWallActor>([](AStaticMeshActor& Actor) { ArenaDuelPhase4NetworkTests::ConfigureFixtureMesh(Actor, FVector(800.0f, -450.0f, 180.0f), FVector(8.0f, 0.4f, 3.0f)); });
+		Network.SpawnAndReplicate<AStaticMeshActor, &FArenaDuelPhase4NetworkState::VaultActor>([](AStaticMeshActor& Actor) { ArenaDuelPhase4NetworkTests::ConfigureFixtureMesh(Actor, FVector(1100.0f, 0.0f, 50.0f), FVector(1.0f, 4.0f, 2.0f)); });
 	}
 
 	TEST_METHOD(SprintAndCrouchIntent)
 	{
 		Network
-			.UntilClient(TEXT("Wait for owned pawn"), 0, [](FArenaDuelPhase4NetworkState& State)
-			{
-				APlayerController* Controller = State.World->GetFirstPlayerController();
-				State.OwnedPawn = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
-				return State.OwnedPawn != nullptr;
-			}, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Place sprint fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(-2500.0f, 0.0f, 100.0f)); }, FTimespan::FromSeconds(5.0))
+			.UntilClient(TEXT("Wait for pawns, geometry and Enhanced Input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State); }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Inject sprint intent"), 0, [](FArenaDuelPhase4NetworkState& State)
 			{
-				if (State.OwnedPawn)
-				{
-					State.OwnedPawn->GetArenaDuelMovementComponent()->StartSprint();
-				}
-				if (APlayerController* Controller = State.World->GetFirstPlayerController())
-				{
-					if (UEnhancedInputLocalPlayerSubsystem* Input = ArenaDuelPhase4HardeningTests::GetLocalInputSubsystem(Controller))
-					{
-						Input->StartContinuousInputInjectionForAction(LoadObject<UInputAction>(nullptr, TEXT("/Game/ArenaDuel/Input/IA_Move.IA_Move")), FInputActionValue(FVector2D(0.0f, 1.0f)), {}, {});
-						Input->StartContinuousInputInjectionForAction(LoadObject<UInputAction>(nullptr, TEXT("/Game/ArenaDuel/Input/IA_Sprint.IA_Sprint")), FInputActionValue(true), {}, {});
-					}
-				}
+				ArenaDuelPhase4NetworkTests::StartInput(State);
 			})
+			.UntilClient(TEXT("Client retains sprint intent"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetArenaDuelMovementComponent()->WantsSprintIntent(); }, FTimespan::FromSeconds(2.0))
 			.UntilServer(TEXT("Server reconstructs sprint intent"), [](FArenaDuelPhase4NetworkState& State)
 			{
-				for (TActorIterator<AArenaDuelCharacter> It(State.World); It; ++It)
-				{
-					if (const UArenaDuelCharacterMovementComponent* Move = It->GetArenaDuelMovementComponent())
-					{
-						if (Move->WantsSprintIntent()) return true;
-					}
-				}
-				return false;
+				AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State);
+				return Pawn && Pawn->GetArenaDuelMovementComponent()->WantsSprintIntent();
 			}, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Inject crouch slide intent"), 0, [](FArenaDuelPhase4NetworkState& State)
 			{
-				if (APlayerController* Controller = State.World->GetFirstPlayerController())
-				{
-					if (UEnhancedInputLocalPlayerSubsystem* Input = ArenaDuelPhase4HardeningTests::GetLocalInputSubsystem(Controller))
-					{
-						Input->StartContinuousInputInjectionForAction(LoadObject<UInputAction>(nullptr, TEXT("/Game/ArenaDuel/Input/IA_Crouch.IA_Crouch")), FInputActionValue(true), {}, {});
-					}
-				}
+				ArenaDuelPhase4NetworkTests::StartCrouch(State);
 			})
 			.UntilServer(TEXT("Server reconstructs crouch slide intent"), [](FArenaDuelPhase4NetworkState& State)
 			{
-				for (TActorIterator<AArenaDuelCharacter> It(State.World); It; ++It)
-				{
-					if (const UArenaDuelCharacterMovementComponent* Move = It->GetArenaDuelMovementComponent())
-					{
-						if (Move->WantsCrouchSlideIntent()) return true;
-					}
-				}
-				return false;
-			}, FTimespan::FromSeconds(5.0));
+				AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State);
+				return Pawn && Pawn->GetArenaDuelMovementComponent()->WantsCrouchSlideIntent();
+			}, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Clean sprint and crouch input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StopAllInput(State); })
+			.UntilServer(TEXT("Capture sprint and crouch authority"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::CaptureServerSnapshotAfterSettle(State); })
+			.UntilClient(TEXT("Sprint and crouch converge"), 0, [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::HasConverged(State); }, FTimespan::FromSeconds(5.0));
+	}
+
+	TEST_METHOD(Slide)
+	{
+		Network
+			.UntilServer(TEXT("Place slide fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(-2500.0f, 0.0f, 100.0f), FVector(800.0f, 0.0f, 0.0f)); }, FTimespan::FromSeconds(5.0))
+			.UntilClient(TEXT("Prepare slide client"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State) && ArenaDuelPhase4NetworkTests::HasInitialReplication(State); }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Build slide speed through Enhanced Input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
+			.UntilClient(TEXT("Client reaches slide speed"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->IsMovingOnGround() && State.OwnedPawn->GetCharacterMovement()->Velocity.Size2D() >= State.OwnedPawn->GetArenaDuelMovementComponent()->SlideMinSpeed; }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Trigger slide through crouch input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartCrouch(State); })
+			.UntilClient(TEXT("Client enters slide"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetArenaDuelMovementComponent()->IsSliding(); }, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Server reconstructs slide"), [](FArenaDuelPhase4NetworkState& State) { AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); return Pawn && Pawn->GetArenaDuelMovementComponent()->IsSliding(); }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Release slide input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StopAllInput(State); })
+			.UntilServer(TEXT("Server exits slide"), [](FArenaDuelPhase4NetworkState& State) { AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); return Pawn && !Pawn->GetArenaDuelMovementComponent()->IsSliding(); }, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Capture slide authority"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::CaptureServerSnapshotAfterSettle(State); })
+			.UntilClient(TEXT("Slide converges"), 0, [](FArenaDuelPhase4NetworkState& State) { return !State.OwnedPawn->GetArenaDuelMovementComponent()->IsSliding() && ArenaDuelPhase4NetworkTests::HasConverged(State); }, FTimespan::FromSeconds(5.0));
+	}
+
+	TEST_METHOD(SlideJump)
+	{
+		Network
+			.UntilServer(TEXT("Place slide jump fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(-1200.0f, 0.0f, 100.0f), FVector(1000.0f, 0.0f, 0.0f)); }, FTimespan::FromSeconds(5.0))
+			.UntilClient(TEXT("Prepare slide jump client"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State) && ArenaDuelPhase4NetworkTests::HasInitialReplication(State); }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Build slide jump speed through Enhanced Input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
+			.UntilClient(TEXT("Client reaches slide speed"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->IsMovingOnGround() && State.OwnedPawn->GetCharacterMovement()->Velocity.Size2D() >= State.OwnedPawn->GetArenaDuelMovementComponent()->SlideMinSpeed; }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Enter slide through crouch input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartCrouch(State); })
+			.UntilClient(TEXT("Client is actually sliding"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetArenaDuelMovementComponent()->IsSliding(); }, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Server is actually sliding"), [](FArenaDuelPhase4NetworkState& State) { AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); return Pawn && Pawn->GetArenaDuelMovementComponent()->IsSliding(); }, FTimespan::FromSeconds(5.0))
+			.UntilClient(TEXT("Client remains sliding at jump boundary"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartCrouch(State); return State.OwnedPawn && State.OwnedPawn->GetArenaDuelMovementComponent()->IsSliding(); }, FTimespan::FromSeconds(2.0))
+			.UntilClient(TEXT("Client predicts slide jump"), 0, [](FArenaDuelPhase4NetworkState& State) { if (State.OwnedPawn && State.OwnedPawn->GetArenaDuelMovementComponent()->IsSliding() && !State.bSlideJumpInjected) { State.bSlideJumpInjected = true; ArenaDuelPhase4NetworkTests::InjectJump(State); } return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->IsFalling() && State.OwnedPawn->GetCharacterMovement()->Velocity.Z > 0.0f; }, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Server executes slide jump"), [](FArenaDuelPhase4NetworkState& State) { AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); return Pawn && Pawn->GetCharacterMovement()->IsFalling() && Pawn->GetCharacterMovement()->Velocity.Z > 0.0f && Pawn->GetCharacterMovement()->Velocity.Size2D() >= 500.0f; }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Stop slide jump input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StopAllInput(State); })
+			.UntilServer(TEXT("Capture slide jump authority"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::CaptureServerSnapshotAfterSettle(State); })
+			.UntilClient(TEXT("Slide jump converges"), 0, [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::HasConverged(State); }, FTimespan::FromSeconds(5.0));
+	}
+
+	TEST_METHOD(WallRun)
+	{
+		Network
+			.UntilServer(TEXT("Place wall run fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(500.0f, 390.0f, 100.0f)); }, FTimespan::FromSeconds(5.0))
+			.UntilClient(TEXT("Prepare wall run client"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State); }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Approach wall under sprint input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
+			.UntilClient(TEXT("Client reaches jumping speed"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->Velocity.Size2D() >= State.OwnedPawn->GetArenaDuelMovementComponent()->WallRunMinSpeed; }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Enter falling through jump input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::InjectJump(State); })
+			.UntilClient(TEXT("Client enters wall run"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetArenaDuelMovementComponent()->IsWallRunning(); }, FTimespan::FromSeconds(8.0))
+			.UntilServer(TEXT("Server accepts wall run"), [](FArenaDuelPhase4NetworkState& State) { AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); return Pawn && Pawn->GetArenaDuelMovementComponent()->IsWallRunning(); }, FTimespan::FromSeconds(8.0))
+			.ThenClient(TEXT("Stop wall run input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StopAllInput(State); })
+			.UntilServer(TEXT("Capture wall run authority"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::CaptureServerSnapshotAfterSettle(State); })
+			.UntilClient(TEXT("Wall run converges"), 0, [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::HasConverged(State); }, FTimespan::FromSeconds(5.0));
+	}
+
+	TEST_METHOD(WallJump)
+	{
+		Network
+			.UntilServer(TEXT("Place wall jump fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(500.0f, 390.0f, 100.0f)); }, FTimespan::FromSeconds(5.0))
+			.UntilClient(TEXT("Prepare wall jump client"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State); }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Approach wall for jump"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
+			.UntilClient(TEXT("Client reaches jumping speed"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->Velocity.Size2D() >= State.OwnedPawn->GetArenaDuelMovementComponent()->WallRunMinSpeed; }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Enter wall run"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::InjectJump(State); })
+			.UntilClient(TEXT("Client enters wall run before jump"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetArenaDuelMovementComponent()->IsWallRunning(); }, FTimespan::FromSeconds(8.0))
+			.UntilServer(TEXT("Server enters wall run before jump"), [](FArenaDuelPhase4NetworkState& State) { AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); return Pawn && Pawn->GetArenaDuelMovementComponent()->IsWallRunning(); }, FTimespan::FromSeconds(8.0))
+			.ThenClient(TEXT("Trigger wall jump through input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::InjectJump(State); })
+			.UntilClient(TEXT("Client executes wall jump"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->IsFalling() && State.OwnedPawn->GetCharacterMovement()->Velocity.Z > 0.0f && State.OwnedPawn->GetCharacterMovement()->Velocity.Y < -50.0f; }, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Server executes wall jump"), [](FArenaDuelPhase4NetworkState& State) { AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); return Pawn && Pawn->GetCharacterMovement()->IsFalling() && Pawn->GetCharacterMovement()->Velocity.Z > 0.0f && Pawn->GetCharacterMovement()->Velocity.Y < -50.0f; }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Stop wall jump input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StopAllInput(State); })
+			.UntilServer(TEXT("Capture wall jump authority"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::CaptureServerSnapshotAfterSettle(State); })
+			.UntilClient(TEXT("Wall jump converges"), 0, [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::HasConverged(State); }, FTimespan::FromSeconds(5.0));
+	}
+
+	TEST_METHOD(Stamina)
+	{
+		Network
+			.UntilServer(TEXT("Place stamina fixture"), [](FArenaDuelPhase4NetworkState& State) { if (!ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(500.0f, 390.0f, 100.0f))) return false; if (AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State)) { Pawn->GetArenaDuelMovementComponent()->ConsumeStamina(Pawn->GetArenaDuelMovementComponent()->GetMaxStamina() - 5.0f); State.InitialServerStamina = Pawn->GetArenaDuelMovementComponent()->GetStamina(); State.LowestServerStamina = State.InitialServerStamina; return true; } return false; }, FTimespan::FromSeconds(5.0))
+			.UntilClient(TEXT("Prepare stamina client"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State); }, FTimespan::FromSeconds(5.0))
+			.UntilClient(TEXT("Client receives authoritative starting stamina"), 0, [](FArenaDuelPhase4NetworkState& State) { if (!State.OwnedPawn || State.OwnedPawn->GetArenaDuelMovementComponent()->GetStamina() > 60.0f) return false; if (State.InitialClientStamina <= 0.0f || State.InitialClientStamina > 60.0f) { State.InitialClientStamina = State.OwnedPawn->GetArenaDuelMovementComponent()->GetStamina(); State.LowestClientStamina = State.InitialClientStamina; } return true; }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Start network stamina action through Enhanced Input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
+			.UntilClient(TEXT("Build network stamina speed"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->Velocity.Size2D() >= State.OwnedPawn->GetArenaDuelMovementComponent()->WallRunMinSpeed; }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Enter falling for network stamina action"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::InjectJump(State); })
+			.UntilClient(TEXT("Client reaches wall run and drains stamina"), 0, [](FArenaDuelPhase4NetworkState& State) { if (!State.OwnedPawn) return false; State.LowestClientStamina = FMath::Min(State.LowestClientStamina, State.OwnedPawn->GetArenaDuelMovementComponent()->GetStamina()); return State.OwnedPawn->GetArenaDuelMovementComponent()->IsWallRunning() && State.LowestClientStamina < State.InitialClientStamina; }, FTimespan::FromSeconds(8.0))
+			.UntilServer(TEXT("Server reaches wall run and drains stamina"), [](FArenaDuelPhase4NetworkState& State) { AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); if (!Pawn) return false; State.LowestServerStamina = FMath::Min(State.LowestServerStamina, Pawn->GetArenaDuelMovementComponent()->GetStamina()); ArenaDuelPhase4NetworkTests::LastServerSnapshot.bStaminaValid = true; ArenaDuelPhase4NetworkTests::LastServerSnapshot.Stamina = Pawn->GetArenaDuelMovementComponent()->GetStamina(); return Pawn->GetArenaDuelMovementComponent()->IsWallRunning() && State.LowestServerStamina < State.InitialServerStamina; }, FTimespan::FromSeconds(8.0))
+			.UntilClient(TEXT("Client and server stamina remain coherent"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && ArenaDuelPhase4NetworkTests::LastServerSnapshot.bStaminaValid && FMath::Abs(State.OwnedPawn->GetArenaDuelMovementComponent()->GetStamina() - ArenaDuelPhase4NetworkTests::LastServerSnapshot.Stamina) <= 35.0f; }, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Stamina exhaustion exits authoritative wall run"), [](FArenaDuelPhase4NetworkState& State) { AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); return Pawn && !Pawn->GetArenaDuelMovementComponent()->IsWallRunning() && Pawn->GetArenaDuelMovementComponent()->GetStamina() <= 0.0f; }, FTimespan::FromSeconds(8.0))
+			.ThenClient(TEXT("Stop stamina input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StopAllInput(State); })
+			.UntilClient(TEXT("Owning client leaves wall run"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && !State.OwnedPawn->GetArenaDuelMovementComponent()->IsWallRunning(); }, FTimespan::FromSeconds(5.0))
+			.UntilClient(TEXT("Stamina regeneration begins"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetArenaDuelMovementComponent()->GetStamina() > State.LowestClientStamina; }, FTimespan::FromSeconds(5.0));
+	}
+
+	TEST_METHOD(Traversal)
+	{
+		Network
+			.UntilServer(TEXT("Place vault fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(820.0f, 0.0f, 100.0f)); }, FTimespan::FromSeconds(5.0))
+			.UntilClient(TEXT("Prepare traversal client"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State); }, FTimespan::FromSeconds(5.0))
+			.UntilClient(TEXT("Traversal client has a stable collision-free start"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && ArenaDuelPhase4HardeningTests::IsFinite(State.OwnedPawn->GetActorLocation()) && !ArenaDuelPhase4HardeningTests::IsCapsuleOverlapping(State.OwnedPawn); }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Approach vault with normal input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
+			.UntilClient(TEXT("Reach traversal speed"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->Velocity.Size2D() >= State.OwnedPawn->GetArenaDuelMovementComponent()->WallRunMinSpeed; }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Jump toward vault through input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::InjectJump(State); })
+			.UntilClient(TEXT("Client enters vault"), 0, [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::IsVault(State.OwnedPawn); }, FTimespan::FromSeconds(8.0))
+			.UntilServer(TEXT("Server validates vault"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::IsVault(ArenaDuelPhase4NetworkTests::FindServerClientPawn(State)); }, FTimespan::FromSeconds(8.0))
+			.UntilClient(TEXT("Vault completes in valid mode"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && (State.OwnedPawn->GetCharacterMovement()->IsMovingOnGround() || State.OwnedPawn->GetCharacterMovement()->IsFalling()) && !ArenaDuelPhase4NetworkTests::IsVault(State.OwnedPawn) && State.OwnedPawn->GetActorLocation().X > 1050.0f && !ArenaDuelPhase4HardeningTests::IsCapsuleOverlapping(State.OwnedPawn); }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Stop traversal input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StopAllInput(State); })
+			.UntilServer(TEXT("Capture traversal authority"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::CaptureServerSnapshotAfterSettle(State); })
+			.UntilClient(TEXT("Traversal converges"), 0, [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::HasConverged(State); }, FTimespan::FromSeconds(5.0));
+	}
+
+	TEST_METHOD(ClientServerConvergence)
+	{
+		Network
+			.UntilServer(TEXT("Place convergence fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(-2500.0f, 0.0f, 100.0f)); }, FTimespan::FromSeconds(5.0))
+			.UntilClient(TEXT("Prepare convergence client"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State); }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Drive representative movement through input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
+			.UntilClient(TEXT("Client movement settles"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && FVector::Dist2D(State.OwnedPawn->GetActorLocation(), State.ClientStart) > 100.0f; }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Stop representative movement"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StopAllInput(State); })
+			.UntilServer(TEXT("Server remains finite and authoritative state is captured"), [](FArenaDuelPhase4NetworkState& State) { AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); if (!Pawn || !ArenaDuelPhase4NetworkTests::IsFinite(Pawn->GetActorLocation()) || !ArenaDuelPhase4NetworkTests::IsFinite(Pawn->GetCharacterMovement()->Velocity)) return false; ArenaDuelPhase4NetworkTests::CaptureServerSnapshot(State); return true; }, FTimespan::FromSeconds(5.0))
+			.UntilClient(TEXT("Client/server location converges"), 0, [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::HasConverged(State); }, FTimespan::FromSeconds(5.0));
+	}
+
+	TEST_METHOD(CrossControlIsolation)
+	{
+		Network
+			.UntilServer(TEXT("Place cross-control fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(-2500.0f, 0.0f, 100.0f)); }, FTimespan::FromSeconds(5.0))
+			.UntilClient(TEXT("Prepare cross-control pawns"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State); }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Drive only owning pawn"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
+			.UntilClient(TEXT("Owning pawn moves"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && FVector::Dist2D(State.OwnedPawn->GetActorLocation(), State.ClientStart) > 100.0f; }, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Stop cross-control input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StopAllInput(State); })
+			.UntilClient(TEXT("Remote pawn remains isolated"), 0, [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::RemotePawnIsIsolated(State); }, FTimespan::FromSeconds(5.0));
 	}
 };
 
