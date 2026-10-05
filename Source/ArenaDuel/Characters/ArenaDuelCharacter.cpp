@@ -4,10 +4,10 @@
 
 #include "../ArenaDuel.h"
 #include "Camera/CameraComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
-#include "GameFramework/SpringArmComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
@@ -17,25 +17,22 @@
 AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
-	CameraBoom->SetupAttachment(RootComponent);
-	CameraBoom->TargetArmLength = 350.0f;
-	CameraBoom->bUsePawnControlRotation = true;
-
-	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
-	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
-	FollowCamera->bUsePawnControlRotation = false;
+	FirstPersonCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
+	FirstPersonCamera->SetupAttachment(GetCapsuleComponent());
+	FirstPersonCamera->SetRelativeLocation(FVector(0.0f, 0.0f, 64.0f));
+	FirstPersonCamera->bUsePawnControlRotation = true;
 
 	bUseControllerRotationPitch = false;
-	bUseControllerRotationYaw = false;
+	bUseControllerRotationYaw = true;
 	bUseControllerRotationRoll = false;
 
-	GetCharacterMovement()->bOrientRotationToMovement = true;
+	GetCharacterMovement()->bOrientRotationToMovement = false;
+	GetCharacterMovement()->bUseControllerDesiredRotation = false;
 }
 
-void AArenaDuelCharacter::BeginPlay()
+void AArenaDuelCharacter::PawnClientRestart()
 {
-	Super::BeginPlay();
+	Super::PawnClientRestart();
 
 	if (!IsLocallyControlled())
 	{
@@ -64,7 +61,10 @@ void AArenaDuelCharacter::BeginPlay()
 
 	if (UEnhancedInputLocalPlayerSubsystem* InputSubsystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
 	{
-		InputSubsystem->AddMappingContext(DefaultMappingContext, 0);
+		if (!InputSubsystem->HasMappingContext(DefaultMappingContext))
+		{
+			InputSubsystem->AddMappingContext(DefaultMappingContext, 0);
+		}
 	}
 }
 

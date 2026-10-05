@@ -20,6 +20,6 @@ Keep `Config/`, `Content/`, `Source/`, `Build/`, `ArenaDuel.uproject`, and proje
 
 ## Build verification
 
-The verified build used Unreal supplied tooling for `ArenaDuelEditor`, Win64, Development, from `C:\Users\Dima\Desktop\arenaduel\ArenaDuel.uproject`.
+The verified build used Unreal supplied tooling for `ArenaDuelEditor`, Win64, Development, from `C:\Users\Dima\Desktop\arenaduel\ArenaDuel.uproject`. The current Phase 3 first person refactor also builds successfully.
 
 Current state: `REPOSITORY BUILD = PASS`.

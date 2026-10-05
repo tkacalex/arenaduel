@@ -9,7 +9,6 @@
 class UCameraComponent;
 class UInputAction;
 class UInputMappingContext;
-class USpringArmComponent;
 struct FInputActionValue;
 
 UCLASS()
@@ -23,7 +22,7 @@ public:
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
 protected:
-	virtual void BeginPlay() override;
+	virtual void PawnClientRestart() override;
 
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
@@ -31,10 +30,7 @@ protected:
 	void JumpCompleted();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<USpringArmComponent> CameraBoom;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<UCameraComponent> FollowCamera;
+	TObjectPtr<UCameraComponent> FirstPersonCamera;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputMappingContext> DefaultMappingContext;

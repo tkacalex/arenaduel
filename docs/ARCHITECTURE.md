@@ -44,7 +44,15 @@ The initial project should use only engine supplied dependencies. Future milesto
 
 ### AArenaDuelCharacter
 
-`AArenaDuelCharacter` derives from `ACharacter` and represents the possessed physical fighter. The server owns the authoritative actor, the owning client controls its local instance, and remote clients receive the replicated Character. Standard `UCharacterMovementComponent` networking remains responsible for locomotion. The class currently provides only neutral third person camera, camera relative movement hooks, look hooks, and jump hooks.
+`AArenaDuelCharacter` derives from `ACharacter` and represents the possessed physical fighter. The server owns the authoritative actor, the owning client controls its local instance, and remote clients receive the replicated Character. Standard `UCharacterMovementComponent` networking remains responsible for locomotion. The class currently provides only a local first person camera, camera relative movement hooks, look hooks, and jump hooks.
+
+The current camera is intentionally local and cosmetic. It does not force remote players to use first person visuals. A later presentation phase can add first person arms and weapons for the owning client while keeping a separate full world body and weapon representation for remote players.
+
+The first person camera attaches directly to the Character capsule at a 64 centimeter local Z offset. This places the initial eye point above the capsule center without introducing a Spring Arm, camera lag, or replicated cosmetic transform.
+
+## Enhanced Input lifecycle
+
+`AArenaDuelCharacter` adds its configured Mapping Context from `PawnClientRestart()`, not `BeginPlay()`. Unreal calls this lifecycle on the owning client when a player controlled Pawn is restarted, which covers initial possession and future Pawn replacement. The code checks local control, resolves the LocalPlayer subsystem, and checks `HasMappingContext()` before adding the context. Remote clients and dedicated servers do not register local input mappings.
 
 ## Ownership relationship
 
