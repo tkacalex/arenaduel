@@ -54,6 +54,7 @@ $Phase3Tests = @(
 $Phase4Tests = @(
     'ArenaDuel.Phase4.MapAndAssets',
     'ArenaDuel.Phase4.MovementState',
+    'ArenaDuel.Phase4.SlideInputBuffer',
     'ArenaDuel.Phase4.Sprint',
     'ArenaDuel.Phase4.Crouch',
     'ArenaDuel.Phase4.Slide',

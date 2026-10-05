@@ -161,7 +161,15 @@ void AArenaDuelCharacter::Look(const FInputActionValue& Value)
 
 	const FVector2D LookAxisVector = Value.Get<FVector2D>();
 	AddControllerYawInput(LookAxisVector.X);
-	AddControllerPitchInput(LookAxisVector.Y);
+	// Unreal's mouse Y convention is positive while moving down. Negate once here
+	// so the default ArenaDuel camera follows normal FPS behavior: mouse up looks up.
+	AddControllerPitchInput(-LookAxisVector.Y);
+	if (Controller)
+	{
+		FRotator ControlRotation = Controller->GetControlRotation();
+		ControlRotation.Pitch = FMath::Clamp(FRotator::NormalizeAxis(ControlRotation.Pitch), -88.0f, 88.0f);
+		Controller->SetControlRotation(ControlRotation);
+	}
 }
 
 void AArenaDuelCharacter::JumpStarted()

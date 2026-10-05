@@ -15,7 +15,11 @@
 #include "EngineUtils.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/SkyLight.h"
+#include "Engine/TextRenderActor.h"
+#include "Engine/StaticMeshActor.h"
+#include "GameFramework/PlayerStart.h"
 #include "Components/SkyAtmosphereComponent.h"
+#include "ArenaDuel/Game/ArenaDuelMovementDebugHUD.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/PlayerState.h"
@@ -50,15 +54,37 @@ bool FArenaDuelPhase4MapAndAssetsTest::RunTest(const FString& Parameters)
 	bool bDirectional = false;
 	bool bSkyLight = false;
 	bool bSkyAtmosphere = false;
+	bool bSafetyFloor = false;
+	bool bLeftWall = false;
+	bool bRightWall = false;
+	bool bVault = false;
+	bool bMantle = false;
+	int32 PlayerStarts = 0;
+	int32 Labels = 0;
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
+		const FString Label = It->GetActorLabel();
 		bDirectional |= Cast<ADirectionalLight>(*It) != nullptr && It->GetActorLabel() == TEXT("Phase4_DirectionalLight");
 		bSkyLight |= Cast<ASkyLight>(*It) != nullptr && It->GetActorLabel() == TEXT("Phase4_SkyLight");
 		bSkyAtmosphere |= Cast<ASkyAtmosphere>(*It) != nullptr && It->GetActorLabel() == TEXT("Phase4_SkyAtmosphere");
+		bSafetyFloor |= Label == TEXT("Phase4_LongSprintLane") && It->GetActorScale3D().X >= 70.0f && It->GetActorScale3D().Y >= 20.0f;
+		bLeftWall |= Label == TEXT("Phase4_LeftWall");
+		bRightWall |= Label == TEXT("Phase4_RightWall");
+		bVault |= Label == TEXT("Phase4_VaultObstacle");
+		bMantle |= Label == TEXT("Phase4_MantleLedge");
+		PlayerStarts += Cast<APlayerStart>(*It) != nullptr ? 1 : 0;
+		Labels += Cast<ATextRenderActor>(*It) != nullptr ? 1 : 0;
 	}
 	TestTrue(TEXT("Phase 4 map has actor Phase4_DirectionalLight"), bDirectional);
 	TestTrue(TEXT("Phase 4 map has actor Phase4_SkyLight"), bSkyLight);
 	TestTrue(TEXT("Phase 4 map has actor Phase4_SkyAtmosphere"), bSkyAtmosphere);
+	TestTrue(TEXT("Phase 4 map has a large safety floor"), bSafetyFloor);
+	TestTrue(TEXT("Phase 4 map has left and right wall-run walls"), bLeftWall && bRightWall);
+	TestTrue(TEXT("Phase 4 map has vault and mantle stations"), bVault && bMantle);
+	TestTrue(TEXT("Phase 4 map has two PlayerStarts"), PlayerStarts >= 2);
+	TestTrue(TEXT("Phase 4 map has development labels"), Labels >= 6);
+	UClass* GameModeClass = LoadClass<AGameModeBase>(nullptr, ArenaDuelPhase4Tests::GameModeClass);
+	TestTrue(TEXT("Development HUD is configured on the native GameMode"), GameModeClass && GameModeClass->GetDefaultObject<AGameModeBase>()->HUDClass == AArenaDuelMovementDebugHUD::StaticClass());
 
 	for (const TCHAR* AssetName : { TEXT("IA_Move"), TEXT("IA_Look"), TEXT("IA_Jump"), TEXT("IA_Sprint"), TEXT("IA_Crouch"), TEXT("IMC_Gameplay") })
 	{
@@ -131,6 +157,63 @@ bool FArenaDuelPhase4MovementStateTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Momentum cap is finite"), Movement->GlobalMomentumCap >= Movement->SprintSpeed);
 
 	Character->Destroy();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelPhase4SlideBufferTest, "ArenaDuel.Phase4.SlideInputBuffer", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+namespace ArenaDuelPhase4HardeningTests
+{
+	static AArenaDuelCharacter* SpawnCharacter(UWorld* World, const FVector& Location);
+}
+
+bool FArenaDuelPhase4SlideBufferTest::RunTest(const FString& Parameters)
+{
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap);
+	UWorld* World = GEditor ? GEditor->GetEditorWorldContext().World() : nullptr;
+	AArenaDuelCharacter* SlowCharacter = ArenaDuelPhase4HardeningTests::SpawnCharacter(World, FVector(-300.0f, 0.0f, 1.0f));
+	AArenaDuelCharacter* BufferedCharacter = ArenaDuelPhase4HardeningTests::SpawnCharacter(World, FVector(-100.0f, 0.0f, 1.0f));
+	TestNotNull(TEXT("Slide buffer slow character spawned"), SlowCharacter);
+	TestNotNull(TEXT("Slide buffer sprint character spawned"), BufferedCharacter);
+	if (!SlowCharacter || !BufferedCharacter)
+	{
+		return false;
+	}
+	SlowCharacter->GetCharacterMovement()->SetUpdatedComponent(SlowCharacter->GetCapsuleComponent());
+	BufferedCharacter->GetCharacterMovement()->SetUpdatedComponent(BufferedCharacter->GetCapsuleComponent());
+	SlowCharacter->SpawnDefaultController();
+	BufferedCharacter->SpawnDefaultController();
+
+	UArenaDuelCharacterMovementComponent* SlowMovement = SlowCharacter->GetArenaDuelMovementComponent();
+	SlowMovement->SetMovementMode(MOVE_Walking);
+	SlowMovement->StartCrouchOrSlide();
+	TestFalse(TEXT("Slow Ctrl press does not slide"), SlowMovement->IsSliding());
+	TestFalse(TEXT("Slow Ctrl press does not queue slide"), SlowMovement->IsSlideQueued());
+	TestTrue(TEXT("Slow Ctrl press retains crouch intent"), SlowMovement->WantsCrouchSlideIntent());
+	SlowMovement->StopCrouchOrSlide();
+
+	UArenaDuelCharacterMovementComponent* BufferedMovement = BufferedCharacter->GetArenaDuelMovementComponent();
+	BufferedMovement->SetMovementMode(MOVE_Walking);
+	BufferedMovement->StartSprint();
+	BufferedMovement->Velocity = FVector(600.0f, 0.0f, 0.0f);
+	BufferedMovement->StartCrouchOrSlide();
+	TestFalse(TEXT("Early Ctrl press does not immediately crouch"), BufferedMovement->IsCrouching());
+	TestTrue(TEXT("Early Ctrl press queues slide"), BufferedMovement->IsSlideQueued());
+	BufferedMovement->StopCrouchOrSlide();
+	BufferedMovement->SetMovementMode(MOVE_Walking);
+	BufferedMovement->Velocity = FVector(720.0f, 0.0f, 0.0f);
+	BufferedMovement->StartCrouchOrSlide();
+	TestTrue(TEXT("Valid speed enters slide immediately"), BufferedMovement->IsSliding());
+	BufferedMovement->StopCrouchOrSlide();
+
+	BufferedMovement->Velocity = FVector(600.0f, 0.0f, 0.0f);
+	BufferedMovement->StartCrouchOrSlide();
+	TestTrue(TEXT("Second early Ctrl press queues slide"), BufferedMovement->IsSlideQueued());
+	BufferedMovement->StopCrouchOrSlide();
+	TestFalse(TEXT("Releasing Ctrl cancels queued slide"), BufferedMovement->IsSlideQueued());
+
+	SlowCharacter->Destroy();
+	BufferedCharacter->Destroy();
 	return true;
 }
 

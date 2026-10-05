@@ -12,7 +12,7 @@ The project contains the first multiplayer framework and first person Character 
 
 The generated Blank project already includes the Enhanced Input module and default input classes. ArenaDuel now contains `IA_Move`, `IA_Look`, `IA_Jump`, `IA_Sprint`, `IA_Crouch`, `IMC_Gameplay`, and configured Blueprint references created through Unreal Editor Python automation. Phase 4 adds a C++ movement component with sprint, crouch, slide, slide jump, air control tuning, stamina, momentum bounds, and basic traversal modes.
 
-Phase 3 technical validation is reproducible with `Tools/Tests/RunPhase3Validation.ps1`. Phase 4 validation is reproducible with `Tools/Tests/RunPhase4Validation.ps1`, which builds the editor target and runs both suites twice, including listen-server advanced-movement coverage. Phase 4 is a technical foundation only. Feel tuning, real-latency profiling, packet-loss behavior, and two-player traversal playtesting remain separate human checks; this is not final competitive network hardening.
+Phase 3 technical validation is reproducible with `Tools/Tests/RunPhase3Validation.ps1`. Phase 4 validation is reproducible with `Tools/Tests/RunPhase4Validation.ps1`, which builds the editor target and runs both suites twice, including listen-server advanced-movement coverage. Phase 4.4 adds the human-playtest fixes: normal FPS mouse pitch, bounded look rotation, forgiving crouch-to-slide input, a readable movement playground, and a development-only movement HUD. Technical validation is complete, while subjective feel, real-latency profiling, packet-loss behavior, and two-player traversal playtesting remain separate human checks; this is not final competitive network hardening.
 
 ## Engineering direction
 

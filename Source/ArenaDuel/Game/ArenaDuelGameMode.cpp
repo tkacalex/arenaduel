@@ -6,6 +6,7 @@
 #include "ArenaDuelGameState.h"
 #include "../Player/ArenaDuelPlayerController.h"
 #include "../Player/ArenaDuelPlayerState.h"
+#include "ArenaDuelMovementDebugHUD.h"
 
 AArenaDuelGameMode::AArenaDuelGameMode()
 {
@@ -13,4 +14,5 @@ AArenaDuelGameMode::AArenaDuelGameMode()
 	PlayerControllerClass = AArenaDuelPlayerController::StaticClass();
 	PlayerStateClass = AArenaDuelPlayerState::StaticClass();
 	DefaultPawnClass = AArenaDuelCharacter::StaticClass();
+	HUDClass = AArenaDuelMovementDebugHUD::StaticClass();
 }

@@ -6,6 +6,7 @@ INPUT_PATH = ROOT + "/Input"
 CHAR_PATH = ROOT + "/Characters"
 GAME_PATH = ROOT + "/Game"
 MAP_PATH = ROOT + "/Maps"
+DEV_MATERIAL_PATH = ROOT + "/Development"
 
 
 def log(message):
@@ -55,6 +56,22 @@ def load_or_create_blueprint(name, package_path, parent_class):
 def save(asset):
     if not unreal.EditorAssetLibrary.save_asset(asset.get_path_name(), only_if_is_dirty=False):
         raise RuntimeError("Could not save " + asset.get_path_name())
+
+
+def load_or_create_dev_material(name, color):
+    object_path = DEV_MATERIAL_PATH + "/" + name
+    material = unreal.load_object(None, object_path)
+    if not material:
+        factory = unreal.MaterialFactoryNew()
+        material = asset_tools().create_asset(name, DEV_MATERIAL_PATH, unreal.Material, factory)
+        if not material:
+            raise RuntimeError("Could not create development material " + object_path)
+        expression = unreal.MaterialEditingLibrary.create_material_expression(material, unreal.MaterialExpressionConstant3Vector, -300, 0)
+        expression.set_editor_property("constant", unreal.LinearColor(color[0], color[1], color[2], 1.0))
+        unreal.MaterialEditingLibrary.connect_material_property(expression, "RGB", unreal.MaterialProperty.MP_BASE_COLOR)
+        unreal.MaterialEditingLibrary.recompile_material(material)
+        save(material)
+    return material
 
 
 def compile_blueprint(blueprint):
@@ -193,7 +210,13 @@ def create_phase4_map():
     if current_package != object_path:
         unreal.EditorLevelLibrary.load_level(object_path)
 
-    def ensure_cube(label, location, scale):
+    floor_material = load_or_create_dev_material("M_Phase4Floor", (0.08, 0.10, 0.14))
+    wall_material = load_or_create_dev_material("M_Phase4Wall", (0.12, 0.28, 0.45))
+    obstacle_material = load_or_create_dev_material("M_Phase4Obstacle", (0.75, 0.25, 0.08))
+    mantle_material = load_or_create_dev_material("M_Phase4Mantle", (0.38, 0.16, 0.55))
+    safety_material = load_or_create_dev_material("M_Phase4Safety", (0.18, 0.18, 0.20))
+
+    def ensure_cube(label, location, scale, material=None):
         actors = unreal.EditorLevelLibrary.get_all_level_actors()
         actor = next((candidate for candidate in actors if candidate.get_actor_label() == label), None)
         if not actor:
@@ -203,13 +226,20 @@ def create_phase4_map():
         component.set_static_mesh(unreal.load_object(None, "/Engine/BasicShapes/Cube.Cube"))
         actor.set_actor_location(location, False, False)
         actor.set_actor_scale3d(scale)
+        if material:
+            component.set_material(0, material)
+        return actor
 
-    ensure_cube("Phase4_LongSprintLane", unreal.Vector(0, 0, -100), unreal.Vector(35, 8, 0.1))
-    ensure_cube("Phase4_SlideObstacle", unreal.Vector(700, 0, 25), unreal.Vector(1.2, 4, 1.25))
-    ensure_cube("Phase4_VaultObstacle", unreal.Vector(1100, 0, 50), unreal.Vector(1.0, 4, 2.0))
-    ensure_cube("Phase4_MantleLedge", unreal.Vector(1500, 0, 120), unreal.Vector(1.0, 4, 3.0))
-    ensure_cube("Phase4_LeftWall", unreal.Vector(800, 450, 180), unreal.Vector(8, 0.4, 3.0))
-    ensure_cube("Phase4_RightWall", unreal.Vector(800, -450, 180), unreal.Vector(8, 0.4, 3.0))
+    ensure_cube("Phase4_LongSprintLane", unreal.Vector(0, 0, -100), unreal.Vector(80, 30, 0.1), floor_material)
+    ensure_cube("Phase4_SlideObstacle", unreal.Vector(700, 0, 25), unreal.Vector(1.2, 4, 1.25), obstacle_material)
+    ensure_cube("Phase4_VaultObstacle", unreal.Vector(1100, 0, 50), unreal.Vector(1.0, 4, 2.0), obstacle_material)
+    ensure_cube("Phase4_MantleLedge", unreal.Vector(1500, 0, 120), unreal.Vector(1.0, 4, 3.0), mantle_material)
+    ensure_cube("Phase4_LeftWall", unreal.Vector(800, 450, 180), unreal.Vector(25, 0.4, 3.0), wall_material)
+    ensure_cube("Phase4_RightWall", unreal.Vector(800, -450, 180), unreal.Vector(25, 0.4, 3.0), wall_material)
+    ensure_cube("Phase4_NorthSafetyWall", unreal.Vector(0, 2400, 250), unreal.Vector(80, 0.4, 5.0), safety_material)
+    ensure_cube("Phase4_SouthSafetyWall", unreal.Vector(0, -2400, 250), unreal.Vector(80, 0.4, 5.0), safety_material)
+    ensure_cube("Phase4_WestSafetyWall", unreal.Vector(-3900, 0, 250), unreal.Vector(0.4, 30, 5.0), safety_material)
+    ensure_cube("Phase4_EastSafetyWall", unreal.Vector(3900, 0, 250), unreal.Vector(0.4, 30, 5.0), safety_material)
 
     def ensure_actor(label, actor_class, location, rotation):
         actors = unreal.EditorLevelLibrary.get_all_level_actors()
@@ -219,6 +249,24 @@ def create_phase4_map():
             actor.set_actor_label(label)
         actor.set_actor_location(location, False, False)
         actor.set_actor_rotation(rotation, False)
+        return actor
+
+    def ensure_label(label, text, location, rotation=unreal.Rotator(0, 180, 0), scale=2.0):
+        actors = unreal.EditorLevelLibrary.get_all_level_actors()
+        actor = next((candidate for candidate in actors if candidate.get_actor_label() == label and isinstance(candidate, unreal.TextRenderActor)), None)
+        if not actor:
+            actor = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.TextRenderActor, location, rotation)
+            actor.set_actor_label(label)
+        actor.set_actor_location(location, False, False)
+        actor.set_actor_rotation(rotation, False)
+        actor.set_actor_scale3d(unreal.Vector(scale, scale, scale))
+        component = actor.get_component_by_class(unreal.TextRenderComponent)
+        component.set_editor_property("text", text)
+        component.set_editor_property("text_render_color", unreal.Color(255, 235, 120, 255))
+        try:
+            component.set_editor_property("horizontal_alignment", 1)
+        except Exception:
+            pass
         return actor
 
     directional = ensure_actor("Phase4_DirectionalLight", unreal.DirectionalLight, unreal.Vector(0, 0, 500), unreal.Rotator(-45, -35, 0))
@@ -236,9 +284,22 @@ def create_phase4_map():
             pass
 
     ensure_actor("Phase4_SkyAtmosphere", unreal.SkyAtmosphere, unreal.Vector(0, 0, 0), unreal.Rotator(0, 0, 0))
-    if not any(isinstance(actor, unreal.PlayerStart) for actor in unreal.EditorLevelLibrary.get_all_level_actors()):
-        for location in [unreal.Vector(-500, 0, 100), unreal.Vector(500, 0, 100)]:
+    starts = [actor for actor in unreal.EditorLevelLibrary.get_all_level_actors() if isinstance(actor, unreal.PlayerStart)]
+    if len(starts) < 2:
+        for location in [unreal.Vector(-2500, 0, 100), unreal.Vector(-2500, 300, 100)]:
             unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.PlayerStart, location, unreal.Rotator(0, 0, 0))
+    else:
+        starts[0].set_actor_location(unreal.Vector(-2500, 0, 100), False, False)
+        starts[0].set_actor_rotation(unreal.Rotator(0, 0, 0), False)
+        starts[1].set_actor_location(unreal.Vector(-2500, 300, 100), False, False)
+        starts[1].set_actor_rotation(unreal.Rotator(0, 0, 0), False)
+
+    ensure_label("Phase4_LabelSprint", "SPRINT  SHIFT + W", unreal.Vector(-1900, 0, 220))
+    ensure_label("Phase4_LabelSlide", "SLIDE  CTRL WHILE SPRINTING", unreal.Vector(500, 0, 220), scale=1.5)
+    ensure_label("Phase4_LabelVault", "VAULT  JUMP AT LOW OBSTACLE", unreal.Vector(1050, 0, 260), scale=1.5)
+    ensure_label("Phase4_LabelMantle", "MANTLE  JUMP AT HIGH LEDGE", unreal.Vector(1450, 0, 380), scale=1.5)
+    ensure_label("Phase4_LabelWallRun", "WALL RUN  SPRINT + JUMP ALONG WALL", unreal.Vector(800, 650, 260), scale=1.5)
+    ensure_label("Phase4_LabelWallJump", "WALL JUMP  SPACE DURING WALL RUN", unreal.Vector(800, 800, 220), scale=1.5)
     unreal.EditorLevelLibrary.save_current_level()
     log("MAP_SAVED " + object_path)
     return object_path

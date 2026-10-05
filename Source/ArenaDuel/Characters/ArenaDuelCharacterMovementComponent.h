@@ -35,6 +35,7 @@ public:
 	float GetMaxStamina() const { return MaxStamina; }
 	bool WantsSprintIntent() const { return bWantsSprint; }
 	bool WantsCrouchSlideIntent() const { return bWantsCrouchOrSlide; }
+	bool IsSlideQueued() const { return bSlideQueued; }
 	void SetSprintIntentFromNetwork(bool bWantsSprintIntent);
 	void SetCrouchSlideIntentFromNetwork(bool bWantsCrouchSlideIntent);
 	void ConsumeStamina(float Amount);
@@ -80,6 +81,12 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
 	float SlideEndSpeed = 350.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
+	float SlideInputBuffer = 0.3f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
+	float SlideQueueMinSpeed = 560.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
 	float SlideJumpHorizontalRetention = 0.9f;
@@ -151,6 +158,8 @@ protected:
 
 	bool bWantsSprint = false;
 	bool bWantsCrouchOrSlide = false;
+	bool bSlideQueued = false;
+	float SlideInputBufferRemaining = 0.0f;
 	FVector WallNormal = FVector::ZeroVector;
 	UPROPERTY(Replicated)
 	float Stamina = 100.0f;

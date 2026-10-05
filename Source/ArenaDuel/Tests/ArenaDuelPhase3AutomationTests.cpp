@@ -90,6 +90,7 @@ struct FArenaDuelPhase3NetworkState : public FBasePIENetworkComponentState
 	FVector RemoteInitialLocation = FVector::ZeroVector;
 	float OwnedInitialYaw = 0.0f;
 	float OwnedInitialPitch = 0.0f;
+	float OwnedPitchAfterMouseUp = 0.0f;
 	float OwnedInitialServerLocationX = 0.0f;
 	float OwnedInitialServerYaw = 0.0f;
 };
@@ -222,7 +223,25 @@ NETWORK_TEST_CLASS(FArenaDuelPhase3NetworkTest, "ArenaDuel.Phase3.Network")
 			{
 				return State.OwnedPawn && !FMath::IsNearlyZero(FMath::FindDeltaAngleDegrees(State.OwnedInitialYaw, State.OwnedPawn->GetControlRotation().Yaw), 1.0f);
 			}, FTimespan::FromSeconds(5.0))
-			.ThenClient(TEXT("Stop horizontal look and inject vertical look"), 0, [](FArenaDuelPhase3NetworkState& State)
+			.ThenClient(TEXT("Stop horizontal look and inject mouse-up equivalent"), 0, [](FArenaDuelPhase3NetworkState& State)
+			{
+				if (UEnhancedInputLocalPlayerSubsystem* InputSubsystem = ArenaDuelPhase3Tests::GetLocalInputSubsystem(State.World->GetFirstPlayerController()))
+				{
+					InputSubsystem->StopContinuousInputInjectionForAction(ArenaDuelPhase3Tests::LoadAction(ArenaDuelPhase3Tests::LookAction));
+					InputSubsystem->StartContinuousInputInjectionForAction(ArenaDuelPhase3Tests::LoadAction(ArenaDuelPhase3Tests::LookAction), FInputActionValue(FVector2D(0.0f, -2.0f)), {}, {});
+				}
+			})
+			.UntilClient(TEXT("Mouse-up looks up without capsule pitch"), 0, [](FArenaDuelPhase3NetworkState& State)
+			{
+				if (!State.OwnedPawn)
+				{
+					return false;
+				}
+				const float PitchDelta = FMath::FindDeltaAngleDegrees(State.OwnedInitialPitch, State.OwnedPawn->GetControlRotation().Pitch);
+				State.OwnedPitchAfterMouseUp = State.OwnedPawn->GetControlRotation().Pitch;
+				return PitchDelta < -1.0f && FMath::Abs(FMath::FindDeltaAngleDegrees(0.0f, State.OwnedPitchAfterMouseUp)) <= 89.0f && FMath::IsNearlyZero(State.OwnedPawn->GetActorRotation().Pitch, 1.0f);
+			}, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Inject mouse-down equivalent"), 0, [](FArenaDuelPhase3NetworkState& State)
 			{
 				if (UEnhancedInputLocalPlayerSubsystem* InputSubsystem = ArenaDuelPhase3Tests::GetLocalInputSubsystem(State.World->GetFirstPlayerController()))
 				{
@@ -230,14 +249,15 @@ NETWORK_TEST_CLASS(FArenaDuelPhase3NetworkTest, "ArenaDuel.Phase3.Network")
 					InputSubsystem->StartContinuousInputInjectionForAction(ArenaDuelPhase3Tests::LoadAction(ArenaDuelPhase3Tests::LookAction), FInputActionValue(FVector2D(0.0f, 2.0f)), {}, {});
 				}
 			})
-			.UntilClient(TEXT("Vertical look changes pitch without capsule pitch"), 0, [](FArenaDuelPhase3NetworkState& State)
+			.UntilClient(TEXT("Mouse-down looks down"), 0, [](FArenaDuelPhase3NetworkState& State)
 			{
 				if (!State.OwnedPawn)
 				{
 					return false;
 				}
-				const float PitchDelta = FMath::FindDeltaAngleDegrees(State.OwnedInitialPitch, State.OwnedPawn->GetControlRotation().Pitch);
-				return !FMath::IsNearlyZero(PitchDelta, 1.0f) && FMath::IsNearlyZero(State.OwnedPawn->GetActorRotation().Pitch, 1.0f);
+				const float CurrentPitch = FRotator::NormalizeAxis(State.OwnedPawn->GetControlRotation().Pitch);
+				const float MouseUpPitch = FRotator::NormalizeAxis(State.OwnedPitchAfterMouseUp);
+				return CurrentPitch > MouseUpPitch + 1.0f && FMath::IsNearlyZero(State.OwnedPawn->GetActorRotation().Pitch, 1.0f);
 			}, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Inject native jump"), 0, [](FArenaDuelPhase3NetworkState& State)
 			{

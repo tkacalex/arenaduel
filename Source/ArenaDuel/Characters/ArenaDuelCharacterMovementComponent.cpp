@@ -117,6 +117,7 @@ UArenaDuelCharacterMovementComponent::UArenaDuelCharacterMovementComponent(const
 	MaxWalkSpeedCrouched = CrouchSpeed;
 	AirControl = AirControlTuning;
 	bCanWalkOffLedgesWhenCrouching = true;
+	NavAgentProps.bCanCrouch = true;
 	SetIsReplicatedByDefault(true);
 }
 
@@ -141,10 +142,19 @@ void UArenaDuelCharacterMovementComponent::StartCrouchOrSlide()
 	bWantsCrouchOrSlide = true;
 	if (!IsFalling() && Velocity.Size2D() >= SlideMinSpeed)
 	{
+		bSlideQueued = false;
+		SlideInputBufferRemaining = 0.0f;
 		EnterSlide();
+	}
+	else if (!IsFalling() && bWantsSprint && Velocity.Size2D() >= SlideQueueMinSpeed)
+	{
+		bSlideQueued = true;
+		SlideInputBufferRemaining = SlideInputBuffer;
 	}
 	else if (CharacterOwner)
 	{
+		bSlideQueued = false;
+		SlideInputBufferRemaining = 0.0f;
 		CharacterOwner->Crouch();
 	}
 }
@@ -152,6 +162,8 @@ void UArenaDuelCharacterMovementComponent::StartCrouchOrSlide()
 void UArenaDuelCharacterMovementComponent::StopCrouchOrSlide()
 {
 	bWantsCrouchOrSlide = false;
+	bSlideQueued = false;
+	SlideInputBufferRemaining = 0.0f;
 	if (IsSliding())
 	{
 		ExitSlide();
@@ -247,6 +259,25 @@ void UArenaDuelCharacterMovementComponent::UpdateCharacterStateBeforeMovement(fl
 	MaxWalkSpeed = WalkSpeed;
 	MaxWalkSpeedCrouched = CrouchSpeed;
 	AirControl = AirControlTuning;
+	if (bSlideQueued)
+	{
+		SlideInputBufferRemaining = FMath::Max(0.0f, SlideInputBufferRemaining - DeltaSeconds);
+		if (!bWantsCrouchOrSlide || IsFalling())
+		{
+			bSlideQueued = false;
+		}
+		else if (Velocity.Size2D() >= SlideMinSpeed)
+		{
+			bSlideQueued = false;
+			SlideInputBufferRemaining = 0.0f;
+			EnterSlide();
+		}
+		else if (SlideInputBufferRemaining <= 0.0f)
+		{
+			bSlideQueued = false;
+			CharacterOwner->Crouch();
+		}
+	}
 
 	if (IsSliding())
 	{
@@ -388,8 +419,8 @@ bool UArenaDuelCharacterMovementComponent::TrySlideJump()
 		return false;
 	}
 	Velocity = Velocity.GetClampedToMaxSize2D(GlobalMomentumCap) * SlideJumpHorizontalRetention;
-	Velocity.Z = JumpZVelocity * SlideJumpVerticalMultiplier;
 	ExitSlide();
+	Velocity.Z = JumpZVelocity * SlideJumpVerticalMultiplier;
 	SetMovementMode(MOVE_Falling);
 	return true;
 }
@@ -516,7 +547,14 @@ void UArenaDuelCharacterMovementComponent::ExitSlide()
 	{
 		return;
 	}
-	SetMovementMode(IsMovingOnGround() ? MOVE_Walking : MOVE_Falling);
+	bool bHasWalkableFloor = false;
+	if (UpdatedComponent)
+	{
+		FFindFloorResult FloorResult;
+		FindFloor(UpdatedComponent->GetComponentLocation(), FloorResult, false);
+		bHasWalkableFloor = FloorResult.IsWalkableFloor();
+	}
+	SetMovementMode(bHasWalkableFloor ? MOVE_Walking : MOVE_Falling);
 	if (!bWantsCrouchOrSlide && CharacterOwner)
 	{
 		CharacterOwner->UnCrouch();
