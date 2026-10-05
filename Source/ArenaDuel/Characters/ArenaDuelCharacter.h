@@ -10,6 +10,7 @@ class UCameraComponent;
 class UInputAction;
 class UInputMappingContext;
 class UArenaDuelCharacterMovementComponent;
+class UArenaDuelWeaponComponent;
 struct FInputActionValue;
 
 UCLASS()
@@ -22,6 +23,8 @@ public:
 
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	UArenaDuelCharacterMovementComponent* GetArenaDuelMovementComponent() const;
+	UCameraComponent* GetFirstPersonCamera() const { return FirstPersonCamera; }
+	UArenaDuelWeaponComponent* GetWeaponComponent() const { return WeaponComponent; }
 	bool IsCrouchInputHeld() const { return bCrouchInputHeld; }
 
 protected:
@@ -37,6 +40,13 @@ protected:
 	void CrouchCompleted();
 	void SlideStarted();
 	void SlideCompleted();
+	void WeaponFireStarted();
+	void WeaponFireCompleted();
+	void WeaponReloadStarted();
+	void Weapon1Started();
+	void Weapon2Started();
+	void Weapon3Started();
+	void Weapon4Started();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCameraComponent> FirstPersonCamera;
@@ -61,6 +71,27 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> SlideAction;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> FireAction;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> ReloadAction;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> Weapon1Action;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> Weapon2Action;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> Weapon3Action;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> Weapon4Action;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapons", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UArenaDuelWeaponComponent> WeaponComponent;
 
 	bool bCrouchInputHeld = false;
 };

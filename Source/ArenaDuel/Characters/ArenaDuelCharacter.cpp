@@ -2,6 +2,7 @@
 
 #include "ArenaDuelCharacter.h"
 #include "ArenaDuelCharacterMovementComponent.h"
+#include "../Weapons/ArenaDuelWeaponComponent.h"
 
 #include "../ArenaDuel.h"
 #include "Camera/CameraComponent.h"
@@ -29,6 +30,7 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 
 	GetCharacterMovement()->bOrientRotationToMovement = false;
 	GetCharacterMovement()->bUseControllerDesiredRotation = false;
+	WeaponComponent = CreateDefaultSubobject<UArenaDuelWeaponComponent>(TEXT("WeaponComponent"));
 }
 
 UArenaDuelCharacterMovementComponent* AArenaDuelCharacter::GetArenaDuelMovementComponent() const
@@ -146,6 +148,18 @@ void AArenaDuelCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 	{
 		UE_LOG(LogArenaDuel, Warning, TEXT("ArenaDuelCharacter has no SlideAction configured."));
 	}
+
+	if (FireAction)
+	{
+		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &AArenaDuelCharacter::WeaponFireStarted);
+		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Completed, this, &AArenaDuelCharacter::WeaponFireCompleted);
+		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Canceled, this, &AArenaDuelCharacter::WeaponFireCompleted);
+	}
+	if (ReloadAction) EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &AArenaDuelCharacter::WeaponReloadStarted);
+	if (Weapon1Action) EnhancedInputComponent->BindAction(Weapon1Action, ETriggerEvent::Started, this, &AArenaDuelCharacter::Weapon1Started);
+	if (Weapon2Action) EnhancedInputComponent->BindAction(Weapon2Action, ETriggerEvent::Started, this, &AArenaDuelCharacter::Weapon2Started);
+	if (Weapon3Action) EnhancedInputComponent->BindAction(Weapon3Action, ETriggerEvent::Started, this, &AArenaDuelCharacter::Weapon3Started);
+	if (Weapon4Action) EnhancedInputComponent->BindAction(Weapon4Action, ETriggerEvent::Started, this, &AArenaDuelCharacter::Weapon4Started);
 }
 
 void AArenaDuelCharacter::Move(const FInputActionValue& Value)
@@ -284,3 +298,11 @@ void AArenaDuelCharacter::SlideCompleted()
 		MovementComponent->StopSlide();
 	}
 }
+
+void AArenaDuelCharacter::WeaponFireStarted() { if (WeaponComponent) WeaponComponent->StartFire(); }
+void AArenaDuelCharacter::WeaponFireCompleted() { if (WeaponComponent) WeaponComponent->StopFire(); }
+void AArenaDuelCharacter::WeaponReloadStarted() { if (WeaponComponent) WeaponComponent->Reload(); }
+void AArenaDuelCharacter::Weapon1Started() { if (WeaponComponent) WeaponComponent->EquipWeapon(0); }
+void AArenaDuelCharacter::Weapon2Started() { if (WeaponComponent) WeaponComponent->EquipWeapon(1); }
+void AArenaDuelCharacter::Weapon3Started() { if (WeaponComponent) WeaponComponent->EquipWeapon(2); }
+void AArenaDuelCharacter::Weapon4Started() { if (WeaponComponent) WeaponComponent->EquipWeapon(3); }
