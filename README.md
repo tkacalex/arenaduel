@@ -12,6 +12,8 @@ The project contains the first multiplayer framework and first person Character 
 
 The generated Blank project already includes the Enhanced Input module and default input classes. ArenaDuel now contains `IA_Move`, `IA_Look`, `IA_Jump`, `IMC_Gameplay`, and configured Blueprint references created through Unreal Editor Python automation.
 
+Phase 3 technical validation is reproducible with `Tools/Tests/RunPhase3Validation.ps1`. It builds the editor target and runs the CQTest map and two-player listen-server checks twice, including automated Enhanced Input move, look, and jump injection. Phase 4 advanced movement has not started.
+
 ## Engineering direction
 
 1. Design multiplayer behavior from the start.

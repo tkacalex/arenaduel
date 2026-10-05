@@ -28,6 +28,8 @@ Current state: `REPOSITORY BUILD = PASS`.
 
 `Tools/Editor/SetupPhase3Assets.py` creates or repairs the Phase 3 Input Actions, Mapping Context, Character Blueprint, GameMode Blueprint, and temporary test map through Unreal Engine 5.8.3 itself. `Tools/Editor/ValidatePhase3Assets.py` reloads those packages and verifies value types, serialized modifiers, Blueprint defaults, parent classes, GameMode pawn selection, and map actors.
 
+`Tools/Tests/RunPhase3Validation.ps1` is the repeatable technical validation entry point. It builds `ArenaDuelEditor`, runs the editor-only CQTest Phase 3 map and two-player listen-server tests twice, injects Enhanced Input through the official subsystem API, and fails on a missing or failed JSON automation result. It does not replace subjective human feel testing, but no manual technical setup is required for the automated checks.
+
 The automation plugins are editor only and are not listed in `ArenaDuel.uproject` after setup. If the script must be rerun, enable `PythonScriptPlugin` and `EditorScriptingUtilities` temporarily, run the script with `UnrealEditor-Cmd.exe`, run the validation script, and remove those temporary project plugin entries before committing.
 
-The Android File Server editor setting is disabled for this Win64-only development milestone. This prevents UE from regenerating a local `SecurityToken` in `Config/DefaultEngine.ini`.
+The Android File Server editor settings section is intentionally absent for this Win64-only development milestone. ArenaDuel does not use Android File Server, so removing that project-owned section prevents Unreal from regenerating a local `SecurityToken` in tracked configuration.

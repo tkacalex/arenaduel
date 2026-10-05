@@ -10,7 +10,7 @@ Complete.
 
 ## Phase 3: First person network Character foundation
 
-Current. The C++ first person camera, walk, look, jump, possession-safe Enhanced Input lifecycle, multiplayer-safe Character foundation, Unreal input assets, Blueprint defaults, and temporary movement test map are configured and verified. Two-player network validation remains a human test step.
+Complete. The C++ first person camera, walk, look, jump, possession-safe Enhanced Input lifecycle, multiplayer-safe Character foundation, Unreal input assets, Blueprint defaults, temporary movement test map, and automated two-player listen-server validation are configured and verified.
 
 ## Phase 4: Advanced movement
 

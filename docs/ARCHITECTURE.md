@@ -86,3 +86,7 @@ The Phase 3 input and Blueprint assets live under `Content/ArenaDuel/`:
 7. `Maps/L_Phase3Test` is a temporary flat movement and two PlayerStart test map.
 
 These assets were created and saved through the official Unreal Python Editor API. `Tools/Editor/SetupPhase3Assets.py` is idempotent. To rerun it, temporarily enable the UE `PythonScriptPlugin` and `EditorScriptingUtilities` editor plugins in the project, run the script with UnrealEditor-Cmd, then restore the project plugin list. The runtime project does not retain an editor scripting dependency.
+
+## Automated Phase 3 validation
+
+`Source/ArenaDuel/Tests/ArenaDuelPhase3AutomationTests.cpp` is editor-only CQTest code. It loads the temporary map, starts a listen server with one client, verifies framework ownership and first-person camera composition, waits for local Enhanced Input initialization, injects move/look/jump actions, and checks movement, control rotation, jump state, server reachability, and remote-pawn isolation. `Tools/Tests/RunPhase3Validation.ps1` builds and runs this suite twice. CQTest's temporary PIE package warnings are engine test noise; any automation error or missing result fails the runner.
