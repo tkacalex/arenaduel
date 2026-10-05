@@ -37,10 +37,15 @@ public:
 	bool WantsCrouchSlideIntent() const { return bWantsCrouchOrSlide; }
 	void SetSprintIntentFromNetwork(bool bWantsSprintIntent);
 	void SetCrouchSlideIntentFromNetwork(bool bWantsCrouchSlideIntent);
+	void ConsumeStamina(float Amount);
 	bool IsMantling() const { return MovementMode == MOVE_Custom && CustomMovementMode == static_cast<uint8>(EArenaDuelCustomMovementMode::Mantle); }
 
 	bool TrySlideJump();
 	bool TryWallJump();
+	void QueueAdvancedJump(bool bWallJump);
+	void ClearAdvancedJumpIntent();
+	bool HasAdvancedJumpIntent() const { return bAdvancedJumpRequested; }
+	bool WantsWallJumpIntent() const { return bAdvancedWallJump; }
 
 	virtual float GetMaxSpeed() const override;
 	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
@@ -142,7 +147,6 @@ protected:
 	void ExitSlide();
 	void EnterWallRun(const FVector& WallNormal);
 	void ExitWallRun();
-	void ConsumeStamina(float Amount);
 
 	bool bWantsSprint = false;
 	bool bWantsCrouchOrSlide = false;
@@ -150,6 +154,8 @@ protected:
 	float Stamina = 100.0f;
 	float TimeSinceStaminaUse = 0.0f;
 	float WallRunElapsed = 0.0f;
+	bool bAdvancedJumpRequested = false;
+	bool bAdvancedWallJump = false;
 	float WallReattachTimeRemaining = 0.0f;
 	FVector LastWallNormal = FVector::ZeroVector;
 	FVector TraversalStart = FVector::ZeroVector;

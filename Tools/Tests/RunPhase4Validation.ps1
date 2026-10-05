@@ -12,7 +12,20 @@ if (-not (Test-Path -LiteralPath $ProjectFile)) { throw "Missing project: $Proje
 & $BuildTool ArenaDuelEditor Win64 Development "-Project=$ProjectFile" -WaitMutex -FromMsBuild
 if ($LASTEXITCODE -ne 0) { throw "ArenaDuelEditor build failed with exit code $LASTEXITCODE" }
 
-function Invoke-Suite([string]$Suite, [string]$Name, [int]$ExpectedTests, [int]$Run) {
+function Remove-GeneratedSecurityToken {
+    # UE may regenerate the Win64-irrelevant Android File Server section during editor startup.
+    # Remove only that generated section after the process exits; never print or stage its value.
+    $engineConfig = Join-Path $ProjectRoot 'Config\DefaultEngine.ini'
+    if (-not (Test-Path -LiteralPath $engineConfig)) { return }
+    $contents = [IO.File]::ReadAllText($engineConfig)
+    $cleaned = [regex]::Replace($contents, '(?ms)^\[/Script/AndroidFileServerEditor\.AndroidFileServerRuntimeSettings\].*?\z', '')
+    $cleaned = $cleaned.TrimEnd("`r", "`n") + "`r`n"
+    if ($cleaned -ne $contents) {
+        [IO.File]::WriteAllText($engineConfig, $cleaned, (New-Object Text.UTF8Encoding($false)))
+    }
+}
+
+function Invoke-Suite([string]$Suite, [string]$Name, [string[]]$RequiredTests, [int]$Run) {
     $reportPath = Join-Path $ReportRoot "$Name-$Run"
     $logPath = Join-Path $LogRoot "Phase4-$Name-$Run.log"
     New-Item -ItemType Directory -Force -Path $reportPath | Out-Null
@@ -21,17 +34,46 @@ function Invoke-Suite([string]$Suite, [string]$Name, [int]$ExpectedTests, [int]$
         '-TestExit=Automation Test Queue Empty' `
         "-ReportExportPath=$reportPath" `
         "-abslog=$logPath"
+    Remove-GeneratedSecurityToken
     if ($LASTEXITCODE -ne 0) { throw "$Suite run $Run failed with exit code $LASTEXITCODE" }
     $reportFile = Join-Path $reportPath 'index.json'
     if (-not (Test-Path -LiteralPath $reportFile)) { throw "Missing report: $reportFile" }
     $report = Get-Content -LiteralPath $reportFile -Raw | ConvertFrom-Json
     if ($report.failed -ne 0 -or $report.notRun -ne 0 -or $report.inProcess -ne 0) { throw "$Suite reported failures" }
-    if (($report.succeeded + $report.succeededWithWarnings) -lt $ExpectedTests) { throw "$Suite did not execute the expected tests" }
+    $executed = @($report.tests | ForEach-Object { $_.fullTestPath })
+    foreach ($required in $RequiredTests) {
+        if (-not ($executed -contains $required)) { throw "$Suite did not execute required test: $required" }
+    }
 }
 
+$Phase3Tests = @(
+    'ArenaDuel.Phase3.Network.FArenaDuelPhase3NetworkTest.FrameworkAndInputOwnership',
+    'ArenaDuel.Phase3.MapRuntime'
+)
+$Phase4Tests = @(
+    'ArenaDuel.Phase4.MapAndAssets',
+    'ArenaDuel.Phase4.MovementState',
+    'ArenaDuel.Phase4.Sprint',
+    'ArenaDuel.Phase4.Crouch',
+    'ArenaDuel.Phase4.Slide',
+    'ArenaDuel.Phase4.SlideJump',
+    'ArenaDuel.Phase4.AirControlTrajectory',
+    'ArenaDuel.Phase4.StaminaLifecycle',
+    'ArenaDuel.Phase4.WallRunEntry',
+    'ArenaDuel.Phase4.WallRunInvalidCases',
+    'ArenaDuel.Phase4.WallRunExit',
+    'ArenaDuel.Phase4.WallRunReattach',
+    'ArenaDuel.Phase4.WallJumpBehavior',
+    'ArenaDuel.Phase4.VaultProgression',
+    'ArenaDuel.Phase4.VaultInvalidCases',
+    'ArenaDuel.Phase4.MantleProgression',
+    'ArenaDuel.Phase4.MantleInvalidCases',
+    'ArenaDuel.Phase4.TraversalCollisionSafety'
+)
+
 for ($run = 1; $run -le 2; $run++) {
-    Invoke-Suite 'ArenaDuel.Phase3' 'Phase3' 2 $run
-    Invoke-Suite 'ArenaDuel.Phase4' 'Phase4' 13 $run
+    Invoke-Suite 'ArenaDuel.Phase3' 'Phase3' $Phase3Tests $run
+    Invoke-Suite 'ArenaDuel.Phase4' 'Phase4' $Phase4Tests $run
 }
 
 Write-Output 'PHASE4_VALIDATION_PASS'

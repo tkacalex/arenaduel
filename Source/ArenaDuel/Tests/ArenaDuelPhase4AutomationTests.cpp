@@ -140,6 +140,54 @@ namespace ArenaDuelPhase4HardeningTests
 	{
 		return Character ? Character->GetArenaDuelMovementComponent() : nullptr;
 	}
+
+	static bool IsFinite(const FVector& Value)
+	{
+		return FMath::IsFinite(Value.X) && FMath::IsFinite(Value.Y) && FMath::IsFinite(Value.Z);
+	}
+
+	static void AdvanceCustomMovement(UArenaDuelCharacterMovementComponent* Movement, int32 Steps, float DeltaSeconds = 0.016f)
+	{
+		if (!Movement)
+		{
+			return;
+		}
+		for (int32 Index = 0; Index < Steps; ++Index)
+		{
+			Movement->UpdateCharacterStateBeforeMovement(DeltaSeconds);
+			if (Movement->MovementMode == MOVE_Custom)
+			{
+				Movement->PhysCustom(DeltaSeconds, Index);
+			}
+			else if (Movement->IsFalling())
+			{
+				Movement->PhysFalling(DeltaSeconds, Index);
+			}
+		}
+	}
+
+	static bool IsCapsuleOverlapping(AArenaDuelCharacter* Character)
+	{
+		if (!Character || !Character->GetWorld() || !Character->GetCapsuleComponent())
+		{
+			return true;
+		}
+		const UCapsuleComponent* Capsule = Character->GetCapsuleComponent();
+		const FCollisionShape Shape = FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight());
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelTestOverlap), false, Character);
+		return Character->GetWorld()->OverlapBlockingTestByChannel(Character->GetActorLocation(), Character->GetActorQuat(), ECC_Pawn, Shape, Params);
+	}
+
+	static AArenaDuelCharacter* SpawnFalling(UWorld* World, const FVector& Location, const FVector& InitialVelocity)
+	{
+		AArenaDuelCharacter* Character = SpawnCharacter(World, Location);
+		if (UArenaDuelCharacterMovementComponent* Move = Movement(Character))
+		{
+			Move->SetMovementMode(MOVE_Falling);
+			Move->Velocity = InitialVelocity;
+		}
+		return Character;
+	}
 }
 
 #define ARENA_PHASE4_COMPONENT_TEST(TestName, TestPath, Body) \
@@ -176,32 +224,62 @@ ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4SlideJumpTest, "ArenaDuel.Phase4.Sli
 	TestTrue(TEXT("Slide jump accepted"), bJumped); TestEqual(TEXT("Slide jump falls"), Move->MovementMode, MOVE_Falling); TestTrue(TEXT("Slide jump rises"), Move->Velocity.Z > 0.0f); return true;
 })
 
-ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4AirControlTest, "ArenaDuel.Phase4.AirControl", {
-	UArenaDuelCharacterMovementComponent* Move = nullptr;
-	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); Move = ArenaDuelPhase4HardeningTests::Movement(ArenaDuelPhase4HardeningTests::SpawnCharacter(GEditor->GetEditorWorldContext().World(), FVector::ZeroVector));
-	TestNotNull(TEXT("Air control movement"), Move); if (Move) { Move->SetMovementMode(MOVE_Falling); TestTrue(TEXT("Air control is enabled"), Move->AirControl > 0.0f && Move->AirControl < 1.0f); TestTrue(TEXT("Air control tuning matches configuration"), FMath::IsNearlyEqual(Move->AirControl, Move->AirControlTuning)); } return true;
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4AirControlTrajectoryTest, "ArenaDuel.Phase4.AirControlTrajectory", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World();
+	AArenaDuelCharacter* NoInput = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(0.0f, 0.0f, 300.0f), FVector(900.0f, 0.0f, 0.0f));
+	AArenaDuelCharacter* Lateral = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(0.0f, 0.0f, 300.0f), FVector(900.0f, 0.0f, 0.0f));
+	UArenaDuelCharacterMovementComponent* A = ArenaDuelPhase4HardeningTests::Movement(NoInput); UArenaDuelCharacterMovementComponent* B = ArenaDuelPhase4HardeningTests::Movement(Lateral);
+	TestNotNull(TEXT("No-input movement"), A); TestNotNull(TEXT("Lateral movement"), B);
+	if (A && B) { for (int32 Index = 0; Index < 20; ++Index) { Lateral->AddMovementInput(FVector::YAxisVector, 1.0f); A->TickComponent(0.016f, LEVELTICK_All, nullptr); B->TickComponent(0.016f, LEVELTICK_All, nullptr); } const FVector DeltaA = NoInput->GetActorLocation() - FVector(0.0f, 0.0f, 300.0f); const FVector DeltaB = Lateral->GetActorLocation() - FVector(0.0f, 0.0f, 300.0f); TestTrue(TEXT("Air control creates lateral displacement"), FMath::Abs(DeltaB.Y - DeltaA.Y) > 1.0f); TestTrue(TEXT("Forward momentum is retained"), B->Velocity.X > 0.0f); TestTrue(TEXT("Air speed is capped"), B->Velocity.Size2D() <= B->GlobalMomentumCap + 1.0f); TestTrue(TEXT("Air velocity is finite"), ArenaDuelPhase4HardeningTests::IsFinite(B->Velocity)); TestTrue(TEXT("Air location is finite"), ArenaDuelPhase4HardeningTests::IsFinite(Lateral->GetActorLocation())); }
+	return true;
 })
 
-ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4StaminaTest, "ArenaDuel.Phase4.Stamina", {
-	UArenaDuelCharacterMovementComponent* Move = nullptr;
-	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); Move = ArenaDuelPhase4HardeningTests::Movement(ArenaDuelPhase4HardeningTests::SpawnCharacter(GEditor->GetEditorWorldContext().World(), FVector::ZeroVector));
-	TestNotNull(TEXT("Stamina movement"), Move); if (Move) { TestTrue(TEXT("Stamina starts full"), FMath::IsNearlyEqual(Move->GetStamina(), Move->GetMaxStamina())); TestTrue(TEXT("Stamina settings valid"), Move->GetMaxStamina() > 0.0f && Move->WallRunDrain > 0.0f && Move->StaminaRegenRate > 0.0f); } return true;
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4StaminaLifecycleTest, "ArenaDuel.Phase4.StaminaLifecycle", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World(); AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(800.0f, 390.0f, 100.0f), FVector(900.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character); TestNotNull(TEXT("Stamina movement"), Move); if (!Move) return false;
+	Move->StartSprint(); Move->UpdateCharacterStateBeforeMovement(0.016f); TestTrue(TEXT("Wall run starts for stamina test"), Move->IsWallRunning()); const float Initial = Move->GetStamina(); Move->PhysCustom(0.25f, 0); const float DuringRun = Move->GetStamina(); TestTrue(TEXT("Wall run drains stamina"), DuringRun < Initial); TestTrue(TEXT("Stamina remains nonnegative"), DuringRun >= 0.0f); Move->ConsumeStamina(Move->GetMaxStamina()); Move->PhysCustom(0.016f, 0); TestFalse(TEXT("Exhaustion exits wall run"), Move->IsWallRunning()); const float Drained = Move->GetStamina(); Move->TickComponent(Move->StaminaRegenDelay * 0.5f, LEVELTICK_All, nullptr); TestTrue(TEXT("Regen delay is respected"), Move->GetStamina() <= Drained); Move->TickComponent(Move->StaminaRegenDelay * 2.0f, LEVELTICK_All, nullptr); TestTrue(TEXT("Regen begins after delay"), Move->GetStamina() > Drained); const float Regenerated = Move->GetStamina(); Move->ConsumeStamina(10.0f); Move->TickComponent(Move->StaminaRegenDelay * 0.5f, LEVELTICK_All, nullptr); TestTrue(TEXT("Second use resets delay"), Move->GetStamina() <= Regenerated - 9.0f); Move->TickComponent(Move->StaminaRegenDelay * 2.0f, LEVELTICK_All, nullptr); TestTrue(TEXT("Second regeneration begins"), Move->GetStamina() > Regenerated - 10.0f); TestTrue(TEXT("Stamina remains capped"), Move->GetStamina() <= Move->GetMaxStamina()); return true;
 })
 
-ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4WallRunTest, "ArenaDuel.Phase4.WallRun", {
-	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World(); AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnCharacter(World, FVector(800.0f, 390.0f, 100.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character); Move->SetMovementMode(MOVE_Falling); Move->Velocity = FVector(900.0f, 0.0f, 0.0f); Move->StartSprint(); Move->UpdateCharacterStateBeforeMovement(0.016f); TestTrue(TEXT("Valid wall enters wall run"), Move->IsWallRunning()); return true;
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4WallRunEntryTest, "ArenaDuel.Phase4.WallRunEntry", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World(); AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(800.0f, 390.0f, 100.0f), FVector(900.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character); Move->StartSprint(); Move->UpdateCharacterStateBeforeMovement(0.016f); TestTrue(TEXT("Valid wall enters wall run"), Move->IsWallRunning()); TestEqual(TEXT("Wall run custom mode"), Move->CustomMovementMode, static_cast<uint8>(EArenaDuelCustomMovementMode::WallRun)); return true;
 })
 
-ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4WallJumpTest, "ArenaDuel.Phase4.WallJump", {
-	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World(); AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnCharacter(World, FVector(800.0f, 390.0f, 100.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character); Move->SetMovementMode(MOVE_Falling); Move->Velocity = FVector(900.0f, 0.0f, 0.0f); Move->StartSprint(); Move->UpdateCharacterStateBeforeMovement(0.016f); const bool bJumped = Move->TryWallJump(); TestTrue(TEXT("Wall jump accepted"), bJumped); TestEqual(TEXT("Wall jump falls"), Move->MovementMode, MOVE_Falling); TestTrue(TEXT("Wall jump rises"), Move->Velocity.Z > 0.0f); return true;
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4WallRunInvalidCasesTest, "ArenaDuel.Phase4.WallRunInvalidCases", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World();
+	AArenaDuelCharacter* NoWall = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(0.0f, 0.0f, 300.0f), FVector(900.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* NoWallMove = ArenaDuelPhase4HardeningTests::Movement(NoWall); NoWallMove->StartSprint(); NoWallMove->UpdateCharacterStateBeforeMovement(0.016f); TestFalse(TEXT("No wall rejects wall run"), NoWallMove->IsWallRunning());
+	AArenaDuelCharacter* Slow = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(800.0f, 390.0f, 100.0f), FVector(200.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* SlowMove = ArenaDuelPhase4HardeningTests::Movement(Slow); SlowMove->StartSprint(); SlowMove->UpdateCharacterStateBeforeMovement(0.016f); TestFalse(TEXT("Insufficient speed rejects wall run"), SlowMove->IsWallRunning());
+	AArenaDuelCharacter* Empty = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(800.0f, 390.0f, 100.0f), FVector(900.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* EmptyMove = ArenaDuelPhase4HardeningTests::Movement(Empty); EmptyMove->ConsumeStamina(EmptyMove->GetMaxStamina()); EmptyMove->StartSprint(); EmptyMove->UpdateCharacterStateBeforeMovement(0.016f); TestFalse(TEXT("Empty stamina rejects wall run"), EmptyMove->IsWallRunning()); return true;
 })
 
-ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4VaultTest, "ArenaDuel.Phase4.Vault", {
-	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World(); AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnCharacter(World, FVector(600.0f, 0.0f, 100.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character); TestNotNull(TEXT("Vault movement"), Move); if (!Move) return false; Move->SetMovementMode(MOVE_Falling); Move->Velocity = FVector(800.0f, 0.0f, 0.0f); Move->UpdateCharacterStateBeforeMovement(0.016f); TestTrue(TEXT("Traversal attempt remains safe"), Move->MovementMode == MOVE_Falling || Move->IsMantling()); return true;
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4WallRunExitTest, "ArenaDuel.Phase4.WallRunExit", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World(); AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(800.0f, 390.0f, 100.0f), FVector(900.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character); Move->StartSprint(); Move->UpdateCharacterStateBeforeMovement(0.016f); TestTrue(TEXT("Exit test enters wall run"), Move->IsWallRunning()); Character->SetActorLocation(FVector(800.0f, 0.0f, 300.0f)); Move->PhysCustom(0.016f, 0); TestFalse(TEXT("Lost wall exits"), Move->IsWallRunning()); TestTrue(TEXT("Exit velocity remains finite"), ArenaDuelPhase4HardeningTests::IsFinite(Move->Velocity)); return true;
 })
 
-ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4MantleTest, "ArenaDuel.Phase4.Mantle", {
-	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World(); AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnCharacter(World, FVector(1000.0f, 0.0f, 100.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character); TestNotNull(TEXT("Mantle movement"), Move); if (!Move) return false; Move->SetMovementMode(MOVE_Falling); Move->Velocity = FVector(800.0f, 0.0f, 0.0f); Move->UpdateCharacterStateBeforeMovement(0.016f); TestTrue(TEXT("Mantle traversal state is safe"), Move->MovementMode == MOVE_Falling || Move->IsMantling()); return true;
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4WallRunReattachTest, "ArenaDuel.Phase4.WallRunReattach", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World(); AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(800.0f, 390.0f, 100.0f), FVector(900.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character); Move->StartSprint(); Move->UpdateCharacterStateBeforeMovement(0.016f); TestTrue(TEXT("Reattach test enters wall run"), Move->IsWallRunning()); Move->TryWallJump(); Move->SetMovementMode(MOVE_Falling); Move->Velocity = FVector(900.0f, 0.0f, 0.0f); Move->UpdateCharacterStateBeforeMovement(0.0f); TestFalse(TEXT("Same wall lockout applies"), Move->IsWallRunning()); Move->UpdateCharacterStateBeforeMovement(Move->WallReattachCooldown + 0.01f); TestTrue(TEXT("Same wall can reattach after cooldown"), Move->IsWallRunning()); return true;
+})
+
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4WallJumpBehaviorTest, "ArenaDuel.Phase4.WallJumpBehavior", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World(); AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(800.0f, 390.0f, 100.0f), FVector(900.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character); Move->StartSprint(); Move->UpdateCharacterStateBeforeMovement(0.016f); const bool bJumped = Move->TryWallJump(); TestTrue(TEXT("Wall jump accepted"), bJumped); TestFalse(TEXT("Wall jump exits wall run"), Move->IsWallRunning()); TestEqual(TEXT("Wall jump falls"), Move->MovementMode, MOVE_Falling); TestTrue(TEXT("Wall jump rises"), Move->Velocity.Z > 0.0f); TestTrue(TEXT("Wall jump moves away from wall"), Move->Velocity.Y < 0.0f); TestTrue(TEXT("Wall jump velocity is finite"), ArenaDuelPhase4HardeningTests::IsFinite(Move->Velocity)); return true;
+})
+
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4VaultProgressionTest, "ArenaDuel.Phase4.VaultProgression", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World(); AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(930.0f, 0.0f, 88.0f), FVector(800.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character); const FVector Start = Character->GetActorLocation(); Move->UpdateCharacterStateBeforeMovement(0.016f); TestEqual(TEXT("Vault starts custom traversal"), Move->CustomMovementMode, static_cast<uint8>(EArenaDuelCustomMovementMode::Vault)); bool bMoved = false; for (int32 Index = 0; Index < 20 && Move->MovementMode == MOVE_Custom; ++Index) { const FVector Before = Character->GetActorLocation(); Move->PhysCustom(0.016f, Index); bMoved |= !Character->GetActorLocation().Equals(Before, 0.1f); } AddInfo(FString::Printf(TEXT("Vault final location: %s"), *Character->GetActorLocation().ToString())); TestTrue(TEXT("Vault progresses over multiple frames"), bMoved); TestTrue(TEXT("Vault crosses obstacle"), Character->GetActorLocation().X > 1050.0f); TestTrue(TEXT("Vault ends in valid mode"), Move->MovementMode == MOVE_Walking || Move->MovementMode == MOVE_Falling); TestFalse(TEXT("Vault destination is clear"), ArenaDuelPhase4HardeningTests::IsCapsuleOverlapping(Character)); TestTrue(TEXT("Vault transform is finite"), ArenaDuelPhase4HardeningTests::IsFinite(Character->GetActorLocation()) && ArenaDuelPhase4HardeningTests::IsFinite(Move->Velocity)); return true;
+})
+
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4VaultInvalidCasesTest, "ArenaDuel.Phase4.VaultInvalidCases", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World(); AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(1300.0f, 0.0f, 100.0f), FVector(800.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character); Move->UpdateCharacterStateBeforeMovement(0.016f); TestFalse(TEXT("No suitable low obstacle rejects vault"), Move->MovementMode == MOVE_Custom && Move->CustomMovementMode == static_cast<uint8>(EArenaDuelCustomMovementMode::Vault)); TestFalse(TEXT("Rejected vault does not overlap"), ArenaDuelPhase4HardeningTests::IsCapsuleOverlapping(Character)); return true;
+})
+
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4MantleProgressionTest, "ArenaDuel.Phase4.MantleProgression", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World(); AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(1350.0f, 0.0f, 120.0f), FVector(800.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character); const FVector Start = Character->GetActorLocation(); Move->UpdateCharacterStateBeforeMovement(0.016f); TestEqual(TEXT("Mantle starts custom traversal"), Move->CustomMovementMode, static_cast<uint8>(EArenaDuelCustomMovementMode::Mantle)); bool bMovedUp = false; for (int32 Index = 0; Index < 30 && Move->MovementMode == MOVE_Custom; ++Index) { const FVector Before = Character->GetActorLocation(); Move->PhysCustom(0.016f, Index); bMovedUp |= Character->GetActorLocation().Z > Before.Z; } TestTrue(TEXT("Mantle moves upward"), bMovedUp); TestTrue(TEXT("Mantle moves forward"), Character->GetActorLocation().X > Start.X); TestTrue(TEXT("Mantle ends in valid mode"), Move->MovementMode == MOVE_Walking || Move->MovementMode == MOVE_Falling); TestFalse(TEXT("Mantle destination is clear"), ArenaDuelPhase4HardeningTests::IsCapsuleOverlapping(Character)); return true;
+})
+
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4MantleInvalidCasesTest, "ArenaDuel.Phase4.MantleInvalidCases", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World(); AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(900.0f, 0.0f, 100.0f), FVector(800.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character); Move->UpdateCharacterStateBeforeMovement(0.016f); TestFalse(TEXT("Low obstacle is not incorrectly mantled"), Move->MovementMode == MOVE_Custom && Move->CustomMovementMode == static_cast<uint8>(EArenaDuelCustomMovementMode::Mantle)); TestFalse(TEXT("Rejected mantle does not overlap"), ArenaDuelPhase4HardeningTests::IsCapsuleOverlapping(Character)); return true;
+})
+
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4TraversalCollisionSafetyTest, "ArenaDuel.Phase4.TraversalCollisionSafety", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World(); AArenaDuelCharacter* VaultCharacter = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(930.0f, 0.0f, 88.0f), FVector(800.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* VaultMove = ArenaDuelPhase4HardeningTests::Movement(VaultCharacter); VaultMove->UpdateCharacterStateBeforeMovement(0.016f); for (int32 Index = 0; Index < 20 && VaultMove->MovementMode == MOVE_Custom; ++Index) VaultMove->PhysCustom(0.016f, Index); TestFalse(TEXT("Vault never leaves capsule embedded"), ArenaDuelPhase4HardeningTests::IsCapsuleOverlapping(VaultCharacter)); AArenaDuelCharacter* MantleCharacter = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(1350.0f, 0.0f, 120.0f), FVector(800.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* MantleMove = ArenaDuelPhase4HardeningTests::Movement(MantleCharacter); MantleMove->UpdateCharacterStateBeforeMovement(0.016f); for (int32 Index = 0; Index < 30 && MantleMove->MovementMode == MOVE_Custom; ++Index) MantleMove->PhysCustom(0.016f, Index); TestFalse(TEXT("Mantle never leaves capsule embedded"), ArenaDuelPhase4HardeningTests::IsCapsuleOverlapping(MantleCharacter)); return true;
 })
 
 #undef ARENA_PHASE4_COMPONENT_TEST

@@ -13,12 +13,16 @@ public:
 
 	uint8 bSavedWantsSprint : 1;
 	uint8 bSavedWantsCrouchSlide : 1;
+	uint8 bSavedAdvancedJump : 1;
+	uint8 bSavedWallJump : 1;
 
 	virtual void Clear() override
 	{
 		Super::Clear();
 		bSavedWantsSprint = false;
 		bSavedWantsCrouchSlide = false;
+		bSavedAdvancedJump = false;
+		bSavedWallJump = false;
 	}
 
 	virtual void SetMoveFor(ACharacter* Character, float InDeltaTime, FVector const& NewAccel, FNetworkPredictionData_Client_Character& ClientData) override
@@ -30,6 +34,8 @@ public:
 			{
 				bSavedWantsSprint = Movement->WantsSprintIntent();
 				bSavedWantsCrouchSlide = Movement->WantsCrouchSlideIntent();
+				bSavedAdvancedJump = Movement->HasAdvancedJumpIntent();
+				bSavedWallJump = Movement->WantsWallJumpIntent();
 			}
 		}
 	}
@@ -37,7 +43,7 @@ public:
 	virtual bool CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* Character, float MaxDelta) const override
 	{
 		const FSavedMove_ArenaDuel* ArenaMove = static_cast<const FSavedMove_ArenaDuel*>(NewMove.Get());
-		return ArenaMove && bSavedWantsSprint == ArenaMove->bSavedWantsSprint && bSavedWantsCrouchSlide == ArenaMove->bSavedWantsCrouchSlide && Super::CanCombineWith(NewMove, Character, MaxDelta);
+		return ArenaMove && bSavedWantsSprint == ArenaMove->bSavedWantsSprint && bSavedWantsCrouchSlide == ArenaMove->bSavedWantsCrouchSlide && bSavedAdvancedJump == ArenaMove->bSavedAdvancedJump && bSavedWallJump == ArenaMove->bSavedWallJump && Super::CanCombineWith(NewMove, Character, MaxDelta);
 	}
 
 	virtual void PrepMoveFor(ACharacter* Character) override
@@ -49,6 +55,11 @@ public:
 			{
 				Movement->SetSprintIntentFromNetwork(bSavedWantsSprint);
 				Movement->SetCrouchSlideIntentFromNetwork(bSavedWantsCrouchSlide);
+				Movement->QueueAdvancedJump(bSavedWallJump);
+				if (!bSavedAdvancedJump)
+				{
+					Movement->ClearAdvancedJumpIntent();
+				}
 			}
 		}
 	}
@@ -63,6 +74,14 @@ public:
 		if (bSavedWantsCrouchSlide)
 		{
 			Result |= FLAG_Custom_1;
+		}
+		if (bSavedAdvancedJump)
+		{
+			Result |= FLAG_Custom_2;
+		}
+		if (bSavedWallJump)
+		{
+			Result |= FLAG_Custom_3;
 		}
 		return Result;
 	}
@@ -167,6 +186,14 @@ void UArenaDuelCharacterMovementComponent::UpdateFromCompressedFlags(uint8 Flags
 	Super::UpdateFromCompressedFlags(Flags);
 	SetSprintIntentFromNetwork((Flags & FSavedMove_Character::FLAG_Custom_0) != 0);
 	SetCrouchSlideIntentFromNetwork((Flags & FSavedMove_Character::FLAG_Custom_1) != 0);
+	if ((Flags & FSavedMove_Character::FLAG_Custom_2) != 0)
+	{
+		QueueAdvancedJump((Flags & FSavedMove_Character::FLAG_Custom_3) != 0);
+	}
+	else
+	{
+		ClearAdvancedJumpIntent();
+	}
 }
 
 void UArenaDuelCharacterMovementComponent::SetSprintIntentFromNetwork(bool bWantsSprintIntent)
@@ -179,6 +206,18 @@ void UArenaDuelCharacterMovementComponent::SetCrouchSlideIntentFromNetwork(bool 
 	bWantsCrouchOrSlide = bWantsCrouchSlideIntent;
 }
 
+void UArenaDuelCharacterMovementComponent::QueueAdvancedJump(bool bWallJump)
+{
+	bAdvancedJumpRequested = true;
+	bAdvancedWallJump = bWallJump;
+}
+
+void UArenaDuelCharacterMovementComponent::ClearAdvancedJumpIntent()
+{
+	bAdvancedJumpRequested = false;
+	bAdvancedWallJump = false;
+}
+
 void UArenaDuelCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
 {
 	if (!CharacterOwner || !UpdatedComponent)
@@ -186,6 +225,15 @@ void UArenaDuelCharacterMovementComponent::UpdateCharacterStateBeforeMovement(fl
 		return;
 	}
 	Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
+	if (bAdvancedJumpRequested)
+	{
+		const bool bExecuted = bAdvancedWallJump ? TryWallJump() : TrySlideJump();
+		ClearAdvancedJumpIntent();
+		if (bExecuted)
+		{
+			return;
+		}
+	}
 	WallReattachTimeRemaining = FMath::Max(0.0f, WallReattachTimeRemaining - DeltaSeconds);
 
 	MaxWalkSpeed = WalkSpeed;
@@ -403,8 +451,8 @@ bool UArenaDuelCharacterMovementComponent::TryStartTraversal()
 	}
 	const bool bMantle = ObstacleHeight > VaultMaxHeight;
 	TraversalStart = CharacterOwner->GetActorLocation();
-	TraversalTarget = TopHit.Location + FVector::UpVector * (CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.0f) + Forward * 45.0f;
 	const UCapsuleComponent* Capsule = CharacterOwner->GetCapsuleComponent();
+	TraversalTarget = TopHit.Location + FVector::UpVector * (Capsule->GetScaledCapsuleHalfHeight() + 2.0f) + Forward * (Capsule->GetScaledCapsuleRadius() + 45.0f);
 	const FCollisionShape CapsuleShape = FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight());
 	if (GetWorld()->OverlapBlockingTestByChannel(TraversalTarget, CharacterOwner->GetActorQuat(), ECC_Pawn, CapsuleShape, Params))
 	{
@@ -420,7 +468,8 @@ void UArenaDuelCharacterMovementComponent::PhysTraversal(float DeltaSeconds, int
 {
 	TraversalElapsed += DeltaSeconds;
 	const float Alpha = FMath::Clamp(TraversalElapsed / FMath::Max(TraversalDuration, KINDA_SMALL_NUMBER), 0.0f, 1.0f);
-	const FVector Position = FMath::Lerp(TraversalStart, TraversalTarget, Alpha) + FVector::UpVector * (bMantle ? 35.0f * FMath::Sin(Alpha * PI) : 15.0f * FMath::Sin(Alpha * PI));
+	const float ArcHeight = bMantle ? 35.0f : 120.0f;
+	const FVector Position = FMath::Lerp(TraversalStart, TraversalTarget, Alpha) + FVector::UpVector * (ArcHeight * FMath::Sin(Alpha * PI));
 	FHitResult Hit;
 	if (SafeMoveUpdatedComponent(Position - UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetComponentQuat(), true, Hit) && Hit.IsValidBlockingHit())
 	{

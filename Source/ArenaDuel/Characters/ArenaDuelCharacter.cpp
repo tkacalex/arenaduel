@@ -173,9 +173,25 @@ void AArenaDuelCharacter::JumpStarted()
 
 	if (UArenaDuelCharacterMovementComponent* MovementComponent = GetArenaDuelMovementComponent())
 	{
-		if (MovementComponent->TrySlideJump() || MovementComponent->TryWallJump())
+		if (MovementComponent->IsSliding())
 		{
-			return;
+			MovementComponent->QueueAdvancedJump(false);
+			if (MovementComponent->TrySlideJump())
+			{
+				return;
+			}
+		}
+		else if (MovementComponent->IsWallRunning())
+		{
+			MovementComponent->QueueAdvancedJump(true);
+			if (MovementComponent->TryWallJump())
+			{
+				return;
+			}
+		}
+		else
+		{
+			MovementComponent->ClearAdvancedJumpIntent();
 		}
 	}
 	Jump();
