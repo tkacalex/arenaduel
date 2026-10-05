@@ -9,7 +9,7 @@ $ReportRoot = Join-Path $ProjectRoot 'Saved\Automation\Phase4Validation'
 $LogRoot = Join-Path $ProjectRoot 'Saved\Logs'
 
 if (-not (Test-Path -LiteralPath $ProjectFile)) { throw "Missing project: $ProjectFile" }
-& $BuildTool ArenaDuelEditor Win64 Development "-Project=$ProjectFile" -WaitMutex -FromMsBuild
+& $BuildTool ArenaDuelEditor Win64 Development "-Project=$ProjectFile" -WaitMutex
 if ($LASTEXITCODE -ne 0) { throw "ArenaDuelEditor build failed with exit code $LASTEXITCODE" }
 
 function Remove-GeneratedSecurityToken {
@@ -30,6 +30,7 @@ function Invoke-Suite([string]$Suite, [string]$Name, [string[]]$RequiredTests, [
     $logPath = Join-Path $LogRoot "Phase4-$Name-$Run.log"
     New-Item -ItemType Directory -Force -Path $reportPath | Out-Null
     & $EditorCmd $ProjectFile -unattended -nop4 -nullrhi -nosplash `
+        -nosound `
         "-ExecCmds=Automation RunTests $Suite; Quit" `
         '-TestExit=Automation Test Queue Empty' `
         "-ReportExportPath=$reportPath" `

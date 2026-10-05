@@ -14,7 +14,7 @@ Complete. The C++ first person camera, walk, look, jump, possession-safe Enhance
 
 ## Phase 4: Advanced movement
 
-Complete as a hardened technical foundation. Sprint and crouch/slide intent now use UE CharacterMovement saved moves and compressed flags, custom transitions are protected from invalid move combination, and the expanded Phase 4 suite passes twice including a listen-server intent test. Human feel validation, real-latency profiling, and competitive tuning remain before Phase 5.
+Complete as a technical movement foundation. Sprint, crouch/slide, slide jump, wall run, wall jump, stamina, vault, and mantle behavior are covered by the local suite and listen-server network tests. The Phase 3 regression suite and the Phase 4 suite both pass twice through `Tools/Tests/RunPhase4Validation.ps1`. Subjective movement feel, real-latency profiling, packet-loss behavior, and competitive tuning still require human playtesting. This is not final competitive network hardening.
 
 ## Phase 5: Weapons and gunplay
 
