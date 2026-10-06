@@ -92,6 +92,7 @@ protected:
 	void StartLocalDeathCamera();
 	void UpdateLocalDeathCamera();
 	void UpdateShadowStepCameraImpulse();
+	void UpdateDevelopmentDeathPose();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCameraComponent> FirstPersonCamera;
@@ -159,6 +160,9 @@ protected:
 	void SetDeadState();
 
 	FTimerHandle LocalDeathCameraTimer;
+	FTimerHandle DeathPoseTimer;
+	float DeathPoseStartTime = 0.0f;
+	FRotator DeathPoseStartRotation = FRotator::ZeroRotator;
 	FTimerHandle ShadowStepCameraTimer;
 	FRotator ShadowStepCameraBaseRotation = FRotator::ZeroRotator;
 	float ShadowStepCameraStartTime = 0.0f;

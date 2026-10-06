@@ -141,6 +141,8 @@ void UArenaDuelCharacterSelectWidget::BuildTree()
 	Text(WidgetTree, ReferenceCanvas, TEXT("ESC   BACK / CANCEL READY"), 13, Muted, 85, 1005, 420, 30);
 	Text(WidgetTree, ReferenceCanvas, TEXT("A / D   SWITCH CHARACTER     |     ENTER   READY"), 13, Muted, 520, 1005, 880, 30, ETextJustify::Center);
 	Text(WidgetTree, ReferenceCanvas, TEXT("MOUSE   SELECT"), 13, Muted, 1450, 1005, 390, 30, ETextJustify::Right);
+	SettingsButton = Button(WidgetTree, ReferenceCanvas, TEXT("SETTINGS"), CharacterSelectCyan, 1640, 945, 190, 42);
+	SettingsButton->OnClicked.AddDynamic(this, &ThisClass::OpenSettings);
 }
 
 void UArenaDuelCharacterSelectWidget::BuildPlayerPanel(int32 SideIndex)
@@ -286,6 +288,11 @@ void UArenaDuelCharacterSelectWidget::SelectRift() { Select(EArenaDuelCharacterA
 void UArenaDuelCharacterSelectWidget::ToggleReady()
 {
 	if (AArenaDuelPlayerController* Controller = Cast<AArenaDuelPlayerController>(GetOwningPlayer())) Controller->ToggleCharacterReady();
+}
+
+void UArenaDuelCharacterSelectWidget::OpenSettings()
+{
+	if (AArenaDuelPlayerController* Controller = Cast<AArenaDuelPlayerController>(GetOwningPlayer())) Controller->OpenPlayerMenu(true);
 }
 
 FReply UArenaDuelCharacterSelectWidget::NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& Event)

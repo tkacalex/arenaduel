@@ -243,7 +243,7 @@ void UArenaDuelCharacterMovementComponent::UpdateCharacterStateBeforeMovement(fl
 	}
 	Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
 	// Compressed client movement intent cannot unlock a server-owned lobby or round break.
-	if (const AArenaDuelGameState* State = GetWorld() ? GetWorld()->GetGameState<AArenaDuelGameState>() : nullptr; State && !State->IsRoundInProgress())
+	if (const AArenaDuelGameState* State = GetWorld() ? GetWorld()->GetGameState<AArenaDuelGameState>() : nullptr; State && !State->CanLivingCharacterMove(Cast<AArenaDuelCharacter>(CharacterOwner)))
 	{
 		ClearAdvancedJumpIntent();
 		StopMovementImmediately();

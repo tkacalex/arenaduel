@@ -6,6 +6,8 @@
 #include "GameFramework/GameState.h"
 #include "ArenaDuelGameState.generated.h"
 
+class AArenaDuelCharacter;
+
 UENUM(BlueprintType)
 enum class EArenaDuelMatchPhase : uint8
 {
@@ -24,6 +26,7 @@ class ARENADUEL_API AArenaDuelGameState : public AGameState
 public:
 	int32 GetRoundNumber() const { return RoundNumber; }
 	bool IsRoundInProgress() const { return MatchPhase == EArenaDuelMatchPhase::InRound && bRoundInProgress; }
+	bool CanLivingCharacterMove(const AArenaDuelCharacter* Character) const;
 	EArenaDuelMatchPhase GetMatchPhase() const { return MatchPhase; }
 	bool IsCharacterSelectVisible() const { return MatchPhase == EArenaDuelMatchPhase::CharacterSelect || MatchPhase == EArenaDuelMatchPhase::Countdown; }
 	float GetCountdownEndServerTime() const { return CountdownEndServerTime; }
@@ -48,7 +51,7 @@ protected:
 	UPROPERTY(ReplicatedUsing=OnRep_RoundInProgress, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
 	bool bRoundInProgress = false;
 
-	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
+	UPROPERTY(ReplicatedUsing=OnRep_RoundState, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
 	int32 LastRoundWinnerSlot = INDEX_NONE;
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
@@ -59,6 +62,7 @@ protected:
 
 	UFUNCTION()
 	void OnRep_RoundInProgress();
+	UFUNCTION() void OnRep_RoundState();
 	UFUNCTION()
 	void OnRep_MatchPhase();
 };

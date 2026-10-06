@@ -62,11 +62,13 @@ protected:
 	UFUNCTION() void SelectWarden();
 	UFUNCTION() void SelectRift();
 	UFUNCTION() void ToggleReady();
+	UFUNCTION() void OpenSettings();
 	UPROPERTY(Transient) TObjectPtr<UCanvasPanel> ReferenceCanvas;
 	UPROPERTY(Transient) TArray<FArenaDuelSelectionPanel> Panels;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> CenterLabel;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> CenterStatus;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> Matchup;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> Connection;
+	UPROPERTY(Transient) TObjectPtr<UButton> SettingsButton;
 	FTimerHandle RefreshTimer;
 };

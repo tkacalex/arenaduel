@@ -10,6 +10,11 @@
 #include "../Player/ArenaDuelPlayerState.h"
 #include "../UI/ArenaDuelAdminWidget.h"
 #include "../UI/ArenaDuelCharacterSelectWidget.h"
+#include "../UI/ArenaDuelPlayerMenuWidget.h"
+#include "GameFramework/GameUserSettings.h"
+#include "Engine/Engine.h"
+#include "AudioDevice.h"
+#include "Camera/CameraComponent.h"
 #include "../Weapons/ArenaDuelWeaponComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -23,7 +28,7 @@ void AArenaDuelPlayerController::SetupInputComponent()
 	if (InputComponent)
 	{
 		InputComponent->BindKey(EKeys::F1, IE_Pressed, this, &AArenaDuelPlayerController::ToggleAdminMenu);
-		InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AArenaDuelPlayerController::CloseAdminMenu);
+		InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AArenaDuelPlayerController::HandleEscape);
 	}
 }
 
@@ -32,6 +37,14 @@ void AArenaDuelPlayerController::BeginPlay()
 	Super::BeginPlay();
 	if (IsLocalController())
 	{
+		LocalSettings = UArenaDuelLocalSettingsSave::LoadSettings();
+		if (!UArenaDuelLocalSettingsSave::HasSavedSettings())
+			if (UGameUserSettings* Display=GEngine?GEngine->GetGameUserSettings():nullptr)
+			{
+				const FIntPoint Resolution=Display->GetScreenResolution(); LocalSettings.ResolutionX=Resolution.X; LocalSettings.ResolutionY=Resolution.Y;
+				LocalSettings.WindowMode=static_cast<int32>(Display->GetFullscreenMode()); LocalSettings.bVSync=Display->IsVSyncEnabled(); LocalSettings.FPSLimit=FMath::RoundToInt(Display->GetFrameRateLimit());
+			}
+		ApplyLocalSettings(LocalSettings, false);
 		GetWorldTimerManager().SetTimer(MatchPresentationTimer, this, &AArenaDuelPlayerController::RefreshMatchPresentation, 0.2f, true);
 		RefreshMatchPresentation();
 	}
@@ -42,6 +55,7 @@ void AArenaDuelPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReaso
 	CloseAdminMenu();
 	GetWorldTimerManager().ClearTimer(MatchPresentationTimer);
 	if (CharacterSelectWidget) CharacterSelectWidget->RemoveFromParent();
+	if (PlayerMenuWidget) PlayerMenuWidget->RemoveFromParent();
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -77,6 +91,7 @@ void AArenaDuelPlayerController::RefreshMatchPresentation()
 	if (bShow)
 	{
 		CloseAdminMenu();
+		if (bPlayerMenuOpen) ClosePlayerMenu();
 		if (!CharacterSelectWidget) CharacterSelectWidget = CreateWidget<UArenaDuelCharacterSelectWidget>(this, UArenaDuelCharacterSelectWidget::StaticClass());
 		if (!CharacterSelectWidget) return;
 		CharacterSelectWidget->AddToViewport(50);
@@ -117,6 +132,7 @@ void AArenaDuelPlayerController::ToggleAdminMenu()
 		return;
 	}
 	if (!CanUseDevelopmentAdmin()) return;
+	if (bPlayerMenuOpen) ClosePlayerMenu();
 	if (!AdminWidget)
 	{
 		AdminWidget = CreateWidget<UArenaDuelAdminWidget>(this, UArenaDuelAdminWidget::StaticClass());
@@ -147,6 +163,70 @@ void AArenaDuelPlayerController::ToggleAdminMenu()
 	SetInputMode(InputMode);
 	AdminWidget->SetKeyboardFocus();
 #endif
+}
+
+void AArenaDuelPlayerController::HandleEscape()
+{
+	if (bPlayerMenuOpen) { if (PlayerMenuWidget) PlayerMenuWidget->HandleEscape(); return; }
+	if (bCharacterSelectOpen) return;
+	if (bAdminMenuOpen) { CloseAdminMenu(); return; }
+	OpenPlayerMenu(false);
+}
+
+void AArenaDuelPlayerController::OpenPlayerMenu(bool bFromCharacterSelect)
+{
+	if (!IsLocalController()) return;
+	CloseAdminMenu();
+	if (!PlayerMenuWidget)
+	{
+		PlayerMenuWidget = CreateWidget<UArenaDuelPlayerMenuWidget>(this, UArenaDuelPlayerMenuWidget::StaticClass());
+		if (!PlayerMenuWidget) return;
+	}
+	bPlayerMenuOpen = true;
+	bPlayerMenuFromCharacterSelect = bFromCharacterSelect;
+	SetIgnoreMoveInput(true); SetIgnoreLookInput(true); bShowMouseCursor = true;
+	if (AArenaDuelCharacter* PlayerCharacter = Cast<AArenaDuelCharacter>(GetPawn()))
+		if (UArenaDuelWeaponComponent* Weapon = PlayerCharacter->GetWeaponComponent()) { Weapon->StopFire(); Weapon->StopAim(); }
+	PlayerMenuWidget->Configure(bFromCharacterSelect);
+	if (bFromCharacterSelect) PlayerMenuWidget->ShowSettings();
+	else PlayerMenuWidget->ShowPause();
+	PlayerMenuWidget->AddToViewport(200);
+	FInputModeGameAndUI Mode; Mode.SetWidgetToFocus(PlayerMenuWidget->TakeWidget()); Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock); Mode.SetHideCursorDuringCapture(false); SetInputMode(Mode); PlayerMenuWidget->SetKeyboardFocus();
+}
+
+void AArenaDuelPlayerController::ClosePlayerMenu()
+{
+	if (!bPlayerMenuOpen) return;
+	bPlayerMenuOpen = false;
+	if (PlayerMenuWidget) PlayerMenuWidget->RemoveFromParent();
+	SetIgnoreMoveInput(false); SetIgnoreLookInput(false);
+	if (bPlayerMenuFromCharacterSelect && CharacterSelectWidget && bCharacterSelectOpen)
+	{
+		bShowMouseCursor=true; FInputModeUIOnly Mode; Mode.SetWidgetToFocus(CharacterSelectWidget->TakeWidget()); Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock); SetInputMode(Mode); CharacterSelectWidget->SetKeyboardFocus();
+	}
+	else { bShowMouseCursor=false; SetInputMode(FInputModeGameOnly()); }
+}
+
+void AArenaDuelPlayerController::ApplyLocalSettings(const FArenaDuelLocalSettings& NewSettings, bool bSave)
+{
+	if (!IsLocalController()) return;
+	LocalSettings=NewSettings; LocalSettings.MouseSensitivity=FMath::Clamp(LocalSettings.MouseSensitivity,0.10f,5.0f); LocalSettings.ADSMultiplier=FMath::Clamp(LocalSettings.ADSMultiplier,0.25f,1.5f); LocalSettings.FOV=FMath::Clamp(LocalSettings.FOV,80.0f,110.0f); LocalSettings.MasterVolume=FMath::Clamp(LocalSettings.MasterVolume,0.0f,1.0f);
+	if (bSave || UArenaDuelLocalSettingsSave::HasSavedSettings())
+	if (UGameUserSettings* Display=GEngine?GEngine->GetGameUserSettings():nullptr)
+	{
+		Display->SetFullscreenMode(static_cast<EWindowMode::Type>(FMath::Clamp(LocalSettings.WindowMode,0,2))); Display->SetScreenResolution(FIntPoint(LocalSettings.ResolutionX,LocalSettings.ResolutionY)); Display->SetVSyncEnabled(LocalSettings.bVSync); Display->SetFrameRateLimit(static_cast<float>(FMath::Max(0,LocalSettings.FPSLimit))); Display->ApplySettings(false); if(bSave)Display->SaveSettings();
+	}
+	if (GEngine) { FAudioDeviceHandle Device=GEngine->GetMainAudioDevice(); if(Device.IsValid())Device->SetTransientPrimaryVolume(LocalSettings.MasterVolume); }
+	ApplySettingsToPawn(); if(bSave)UArenaDuelLocalSettingsSave::SaveSettings(LocalSettings);
+}
+
+void AArenaDuelPlayerController::ApplySettingsToPawn()
+{
+	if (AArenaDuelCharacter* CurrentCharacter=Cast<AArenaDuelCharacter>(GetPawn()))
+	{
+		if(UArenaDuelWeaponComponent* Weapon=CurrentCharacter->GetWeaponComponent()) Weapon->SetUserHipFOV(LocalSettings.FOV);
+		else if(CurrentCharacter->GetFirstPersonCamera()) CurrentCharacter->GetFirstPersonCamera()->SetFieldOfView(LocalSettings.FOV);
+	}
 }
 
 void AArenaDuelPlayerController::CloseAdminMenu()

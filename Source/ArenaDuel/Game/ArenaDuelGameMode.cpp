@@ -10,6 +10,7 @@
 #include "../Player/ArenaDuelPlayerController.h"
 #include "../Player/ArenaDuelPlayerState.h"
 #include "ArenaDuelMovementDebugHUD.h"
+#include "AbilitySystemComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
 #include "TimerManager.h"
@@ -195,6 +196,7 @@ void AArenaDuelGameMode::EndRoundForDevelopment(AArenaDuelPlayerState* WinningPl
 		{
 			if (AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(PlayerController->GetPawn()))
 			{
+				if (UAbilitySystemComponent* ASC = Character->GetAbilitySystemComponent()) ASC->CancelAllAbilities();
 				Character->SetRoundInputLocked(true);
 			}
 		}

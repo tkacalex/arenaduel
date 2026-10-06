@@ -46,8 +46,9 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	FirstPersonArms->SetOnlyOwnerSee(true);
 	FirstPersonArms->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FirstPersonArms->SetCastShadow(false);
-	FirstPersonArms->SetRelativeLocation(FVector(15.0f, -10.0f, -135.0f));
+	FirstPersonArms->SetRelativeLocation(FVector(10.0f, -7.0f, -108.0f));
 	FirstPersonArms->SetRelativeRotation(FRotator::ZeroRotator);
+	FirstPersonArms->SetRelativeScale3D(FVector(0.82f));
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> Manny(TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"));
 	GetMesh()->SetSkeletalMesh(Manny.Object);
 	GetMesh()->SetRelativeLocation(FVector(0, 0, -GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()));
@@ -142,11 +143,11 @@ void AArenaDuelCharacter::RefreshCharacterVisuals()
 	UMaterialInterface* Accent = Archetype == EArenaDuelCharacterArchetype::Warden ? CyanVisualMaterial.Get() : VioletVisualMaterial.Get();
 	LeftShoulderArmor->SetVisibility(Archetype == EArenaDuelCharacterArchetype::Warden);
 	RightShoulderArmor->SetVisibility(Archetype != EArenaDuelCharacterArchetype::Shadow);
-	for (auto* Plate : {LeftShoulderArmor.Get(), RightShoulderArmor.Get()}) Plate->SetMaterial(0, CyanVisualMaterial);
+	for (auto* Plate : {LeftShoulderArmor.Get(), RightShoulderArmor.Get()}) Plate->SetMaterial(0, Accent);
 	for (auto* VisualMesh : {GetMesh(), FirstPersonArms.Get()})
 	{
-		if (ArchetypeArmorMaterials.IsValidIndex(Index)) VisualMesh->SetMaterial(0, ArchetypeArmorMaterials[Index]);
-		VisualMesh->SetMaterial(1, Accent);
+		if (ArchetypeArmorMaterials.IsValidIndex(Index))
+			for (int32 MaterialIndex=0; MaterialIndex<VisualMesh->GetNumMaterials(); ++MaterialIndex) VisualMesh->SetMaterial(MaterialIndex,ArchetypeArmorMaterials[Index]);
 	}
 	if (WeaponComponent) WeaponComponent->RefreshWeaponVisual();
 	if (bDead) ApplyDevelopmentDeathPose();
@@ -320,13 +321,18 @@ void AArenaDuelCharacter::SetDeadState()
 bool AArenaDuelCharacter::CanProcessGameplayInput() const
 {
 	if (!IsLocallyControlled() || bDead) return false;
-	if (const AArenaDuelPlayerController* PlayerController = Cast<AArenaDuelPlayerController>(GetController()); PlayerController && PlayerController->IsAdminMenuOpen()) return false;
+	if (const AArenaDuelPlayerController* PlayerController = Cast<AArenaDuelPlayerController>(GetController()); PlayerController && (PlayerController->IsAdminMenuOpen() || PlayerController->IsPlayerMenuOpen())) return false;
 	const AArenaDuelGameState* GameState = GetWorld() ? GetWorld()->GetGameState<AArenaDuelGameState>() : nullptr;
-	return !GameState || GameState->IsRoundInProgress();
+	return !GameState || GameState->CanLivingCharacterMove(this);
 }
 
 void AArenaDuelCharacter::SetRoundInputLocked(bool bLocked)
 {
+	if (bLocked)
+	{
+		if (const AArenaDuelGameState* State = GetWorld() ? GetWorld()->GetGameState<AArenaDuelGameState>() : nullptr;
+			State && State->CanLivingCharacterMove(this)) bLocked = false;
+	}
 	if (!bLocked)
 	{
 		// GameState and the fresh pawn may arrive in either replication order.
@@ -385,12 +391,20 @@ void AArenaDuelCharacter::UpdateLocalDeathCamera()
 
 void AArenaDuelCharacter::ApplyDevelopmentDeathPose()
 {
-	// Cosmetic lying pose until final death animation assets exist. No ragdoll or hitbox changes.
-	GetMesh()->SetRelativeLocation(FVector(0, 0, -GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() + 20));
-	GetMesh()->SetRelativeRotation(FRotator(0, 0, 90));
-	if (GetMesh()->GetAnimInstance()) GetMesh()->GetAnimInstance()->Montage_Stop(0);
+	// Temporary deterministic cosmetic fall until a final death animation/ragdoll is authored.
+	// Pause the single-node locomotion sequence first, otherwise it continues to pose the corpse.
+	if (UArenaDuelVisualAnimInstance* Anim = Cast<UArenaDuelVisualAnimInstance>(GetMesh()->GetAnimInstance())) Anim->SetPlaying(false);
+	GetMesh()->bPauseAnims = true;
 	FirstPersonArms->SetVisibility(false);
 	if (WeaponComponent) WeaponComponent->RefreshWeaponVisual();
+	const float Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+	if (!GetWorld() || !GetWorldTimerManager().IsTimerActive(DeathPoseTimer))
+	{
+		DeathPoseStartTime = Now;
+		DeathPoseStartRotation = GetMesh()->GetRelativeRotation();
+		GetWorldTimerManager().SetTimer(DeathPoseTimer, this, &AArenaDuelCharacter::UpdateDevelopmentDeathPose, 0.02f, true);
+	}
+	UpdateDevelopmentDeathPose();
 	if (BodyVisual)
 	{
 		BodyVisual->SetRelativeLocation(FVector(0.0f, 0.0f, -50.0f));
@@ -401,6 +415,18 @@ void AArenaDuelCharacter::ApplyDevelopmentDeathPose()
 		HeadVisual->SetRelativeLocation(FVector(0.0f, 55.0f, -65.0f));
 		HeadVisual->SetRelativeRotation(FRotator(0.0f, 0.0f, 90.0f));
 	}
+}
+
+void AArenaDuelCharacter::UpdateDevelopmentDeathPose()
+{
+	if (!GetMesh() || !GetWorld()) return;
+	constexpr float Duration = 0.48f;
+	const float Alpha = FMath::Clamp((GetWorld()->GetTimeSeconds() - DeathPoseStartTime) / Duration, 0.0f, 1.0f);
+	const float Smooth = FMath::SmoothStep(0.0f, 1.0f, Alpha);
+	const FRotator TargetRotation(0.0f, 0.0f, 90.0f);
+	GetMesh()->SetRelativeRotation(FMath::Lerp(DeathPoseStartRotation, TargetRotation, Smooth));
+	GetMesh()->SetRelativeLocation(FMath::Lerp(FVector(0,0,-GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()), FVector(0,0,-GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()+20), Smooth));
+	if (Alpha >= 1.0f) GetWorldTimerManager().ClearTimer(DeathPoseTimer);
 }
 
 void AArenaDuelCharacter::OnRep_Dead() { if (bDead) SetDeadState(); }
@@ -425,6 +451,7 @@ void AArenaDuelCharacter::PawnClientRestart()
 	{
 		return;
 	}
+	if (AArenaDuelPlayerController* ArenaController = Cast<AArenaDuelPlayerController>(GetController())) ArenaController->ApplyCurrentUserSettingsToPawn();
 
 	APlayerController* PlayerController = Cast<APlayerController>(GetController());
 	if (!PlayerController)
@@ -584,9 +611,11 @@ void AArenaDuelCharacter::Look(const FInputActionValue& Value)
 	}
 
 	FVector2D LookAxisVector = Value.Get<FVector2D>();
+	if (const AArenaDuelPlayerController* PC = Cast<AArenaDuelPlayerController>(GetController())) LookAxisVector *= PC->GetLocalSettings().MouseSensitivity;
 	if (WeaponComponent && WeaponComponent->IsAiming())
 	{
-		LookAxisVector *= WeaponComponent->GetAimSensitivityMultiplier();
+		const AArenaDuelPlayerController* PC = Cast<AArenaDuelPlayerController>(GetController());
+		LookAxisVector *= WeaponComponent->GetAimSensitivityMultiplier() * (PC ? PC->GetLocalSettings().ADSMultiplier : 1.0f);
 	}
 	AddControllerYawInput(LookAxisVector.X);
 	// Unreal's mouse Y convention is positive while moving down. Negate once here

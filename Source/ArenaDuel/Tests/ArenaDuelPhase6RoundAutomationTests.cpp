@@ -50,6 +50,15 @@ namespace ArenaDuelPhase6RoundTests
 		return LivePlayers == 2;
 	}
 
+	static bool BothPlayersHealthy(UWorld* World)
+	{
+		if (!World) return false;
+		int32 HealthyPlayers = 0;
+		for (TActorIterator<AArenaDuelCharacter> It(World); It; ++It)
+			if (!It->IsDead() && It->GetHealth() >= It->GetMaxHealth() - 0.1f) ++HealthyPlayers;
+		return HealthyPlayers == 2;
+	}
+
 	static APlayerController* FindControllerForSlot(UWorld* World, uint8 Slot)
 	{
 		if (!World) return nullptr;
@@ -110,11 +119,23 @@ NETWORK_TEST_CLASS(FArenaDuelPhase6RoundNetworkTest, "ArenaDuel.Phase6.Network")
 				}
 				return ControlledPlayers == 2 && State.VictimPawn;
 			}, FTimespan::FromSeconds(10.0))
+			.ThenServer(TEXT("Start a clean active round from Character Select"), [](FArenaDuelPhase6RoundNetworkState& State)
+			{
+				if (AArenaDuelGameMode* GameMode = State.World->GetAuthGameMode<AArenaDuelGameMode>()) GameMode->AdminRestartRound();
+				State.VictimPawn = nullptr;
+			})
+			.UntilServer(TEXT("Fresh round pawns are active"), [](FArenaDuelPhase6RoundNetworkState& State)
+			{
+				if (!State.World->GetGameState<AArenaDuelGameState>() || !State.World->GetGameState<AArenaDuelGameState>()->IsRoundInProgress()) return false;
+				for (TActorIterator<AArenaDuelCharacter> It(State.World); It; ++It)
+					if (!It->IsDead() && It->GetController()) { State.VictimPawn = *It; break; }
+				return State.VictimPawn != nullptr;
+			}, FTimespan::FromSeconds(5.0))
 			.ThenServer(TEXT("Apply lethal server damage"), [](FArenaDuelPhase6RoundNetworkState& State)
 			{
 				if (State.VictimPawn) State.VictimPawn->ApplyServerDamage(1000.0f);
 			})
-			.ThenServer(TEXT("Both pawns are locked during the round break"), [this](FArenaDuelPhase6RoundNetworkState& State)
+			.ThenServer(TEXT("Winner can move while loser remains locked during round break"), [this](FArenaDuelPhase6RoundNetworkState& State)
 			{
 				const AArenaDuelGameState* GameState = State.World->GetGameState<AArenaDuelGameState>();
 				if (!GameState || GameState->IsRoundInProgress()) TestRunner->AddError(TEXT("Server did not end the round before the break"));
@@ -123,9 +144,10 @@ NETWORK_TEST_CLASS(FArenaDuelPhase6RoundNetworkTest, "ArenaDuel.Phase6.Network")
 					AArenaDuelCharacter* Character = *It;
 					if (Character->IsDead()) continue;
 					UArenaDuelWeaponComponent* Weapon = Character->GetWeaponComponent();
-					if (Character->GetCharacterMovement()->MovementMode != MOVE_None)
+					const bool bWinner = GameState && Character->GetPlayerState<AArenaDuelPlayerState>() && Character->GetPlayerState<AArenaDuelPlayerState>()->GetDuelSlot() == GameState->GetLastRoundWinnerSlot();
+					if ((bWinner && Character->GetCharacterMovement()->MovementMode == MOVE_None) || (!bWinner && Character->GetCharacterMovement()->MovementMode != MOVE_None))
 					{
-						TestRunner->AddError(TEXT("Surviving pawn movement was not disabled for the round break"));
+						TestRunner->AddError(TEXT("RoundBreak movement did not match winner/loser policy"));
 					}
 					if (Weapon)
 					{
@@ -141,15 +163,19 @@ NETWORK_TEST_CLASS(FArenaDuelPhase6RoundNetworkTest, "ArenaDuel.Phase6.Network")
 					}
 				}
 			})
-			.UntilClient(TEXT("Client receives round-end input lock"), 0, [](FArenaDuelPhase6RoundNetworkState& State)
+			.UntilClient(TEXT("Client receives winner movement and loser lock"), 0, [](FArenaDuelPhase6RoundNetworkState& State)
 			{
 				const AArenaDuelGameState* GameState = State.World->GetGameState<AArenaDuelGameState>();
 				if (!GameState || GameState->IsRoundInProgress()) return false;
+				bool bSawWinner=false, bSawLoser=false;
 				for (TActorIterator<AArenaDuelCharacter> It(State.World); It; ++It)
 				{
-					if (It->GetCharacterMovement()->MovementMode != MOVE_None) return false;
+					const auto* Player=It->GetPlayerState<AArenaDuelPlayerState>(); if(!Player)continue;
+					const bool bWinner=Player->GetDuelSlot()==GameState->GetLastRoundWinnerSlot();
+					if(bWinner){bSawWinner=true;if(It->IsDead()||It->GetCharacterMovement()->MovementMode==MOVE_None)return false;}
+					else {bSawLoser=true;if(!It->IsDead()||It->GetCharacterMovement()->MovementMode!=MOVE_None)return false;}
 				}
-				return true;
+				return bSawWinner&&bSawLoser;
 			}, FTimespan::FromSeconds(2.0))
 			.UntilServer(TEXT("Server awards and restarts the round"), [](FArenaDuelPhase6RoundNetworkState& State)
 			{
@@ -182,6 +208,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase6RoundNetworkTest, "ArenaDuel.Phase6.Network")
 				AArenaDuelPlayerState* P1 = GameMode ? GameMode->FindPlayerStateByDuelSlot(0) : nullptr;
 				AArenaDuelPlayerState* P2 = GameMode ? GameMode->FindPlayerStateByDuelSlot(1) : nullptr;
 				if (!GameMode || !GameState || !P1 || !P2) return;
+				GameMode->AdminRestartRound();
 				P1->SetRoundWinsForDevelopment(4);
 				P2->SetRoundWinsForDevelopment(3);
 				for (uint8 Slot = 0; Slot < 2; ++Slot)
@@ -235,9 +262,9 @@ NETWORK_TEST_CLASS(FArenaDuelPhase6RoundNetworkTest, "ArenaDuel.Phase6.Network")
 				const AArenaDuelPlayerState* P1 = GameMode ? GameMode->FindPlayerStateByDuelSlot(0) : nullptr;
 				const AArenaDuelPlayerState* P2 = GameMode ? GameMode->FindPlayerStateByDuelSlot(1) : nullptr;
 				return GameState && !GameState->IsMatchComplete() && GameState->GetMatchWinnerSlot() == INDEX_NONE
-					&& GameState->IsRoundInProgress() && GameState->GetRoundNumber() == 1
+					&& GameState->GetMatchPhase() == EArenaDuelMatchPhase::CharacterSelect && !GameState->IsRoundInProgress() && GameState->GetRoundNumber() == 1
 					&& P1 && P1->GetRoundWins() == 0 && P2 && P2->GetRoundWins() == 0
-					&& ArenaDuelPhase6RoundTests::BothPlayersReset(State.World)
+					&& ArenaDuelPhase6RoundTests::BothPlayersHealthy(State.World)
 					&& ArenaDuelPhase6RoundTests::CountVeilWalls(State.World) == 0
 					&& FMath::IsNearlyZero(P1->GetShadowStepCooldownRemaining())
 					&& FMath::IsNearlyZero(P1->GetVeilWallCooldownRemaining())
@@ -249,6 +276,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase6RoundNetworkTest, "ArenaDuel.Phase6.Network")
 				AArenaDuelGameMode* GameMode = State.World->GetAuthGameMode<AArenaDuelGameMode>();
 				AArenaDuelPlayerState* P2 = GameMode ? GameMode->FindPlayerStateByDuelSlot(1) : nullptr;
 				if (!GameMode || !P2) return;
+				GameMode->AdminRestartRound();
 				P2->SetRoundWinsForDevelopment(4);
 				GameMode->AdminAwardRound(1);
 				State.MatchEndTime = State.World->GetTimeSeconds();
@@ -270,9 +298,9 @@ NETWORK_TEST_CLASS(FArenaDuelPhase6RoundNetworkTest, "ArenaDuel.Phase6.Network")
 				const AArenaDuelPlayerState* P1 = GameMode ? GameMode->FindPlayerStateByDuelSlot(0) : nullptr;
 				const AArenaDuelPlayerState* P2 = GameMode ? GameMode->FindPlayerStateByDuelSlot(1) : nullptr;
 				return GameState && !GameState->IsMatchComplete() && GameState->GetMatchWinnerSlot() == INDEX_NONE
-					&& GameState->IsRoundInProgress() && GameState->GetRoundNumber() == 1
+					&& GameState->GetMatchPhase() == EArenaDuelMatchPhase::CharacterSelect && !GameState->IsRoundInProgress() && GameState->GetRoundNumber() == 1
 					&& P1 && P1->GetRoundWins() == 0 && P2 && P2->GetRoundWins() == 0
-					&& ArenaDuelPhase6RoundTests::BothPlayersReset(State.World);
+					&& ArenaDuelPhase6RoundTests::BothPlayersHealthy(State.World);
 			}, FTimespan::FromSeconds(8.0));
 	}
 };

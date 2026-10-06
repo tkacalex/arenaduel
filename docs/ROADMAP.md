@@ -36,11 +36,15 @@ Shadow and Warden are implemented and human-approved. Phase 7C adds Rift: Q Rift
 
 Phase 7D adds the local Epic Manny skeletal body, Unreal-derived arm-only first-person mesh, three archetype appearances and four original multi-part weapon models. Separate owner/world visibility and existing weapon replication drive both held representations, with native locomotion/reload animation and cosmetic lying death. Setup is automated by `Tools/Editor/SetupPhase7DVisuals.ps1`; no manual Blueprint wiring is needed. Human two-player review of hands, ADS alignment, animation, clipping and silhouettes remains the acceptance gate. Phase 8 has not started.
 
+Phase 7E polishes first-person/world weapon presentation, pauses locomotion animation during the deterministic cosmetic death fall, allows only the round winner to move during RoundBreak, and adds the empty enclosed `L_ArenaCore` foundation map. A native local pause/settings menu now applies and saves sensitivity, ADS sensitivity, FOV, display mode/resolution, VSync, FPS limit, and master volume. The map/materials are created through Unreal Editor scripting; the mannequin rig dependency is included by the Phase 7D asset installer. Focused editor automation and the Win64 Development build pass; human PIE review is still required for visual feel, settings usability, and real two-player winner movement. Phase 8 RPG upgrades have not started.
+
 ## Phase 8: Round system, selections, and RPG upgrades
 
 First to 5 rounds, round flow, fighter and weapon selection, and match based upgrade choices.
 
 The public pre-match frontend implements replicated Shadow/Warden/Rift selection and ready state, authoritative countdown, combat locking, and return to selection after match results. It uses a fullscreen native UI with procedural development portraits. Account identity, ranked disconnect rules, and RPG upgrades remain pending. Visual fidelity and real two-player usability remain human acceptance checks.
+
+The prototype round loop and selection frontend already exist, but Phase 8 RPG upgrade choices have not started.
 
 ## Phase 9: Arena, UI, audiovisual polish, and optimization
 

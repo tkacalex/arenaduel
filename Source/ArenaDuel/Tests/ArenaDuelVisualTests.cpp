@@ -151,12 +151,12 @@ NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 				&& C->GetFirstPersonViewmodelRoot()->GetRelativeLocation().Equals(W->GetCurrentDefinition().AimViewmodelLocation,0.1f);
 		},FTimespan::FromSeconds(4))
 		.ThenClient(TEXT("Leave ADS"),0,[](auto& S){ Pawn(S.World,true)->GetWeaponComponent()->StopAim(); })
-		.UntilClient(TEXT("Hip FOV restored"),0,[](auto& S){return FMath::IsNearlyEqual(Pawn(S.World,true)->GetFirstPersonCamera()->FieldOfView,90.0f,0.1f);},FTimespan::FromSeconds(4))
+		.UntilClient(TEXT("User-selected hip FOV restored"),0,[](auto& S){const auto* C=Pawn(S.World,true);const auto* Controller=VisualSmoke::PC(S.World);return C&&Controller&&FMath::IsNearlyEqual(C->GetFirstPersonCamera()->FieldOfView,Controller->GetLocalSettings().FOV,0.1f);},FTimespan::FromSeconds(4))
 		.ThenServer(TEXT("Death keeps skeletal presentation cosmetic"),[](auto& S){ Pawn(S.World,false)->AdminKill(); })
 		.UntilClient(TEXT("Death hides own arms and preserves world lying pose"),0,[](auto& S){
 			const auto* C=Pawn(S.World,true);
 			return C && C->IsDead() && !C->GetFirstPersonArms()->IsVisible() && !C->GetWeaponComponent()->GetFirstPersonWeaponMesh()->IsVisible()
-				&& FMath::IsNearlyEqual(FMath::Abs(C->GetMesh()->GetRelativeRotation().Roll),90.0f,0.1f) && C->GetMesh()->GetCollisionEnabled()==ECollisionEnabled::NoCollision;
+				&& C->GetMesh()->bPauseAnims && FMath::IsNearlyEqual(FMath::Abs(C->GetMesh()->GetRelativeRotation().Roll),90.0f,0.1f) && C->GetMesh()->GetCollisionEnabled()==ECollisionEnabled::NoCollision;
 		},FTimespan::FromSeconds(2))
 		.UntilClient(TEXT("Automatic next round restores own and opponent visuals"),0,[](auto& S){return Valid(Pawn(S.World,true)) && !Pawn(S.World,true)->IsDead() && Valid(Pawn(S.World,false));},FTimespan::FromSeconds(6));
 	}

@@ -12,6 +12,7 @@
 #include "Components/SceneComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Pawn.h"
@@ -59,6 +60,9 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 	PrimaryComponentTick.bCanEverTick = false;
 	SetIsReplicatedByDefault(true);
 	WeaponDefinitions = MakeDefinitions();
+	WeaponBodyMaterial=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneMetal"));
+	WeaponAccentCyan=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneCyan"));
+	WeaponAccentViolet=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneViolet"));
 	FirstPersonWeaponMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FirstPersonWeaponMesh"));
 	FirstPersonWeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FirstPersonWeaponMesh->SetCastShadow(false);
@@ -74,10 +78,16 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 		Visual.HandRotation = FRotator(-15.85794f, 11.63120f, -12.32760f).Quaternion().Inverse().Rotator();
 		WeaponVisualDefinitions.Add(Visual);
 	}
+	WeaponVisualDefinitions[0].HipLocation=FVector(28,16,-40);
+	WeaponVisualDefinitions[1].HipLocation=FVector(34,17,-39);
 	WeaponVisualDefinitions[1].HipRotation = FRotator(0, 0, -2);
-	WeaponVisualDefinitions[2].HipLocation = FVector(42, 16, -33);
-	WeaponVisualDefinitions[3].HipLocation = FVector(32, 20, -35);
+	WeaponVisualDefinitions[2].HipLocation = FVector(44,16,-39);
+	WeaponVisualDefinitions[3].HipLocation = FVector(30,19,-42);
 	WeaponVisualDefinitions[3].HipRotation = FRotator(0, 0, 2);
+	WeaponVisualDefinitions[0].Scale=FVector(0.48f);
+	WeaponVisualDefinitions[1].Scale=FVector(0.46f);
+	WeaponVisualDefinitions[2].Scale=FVector(0.43f);
+	WeaponVisualDefinitions[3].Scale=FVector(0.45f);
 	// Visual alignment only; approved FOV, sensitivity, spread and recoil are unchanged.
 	for (auto& Definition : WeaponDefinitions) Definition.AimViewmodelLocation.Z -= 19.0f;
 }
@@ -473,7 +483,17 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 		WeaponMesh->SetRelativeLocation(Visual.HandLocation);
 		WeaponMesh->SetRelativeRotation(Visual.HandRotation);
 		WeaponMesh->SetRelativeScale3D(Visual.Scale);
+		if (WeaponBodyMaterial) for (int32 I=0;I<WeaponMesh->GetNumMaterials();++I) WeaponMesh->SetMaterial(I,WeaponBodyMaterial);
 	}
+	const AArenaDuelPlayerState* Player=Character->GetPlayerState<AArenaDuelPlayerState>();
+	UMaterialInterface* Accent=Player && Player->GetCharacterArchetype()==EArenaDuelCharacterArchetype::Warden?WeaponAccentCyan.Get():WeaponAccentViolet.Get();
+	if(Accent)
+	{
+		if(FirstPersonWeaponMesh->GetNumMaterials()>1)FirstPersonWeaponMesh->SetMaterial(1,Accent);
+		if(ThirdPersonWeaponMesh->GetNumMaterials()>1)ThirdPersonWeaponMesh->SetMaterial(1,Accent);
+	}
+	FirstPersonWeaponMesh->SetRelativeScale3D(Visual.Scale);
+	ThirdPersonWeaponMesh->SetRelativeScale3D(Visual.WorldScale);
 	FirstPersonWeaponMesh->SetVisibility(Character->IsLocallyControlled() && !Character->IsDead());
 	ThirdPersonWeaponMesh->SetVisibility(true);
 	FVector Location;
@@ -485,6 +505,13 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 		Root->SetRelativeLocation(Location + FVector(-5 * LocalWeaponKick, 0, 2 * LocalWeaponKick));
 		Root->SetRelativeRotation(Rotation + FRotator(-1.5f * LocalWeaponKick, 0, 0));
 	}
+}
+
+void UArenaDuelWeaponComponent::SetUserHipFOV(float NewFOV)
+{
+	HipFOV=FMath::Clamp(NewFOV,80.0f,110.0f);
+	if(!bAiming)
+		if(const AArenaDuelCharacter* Character=Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled() && Character->GetFirstPersonCamera())Character->GetFirstPersonCamera()->SetFieldOfView(HipFOV);
 }
 void UArenaDuelWeaponComponent::GetCurrentViewmodelBaseTransform(FVector& OutLocation, FRotator& OutRotation) const
 {

@@ -5,6 +5,7 @@ $sourceRoot = Join-Path $EngineRoot 'Templates/TemplateResources/High/Characters
 # Preserve Epic package paths, including material/texture references. Never overwrite existing assets.
 $files = Get-ChildItem (Join-Path $sourceRoot 'Mannequins') -Recurse -File | Where-Object {
     $_.FullName -match '\\(Meshes|Materials|Textures)\\' -or
+    $_.Name -eq 'PA_Mannequin.uasset' -or
     $_.Name -in @('MF_Rifle_Idle_ADS.uasset','MF_Rifle_Walk_Fwd.uasset','MF_Rifle_Jog_Fwd.uasset','MM_Rifle_Jump_Fall_Loop.uasset','MM_Rifle_Reload.uasset')
 }
 foreach ($file in $files) {

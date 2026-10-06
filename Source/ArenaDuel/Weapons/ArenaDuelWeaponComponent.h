@@ -11,6 +11,7 @@ class UInputAction;
 class UStaticMeshComponent;
 class USceneComponent;
 class UStaticMesh;
+class UMaterialInterface;
 
 USTRUCT()
 struct FArenaDuelWeaponVisualDefinition
@@ -22,6 +23,7 @@ struct FArenaDuelWeaponVisualDefinition
 	UPROPERTY() FVector HandLocation = FVector::ZeroVector;
 	UPROPERTY() FRotator HandRotation = FRotator::ZeroRotator;
 	UPROPERTY() FVector Scale = FVector(1);
+	UPROPERTY() FVector WorldScale = FVector(0.75f);
 };
 
 UENUM(BlueprintType)
@@ -141,6 +143,7 @@ public:
 	void CancelCombatActions();
 	void RefillAllAmmoForDevelopment();
 	void RefreshWeaponVisual();
+	void SetUserHipFOV(float NewFOV);
 	UStaticMeshComponent* GetFirstPersonWeaponMesh() const { return FirstPersonWeaponMesh; }
 	UStaticMeshComponent* GetThirdPersonWeaponMesh() const { return ThirdPersonWeaponMesh; }
 
@@ -216,6 +219,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Weapons")
 	TObjectPtr<UStaticMeshComponent> ThirdPersonWeaponMesh;
 	UPROPERTY() TArray<FArenaDuelWeaponVisualDefinition> WeaponVisualDefinitions;
+	UPROPERTY() TObjectPtr<UMaterialInterface> WeaponBodyMaterial;
+	UPROPERTY() TObjectPtr<UMaterialInterface> WeaponAccentCyan;
+	UPROPERTY() TObjectPtr<UMaterialInterface> WeaponAccentViolet;
 
 	FTimerHandle ReloadTimerHandle;
 
