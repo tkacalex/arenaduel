@@ -163,6 +163,7 @@ protected:
 	void RecoverCosmeticKick();
 	void CompleteReload();
 	void RefreshWeaponVisual();
+	void GetCurrentViewmodelBaseTransform(FVector& OutLocation, FRotator& OutRotation) const;
 	void SetLastShot(EArenaDuelShotResult Result, float Distance, AActor* Target);
 	void InitializeRuntimeAmmo();
 	FArenaDuelWeaponRuntimeState* GetMutableCurrentRuntimeState();

@@ -23,13 +23,13 @@ namespace
 		Arc.DisplayName = TEXT("Arc Rifle");
 		FArenaDuelWeaponDefinition SMG = Arc;
 		SMG.Id = EArenaDuelWeaponId::ShadeSMG; SMG.DisplayName = TEXT("Shade SMG"); SMG.MagazineCapacity = 32; SMG.ReserveCapacity = 128; SMG.RoundsPerMinute = 900.0f; SMG.BaseSpreadDegrees = 0.65f; SMG.MovementSpreadDegrees = 1.8f;
-		SMG.AimFOV = 80.0f; SMG.AimSensitivityMultiplier = 0.85f; SMG.AimSpreadMultiplier = 0.75f; SMG.AimViewmodelLocation = FVector(48.0f, 3.0f, -13.0f);
+		SMG.AimFOV = 80.0f; SMG.AimSensitivityMultiplier = 0.80f; SMG.AimSpreadMultiplier = 0.75f; SMG.AimViewmodelLocation = FVector(48.0f, 3.0f, -13.0f);
 		FArenaDuelWeaponDefinition DMR = Arc;
 		DMR.Id = EArenaDuelWeaponId::RuneDMR; DMR.DisplayName = TEXT("Rune DMR"); DMR.MagazineCapacity = 12; DMR.ReserveCapacity = 48; DMR.RoundsPerMinute = 280.0f; DMR.BaseSpreadDegrees = 0.08f; DMR.MovementSpreadDegrees = 0.55f; DMR.bAutomatic = false;
-		DMR.AimFOV = 68.0f; DMR.AimSensitivityMultiplier = 0.7f; DMR.AimSpreadMultiplier = 0.35f; DMR.AimViewmodelLocation = FVector(58.0f, 1.0f, -11.0f);
+		DMR.AimFOV = 68.0f; DMR.AimSensitivityMultiplier = 0.65f; DMR.AimSpreadMultiplier = 0.35f; DMR.AimViewmodelLocation = FVector(58.0f, 1.0f, -11.0f);
 		FArenaDuelWeaponDefinition Shotgun = Arc;
 		Shotgun.Id = EArenaDuelWeaponId::HexShotgun; Shotgun.DisplayName = TEXT("Hex Shotgun"); Shotgun.MagazineCapacity = 6; Shotgun.ReserveCapacity = 30; Shotgun.RoundsPerMinute = 75.0f; Shotgun.BaseSpreadDegrees = 5.0f; Shotgun.MovementSpreadDegrees = 2.0f; Shotgun.Pellets = 8; Shotgun.bAutomatic = false;
-		Shotgun.AimFOV = 82.0f; Shotgun.AimSensitivityMultiplier = 0.85f; Shotgun.AimSpreadMultiplier = 0.85f; Shotgun.AimViewmodelLocation = FVector(45.0f, 4.0f, -15.0f);
+		Shotgun.AimFOV = 82.0f; Shotgun.AimSensitivityMultiplier = 0.80f; Shotgun.AimSpreadMultiplier = 0.85f; Shotgun.AimViewmodelLocation = FVector(45.0f, 4.0f, -15.0f);
 		return { Arc, SMG, DMR, Shotgun };
 	}
 
@@ -290,7 +290,14 @@ void UArenaDuelWeaponComponent::RecoverCosmeticKick()
 		}
 	}
 	LocalWeaponKick = FMath::FInterpTo(LocalWeaponKick, 0.0f, 0.02f, 12.0f);
-	if (FirstPersonWeaponMesh && LocalWeaponKick > KINDA_SMALL_NUMBER) FirstPersonWeaponMesh->SetRelativeLocation(FVector(35.0f - 5.0f * LocalWeaponKick, 18.0f, -18.0f + 2.0f * LocalWeaponKick));
+	if (FirstPersonWeaponMesh)
+	{
+		FVector BaseLocation;
+		FRotator BaseRotation;
+		GetCurrentViewmodelBaseTransform(BaseLocation, BaseRotation);
+		FirstPersonWeaponMesh->SetRelativeLocation(BaseLocation + FVector(-5.0f * LocalWeaponKick, 0.0f, 2.0f * LocalWeaponKick));
+		FirstPersonWeaponMesh->SetRelativeRotation(BaseRotation + FRotator(-1.5f * LocalWeaponKick, 0.0f, 0.0f));
+	}
 	if (FMath::IsNearlyZero(LocalWeaponKick, KINDA_SMALL_NUMBER) && FMath::IsNearlyZero(LocalRecoilPitchRemaining, KINDA_SMALL_NUMBER) && FMath::IsNearlyZero(LocalRecoilYawRemaining, KINDA_SMALL_NUMBER))
 	{
 		LocalWeaponKick = 0.0f;
@@ -304,12 +311,18 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 {
 	if (!FirstPersonWeaponMesh) return;
 	const FVector Scale = EquippedWeaponIndex == 0 ? FVector(0.75f, 0.12f, 0.12f) : EquippedWeaponIndex == 1 ? FVector(0.4f, 0.14f, 0.12f) : EquippedWeaponIndex == 2 ? FVector(1.0f, 0.09f, 0.09f) : FVector(0.55f, 0.22f, 0.16f);
+	FVector Location;
+	FRotator Rotation;
+	GetCurrentViewmodelBaseTransform(Location, Rotation);
+	FirstPersonWeaponMesh->SetRelativeLocation(Location); FirstPersonWeaponMesh->SetRelativeRotation(Rotation); FirstPersonWeaponMesh->SetRelativeScale3D(Scale);
+}
+void UArenaDuelWeaponComponent::GetCurrentViewmodelBaseTransform(FVector& OutLocation, FRotator& OutRotation) const
+{
 	const FArenaDuelWeaponDefinition& Definition = GetCurrentDefinition();
 	const FVector HipLocation = EquippedWeaponIndex == 2 ? FVector(42.0f, 16.0f, -17.0f) : EquippedWeaponIndex == 3 ? FVector(32.0f, 20.0f, -19.0f) : FVector(35.0f, 18.0f, -18.0f);
 	const FRotator HipRotation = EquippedWeaponIndex == 1 ? FRotator(0.0f, 0.0f, -2.0f) : EquippedWeaponIndex == 3 ? FRotator(0.0f, 0.0f, 2.0f) : FRotator::ZeroRotator;
-	const FVector Location = bAiming ? Definition.AimViewmodelLocation : HipLocation;
-	const FRotator Rotation = bAiming ? Definition.AimViewmodelRotation : HipRotation;
-	FirstPersonWeaponMesh->SetRelativeLocation(Location); FirstPersonWeaponMesh->SetRelativeRotation(Rotation); FirstPersonWeaponMesh->SetRelativeScale3D(Scale);
+	OutLocation = bAiming ? Definition.AimViewmodelLocation : HipLocation;
+	OutRotation = bAiming ? Definition.AimViewmodelRotation : HipRotation;
 }
 void UArenaDuelWeaponComponent::UpdateAimVisual()
 {
@@ -318,15 +331,26 @@ void UArenaDuelWeaponComponent::UpdateAimVisual()
 	const float TargetFOV = bAiming ? GetCurrentDefinition().AimFOV : HipFOV;
 	const float NewFOV = FMath::FInterpTo(Character->GetFirstPersonCamera()->FieldOfView, TargetFOV, 0.02f, 12.0f);
 	Character->GetFirstPersonCamera()->SetFieldOfView(NewFOV);
+	FVector TargetLocation;
+	FRotator TargetRotation;
+	GetCurrentViewmodelBaseTransform(TargetLocation, TargetRotation);
 	if (FirstPersonWeaponMesh)
 	{
-		const FArenaDuelWeaponDefinition& Definition = GetCurrentDefinition();
-		const FVector HipLocation = EquippedWeaponIndex == 2 ? FVector(42.0f, 16.0f, -17.0f) : EquippedWeaponIndex == 3 ? FVector(32.0f, 20.0f, -19.0f) : FVector(35.0f, 18.0f, -18.0f);
-		const FRotator HipRotation = EquippedWeaponIndex == 1 ? FRotator(0.0f, 0.0f, -2.0f) : EquippedWeaponIndex == 3 ? FRotator(0.0f, 0.0f, 2.0f) : FRotator::ZeroRotator;
-		FirstPersonWeaponMesh->SetRelativeLocation(FMath::VInterpTo(FirstPersonWeaponMesh->GetRelativeLocation(), bAiming ? Definition.AimViewmodelLocation : HipLocation, 0.02f, 14.0f));
-		FirstPersonWeaponMesh->SetRelativeRotation(FMath::RInterpTo(FirstPersonWeaponMesh->GetRelativeRotation(), bAiming ? Definition.AimViewmodelRotation : HipRotation, 0.02f, 14.0f));
+		FirstPersonWeaponMesh->SetRelativeLocation(FMath::VInterpTo(FirstPersonWeaponMesh->GetRelativeLocation(), TargetLocation, 0.02f, 14.0f));
+		FirstPersonWeaponMesh->SetRelativeRotation(FMath::RInterpTo(FirstPersonWeaponMesh->GetRelativeRotation(), TargetRotation, 0.02f, 14.0f));
 	}
-	if (!bAiming && FMath::IsNearlyEqual(NewFOV, HipFOV, 0.1f) && GetWorld()) GetWorld()->GetTimerManager().ClearTimer(AimVisualTimerHandle);
+	const bool bFOVSettled = FMath::IsNearlyEqual(NewFOV, TargetFOV, 0.1f);
+	const bool bViewmodelSettled = !FirstPersonWeaponMesh || (FirstPersonWeaponMesh->GetRelativeLocation().Equals(TargetLocation, 0.1f) && FirstPersonWeaponMesh->GetRelativeRotation().Equals(TargetRotation, 0.1f));
+	if (bFOVSettled && bViewmodelSettled && GetWorld())
+	{
+		Character->GetFirstPersonCamera()->SetFieldOfView(TargetFOV);
+		if (FirstPersonWeaponMesh)
+		{
+			FirstPersonWeaponMesh->SetRelativeLocation(TargetLocation);
+			FirstPersonWeaponMesh->SetRelativeRotation(TargetRotation);
+		}
+		GetWorld()->GetTimerManager().ClearTimer(AimVisualTimerHandle);
+	}
 }
 void UArenaDuelWeaponComponent::SetLastShot(EArenaDuelShotResult Result, float Distance, AActor* Target)
 {
