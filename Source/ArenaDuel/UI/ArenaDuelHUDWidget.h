@@ -11,6 +11,8 @@ class UProgressBar;
 class UCanvasPanel;
 class UBorder;
 class UWidget;
+class AArenaDuelGameState;
+class AArenaDuelPlayerState;
 
 UCLASS()
 class ARENADUEL_API UArenaDuelHUDWidget : public UUserWidget
@@ -32,6 +34,7 @@ public:
 protected:
 	void BuildWidgetTree();
 	void RefreshData();
+	void RefreshMatchData();
 	void SetText(UTextBlock* TextBlock, const FText& Text) const;
 
 	UPROPERTY() TObjectPtr<UCanvasPanel> RootCanvas;
@@ -63,12 +66,15 @@ protected:
 	UPROPERTY() TArray<TObjectPtr<UTextBlock>> AbilityCooldowns;
 	UPROPERTY() TArray<TObjectPtr<UWidget>> AbilityRoots;
 	UPROPERTY() TArray<TObjectPtr<UBorder>> AbilityBackgrounds;
-	UPROPERTY() TArray<TObjectPtr<UTextBlock>> LeftRoundIndicators;
-	UPROPERTY() TArray<TObjectPtr<UTextBlock>> RightRoundIndicators;
+	UPROPERTY() TArray<TObjectPtr<UBorder>> LeftRoundIndicators;
+	UPROPERTY() TArray<TObjectPtr<UBorder>> RightRoundIndicators;
+	TWeakObjectPtr<AArenaDuelGameState> CachedGameState;
+	TWeakObjectPtr<AArenaDuelPlayerState> CachedPlayerStates[2];
 	int32 LastLeftWins = INDEX_NONE;
 	int32 LastRightWins = INDEX_NONE;
 	int32 LastRoundNumber = INDEX_NONE;
 	bool bLastRoundInProgress = false;
 	int32 LastHealthBand = INDEX_NONE;
 	FTimerHandle RefreshTimer;
+	FTimerHandle MatchRefreshTimer;
 };

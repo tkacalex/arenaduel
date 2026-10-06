@@ -19,6 +19,7 @@
 #include "Engine/LocalPlayer.h"
 #include "../Player/ArenaDuelPlayerState.h"
 #include "../Game/ArenaDuelGameMode.h"
+#include "../Game/ArenaDuelGameState.h"
 #include "../Combat/ArenaDuelAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayEffect.h"
@@ -154,13 +155,31 @@ void AArenaDuelCharacter::HandleDeath()
 
 void AArenaDuelCharacter::SetDeadState()
 {
-	if (WeaponComponent) WeaponComponent->CancelCombatActionsOnDeath();
+	if (WeaponComponent) WeaponComponent->CancelCombatActions();
 	ApplyDevelopmentDeathPose();
 	StartLocalDeathCamera();
 	if (GetCharacterMovement())
 	{
 		GetCharacterMovement()->StopMovementImmediately();
 		GetCharacterMovement()->DisableMovement();
+	}
+}
+
+bool AArenaDuelCharacter::CanProcessGameplayInput() const
+{
+	if (!IsLocallyControlled() || bDead) return false;
+	const AArenaDuelGameState* GameState = GetWorld() ? GetWorld()->GetGameState<AArenaDuelGameState>() : nullptr;
+	return !GameState || GameState->IsRoundInProgress();
+}
+
+void AArenaDuelCharacter::SetRoundInputLocked(bool bLocked)
+{
+	if (!bLocked) return;
+	if (WeaponComponent) WeaponComponent->CancelCombatActions();
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->StopMovementImmediately();
+		Movement->DisableMovement();
 	}
 }
 

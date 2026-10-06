@@ -56,9 +56,9 @@ The first person camera attaches directly to the Character capsule at a 64 centi
 
 ## Competitive HUD and development rounds
 
-The local `AArenaDuelMovementDebugHUD` creates one native `UArenaDuelHUDWidget`; the widget displays live GAS health, movement stamina, weapon state, replicated player names, round wins, and round number/state. Health/ammo/death are not duplicated in Canvas. Canvas remains responsible for the crosshair, hitmarkers, and opt-in F3 movement diagnostics. The outer frame and decorative side arcs have been removed. Temporary UI state refreshes at 10 Hz and setters avoid rewriting unchanged text or bar values.
+The local `AArenaDuelMovementDebugHUD` creates one native `UArenaDuelHUDWidget`; the widget displays live GAS health, movement stamina, weapon state, stable PLAYER 1/PLAYER 2 duel labels, round wins, and round number/state. Health/ammo/death are not duplicated in Canvas. Canvas remains responsible for the crosshair, hitmarkers, and opt-in F3 movement diagnostics. The outer frame and decorative side arcs have been removed. Gameplay HUD values refresh at 10 Hz; cached match data refreshes at 2 Hz. Setters avoid rewriting unchanged text or bar values.
 
-When an authoritative Character dies, GameMode ends the round, increments the surviving player's replicated win count, and restarts both player controllers after three seconds using normal PlayerStarts. The loop stops at five wins. This is a practical development flow only: it has no round timer, selection, intermission UI, disconnect rules, or full match completion presentation.
+When an authoritative Character dies, GameMode ends the round, locks movement and combat for both players, increments the surviving player's replicated win count, and restarts both player controllers after three seconds using normal PlayerStarts. Client input checks replicated round state and the server independently rejects weapon actions during the break. The loop stops at five wins. This is a practical development flow only: it has no round timer, selection, intermission UI, disconnect rules, or full match completion presentation.
 
 ## Enhanced Input lifecycle
 

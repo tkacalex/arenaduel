@@ -7,8 +7,10 @@
 #include "Tests/AutomationEditorCommon.h"
 
 #include "ArenaDuel/Characters/ArenaDuelCharacter.h"
+#include "ArenaDuel/Characters/ArenaDuelCharacterMovementComponent.h"
 #include "ArenaDuel/Game/ArenaDuelGameState.h"
 #include "ArenaDuel/Player/ArenaDuelPlayerState.h"
+#include "ArenaDuel/Weapons/ArenaDuelWeaponComponent.h"
 #include "EngineUtils.h"
 #include "GameFramework/GameModeBase.h"
 
@@ -37,7 +39,8 @@ namespace ArenaDuelPhase6RoundTests
 		for (TActorIterator<AArenaDuelCharacter> It(World); It; ++It)
 		{
 			const AArenaDuelCharacter* Character = *It;
-			if (!Character->IsDead() && Character->GetHealth() >= Character->GetMaxHealth() - 0.1f)
+			if (!Character->IsDead() && Character->GetHealth() >= Character->GetMaxHealth() - 0.1f
+				&& Character->GetCharacterMovement()->MovementMode != MOVE_None)
 			{
 				++LivePlayers;
 			}
@@ -88,6 +91,43 @@ NETWORK_TEST_CLASS(FArenaDuelPhase6RoundNetworkTest, "ArenaDuel.Phase6.Network")
 			{
 				if (State.VictimPawn) State.VictimPawn->ApplyServerDamage(1000.0f);
 			})
+			.ThenServer(TEXT("Both pawns are locked during the round break"), [this](FArenaDuelPhase6RoundNetworkState& State)
+			{
+				const AArenaDuelGameState* GameState = State.World->GetGameState<AArenaDuelGameState>();
+				if (!GameState || GameState->IsRoundInProgress()) TestRunner->AddError(TEXT("Server did not end the round before the break"));
+				for (TActorIterator<AArenaDuelCharacter> It(State.World); It; ++It)
+				{
+					AArenaDuelCharacter* Character = *It;
+					if (Character->IsDead()) continue;
+					UArenaDuelWeaponComponent* Weapon = Character->GetWeaponComponent();
+					if (Character->GetCharacterMovement()->MovementMode != MOVE_None)
+					{
+						TestRunner->AddError(TEXT("Surviving pawn movement was not disabled for the round break"));
+					}
+					if (Weapon)
+					{
+						const EArenaDuelWeaponId OriginalWeapon = Weapon->GetCurrentWeaponId();
+						Weapon->StartFire();
+						Weapon->StartAim();
+						Weapon->Reload();
+						Weapon->EquipWeapon((static_cast<int32>(OriginalWeapon) + 1) % Weapon->GetWeaponDefinitionCount());
+						if (Weapon->IsFireHeld() || Weapon->IsAiming() || Weapon->IsReloading() || Weapon->GetCurrentWeaponId() != OriginalWeapon)
+						{
+							TestRunner->AddError(TEXT("Server accepted combat input during the round break"));
+						}
+					}
+				}
+			})
+			.UntilClient(TEXT("Client receives round-end input lock"), 0, [](FArenaDuelPhase6RoundNetworkState& State)
+			{
+				const AArenaDuelGameState* GameState = State.World->GetGameState<AArenaDuelGameState>();
+				if (!GameState || GameState->IsRoundInProgress()) return false;
+				for (TActorIterator<AArenaDuelCharacter> It(State.World); It; ++It)
+				{
+					if (It->GetCharacterMovement()->MovementMode != MOVE_None) return false;
+				}
+				return true;
+			}, FTimespan::FromSeconds(2.0))
 			.UntilServer(TEXT("Server awards and restarts the round"), [](FArenaDuelPhase6RoundNetworkState& State)
 			{
 				const AArenaDuelGameState* GameState = State.World->GetGameState<AArenaDuelGameState>();

@@ -83,6 +83,16 @@ void AArenaDuelGameMode::HandlePlayerDeath(AArenaDuelCharacter* DeadCharacter)
 		WinningPlayerState->AwardRoundWin();
 	}
 	ArenaGameState->SetRoundState(ArenaGameState->GetRoundNumber(), false, WinnerSlot);
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (APlayerController* PlayerController = It->Get())
+		{
+			if (AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(PlayerController->GetPawn()))
+			{
+				Character->SetRoundInputLocked(true);
+			}
+		}
+	}
 	bRoundRestartPending = true;
 
 	const bool bMatchComplete = WinningPlayerState && WinningPlayerState->GetRoundWins() >= 5;

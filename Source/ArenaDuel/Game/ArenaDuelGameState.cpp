@@ -1,6 +1,8 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "ArenaDuelGameState.h"
+#include "../Characters/ArenaDuelCharacter.h"
+#include "EngineUtils.h"
 #include "Net/UnrealNetwork.h"
 
 void AArenaDuelGameState::SetRoundState(int32 NewRoundNumber, bool bNewRoundInProgress, int32 NewLastRoundWinnerSlot)
@@ -18,4 +20,13 @@ void AArenaDuelGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	DOREPLIFETIME(AArenaDuelGameState, RoundNumber);
 	DOREPLIFETIME(AArenaDuelGameState, bRoundInProgress);
 	DOREPLIFETIME(AArenaDuelGameState, LastRoundWinnerSlot);
+}
+
+void AArenaDuelGameState::OnRep_RoundInProgress()
+{
+	if (bRoundInProgress || !GetWorld()) return;
+	for (TActorIterator<AArenaDuelCharacter> It(GetWorld()); It; ++It)
+	{
+		It->SetRoundInputLocked(true);
+	}
 }

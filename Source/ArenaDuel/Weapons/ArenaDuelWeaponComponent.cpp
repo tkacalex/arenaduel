@@ -2,6 +2,7 @@
 
 #include "ArenaDuelWeaponComponent.h"
 #include "../Characters/ArenaDuelCharacter.h"
+#include "../Game/ArenaDuelGameState.h"
 #include "ArenaDuelWeaponTarget.h"
 #include "Components/StaticMeshComponent.h"
 #include "Camera/CameraComponent.h"
@@ -129,7 +130,7 @@ float UArenaDuelWeaponComponent::GetCurrentSpreadDegrees() const
 
 void UArenaDuelWeaponComponent::StartFire()
 {
-	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead()) return;
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress()) return;
 	if (bFireHeld) return;
 	if (bReloading || GetCurrentMagazineAmmo() <= 0 || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	bFireHeld = true;
@@ -150,21 +151,21 @@ void UArenaDuelWeaponComponent::StopFire()
 }
 void UArenaDuelWeaponComponent::Reload()
 {
-	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead()) return;
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress()) return;
 	CancelLocalAndServerFire();
 	StopAim();
 	if (GetOwnerRole() == ROLE_Authority) ServerRequestReload_Implementation(); else ServerRequestReload();
 }
 void UArenaDuelWeaponComponent::EquipWeapon(int32 Index)
 {
-	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead()) return;
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress()) return;
 	CancelLocalAndServerFire();
 	StopAim();
 	if (GetOwnerRole() == ROLE_Authority) ServerRequestEquip_Implementation(Index); else ServerRequestEquip(Index);
 }
 void UArenaDuelWeaponComponent::StartAim()
 {
-	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead()) return;
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress()) return;
 	if (bAiming) return;
 	bAiming = true;
 	if (GetOwnerRole() == ROLE_Authority) ServerSetAiming_Implementation(true); else ServerSetAiming(true);
@@ -183,7 +184,7 @@ void UArenaDuelWeaponComponent::StopAim()
 		UpdateAimVisual();
 	}
 }
-void UArenaDuelWeaponComponent::CancelCombatActionsOnDeath()
+void UArenaDuelWeaponComponent::CancelCombatActions()
 {
 	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	const bool bAuthority = GetOwnerRole() == ROLE_Authority;
@@ -218,13 +219,19 @@ void UArenaDuelWeaponComponent::ServerSetAiming_Implementation(bool bAimingState
 	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character) return;
 	if (!bAimingState) { bAiming = false; return; }
-	if (!Character->IsDead() && Character->GetController()) bAiming = true;
+	if (!Character->IsDead() && Character->GetController() && IsRoundInProgress()) bAiming = true;
 }
-void UArenaDuelWeaponComponent::ServerSetFireHeld_Implementation(bool bHeld) { if (bHeld) StartAuthoritativeFire(); else StopAuthoritativeFire(); }
+void UArenaDuelWeaponComponent::ServerSetFireHeld_Implementation(bool bHeld) { if (bHeld && IsRoundInProgress()) StartAuthoritativeFire(); else StopAuthoritativeFire(); }
+bool UArenaDuelWeaponComponent::IsRoundInProgress() const
+{
+	const UWorld* World = GetWorld();
+	const AArenaDuelGameState* GameState = World ? World->GetGameState<AArenaDuelGameState>() : nullptr;
+	return !GameState || GameState->IsRoundInProgress();
+}
 bool UArenaDuelWeaponComponent::CanBeginAuthoritativeFire() const
 {
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
-	return Character && !Character->IsDead() && Character->GetController() && GetWorld() && WeaponDefinitions.IsValidIndex(EquippedWeaponIndex) && !bReloading && GetCurrentMagazineAmmo() > 0;
+	return Character && !Character->IsDead() && IsRoundInProgress() && Character->GetController() && GetWorld() && WeaponDefinitions.IsValidIndex(EquippedWeaponIndex) && !bReloading && GetCurrentMagazineAmmo() > 0;
 }
 void UArenaDuelWeaponComponent::StartAuthoritativeFire()
 {
@@ -244,7 +251,7 @@ void UArenaDuelWeaponComponent::CancelLocalAndServerFire()
 void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 {
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
-	if (!Character || Character->IsDead()) return;
+	if (!Character || Character->IsDead() || !IsRoundInProgress()) return;
 	FArenaDuelWeaponRuntimeState* State = GetMutableCurrentRuntimeState();
 	if (!State || bReloading || State->MagazineAmmo >= GetCurrentDefinition().MagazineCapacity || State->ReserveAmmo <= 0) return;
 	StopAuthoritativeFire();
@@ -255,12 +262,13 @@ void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 void UArenaDuelWeaponComponent::ServerRequestEquip_Implementation(int32 Index)
 {
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
-	if (!Character || Character->IsDead()) return;
+	if (!Character || Character->IsDead() || !IsRoundInProgress()) return;
 	if (WeaponDefinitions.IsValidIndex(Index) && !bReloading && Index != EquippedWeaponIndex) { StopAuthoritativeFire(); EquippedWeaponIndex = static_cast<uint8>(Index); OnRep_EquippedWeapon(); }
 }
 
 void UArenaDuelWeaponComponent::FireAuthoritative()
 {
+	if (!IsRoundInProgress()) { StopAuthoritativeFire(); return; }
 	if (!bServerFireHeld && GetCurrentDefinition().bAutomatic) return;
 	FArenaDuelWeaponRuntimeState* State = GetMutableCurrentRuntimeState();
 	const FArenaDuelWeaponDefinition& Definition = GetCurrentDefinition();
@@ -308,7 +316,7 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 void UArenaDuelWeaponComponent::CompleteReload()
 {
 	FArenaDuelWeaponRuntimeState* State = GetMutableCurrentRuntimeState();
-	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead()) { bReloading = false; return; }
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress()) { bReloading = false; return; }
 	if (!State || !bReloading) return;
 	const int32 Loaded = FMath::Min(FMath::Max(0, GetCurrentDefinition().MagazineCapacity - State->MagazineAmmo), State->ReserveAmmo);
 	State->MagazineAmmo += Loaded; State->ReserveAmmo -= Loaded; bReloading = false;

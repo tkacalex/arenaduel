@@ -124,7 +124,7 @@ public:
 	void EquipWeapon(int32 Index);
 	void StartAim();
 	void StopAim();
-	void CancelCombatActionsOnDeath();
+	void CancelCombatActions();
 
 	const FArenaDuelWeaponDefinition& GetCurrentDefinition() const;
 	int32 GetWeaponDefinitionCount() const { return WeaponDefinitions.Num(); }
@@ -163,6 +163,7 @@ protected:
 	void StartAuthoritativeFire();
 	void StopAuthoritativeFire();
 	bool CanBeginAuthoritativeFire() const;
+	bool IsRoundInProgress() const;
 	void CancelLocalAndServerFire();
 	void UpdateAimVisual();
 	void ApplyLocalRecoil();

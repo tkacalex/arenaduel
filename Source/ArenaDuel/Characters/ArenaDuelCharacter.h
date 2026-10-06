@@ -36,6 +36,7 @@ public:
 	UArenaDuelWeaponComponent* GetWeaponComponent() const { return WeaponComponent; }
 	bool IsCrouchInputHeld() const { return bCrouchInputHeld; }
 	bool IsDead() const { return bDead; }
+	void SetRoundInputLocked(bool bLocked);
 	float GetHealth() const;
 	float GetMaxHealth() const;
 	void ApplyServerDamage(float DamageAmount);
@@ -75,7 +76,7 @@ protected:
 	void ApplyDevelopmentDeathPose();
 	void StartLocalDeathCamera();
 	void UpdateLocalDeathCamera();
-	bool CanProcessGameplayInput() const { return IsLocallyControlled() && !bDead; }
+	bool CanProcessGameplayInput() const;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCameraComponent> FirstPersonCamera;
