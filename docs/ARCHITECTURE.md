@@ -89,7 +89,9 @@ Phase 4 local behavior validation is complete. The editor suite now covers multi
 
 `UArenaDuelWeaponComponent` owns the current weapon selection and server-authoritative runtime ammunition. Each of the four weapon definitions has an independent magazine and reserve state, so switching does not refill ammunition. Automatic fire is represented by a held state on the server and a server timer at the weapon cadence, not by per-frame fire RPCs. Hits are classified as head, body, world, or miss. The server uses the Character pawn view location and controller control rotation, then sends a compact shot confirmation to the owning client. Shotgun shells perform eight server traces with one ammo decrement. The first-person weapon is a local cosmetic primitive only; remote characters do not receive cosmetic camera or weapon transforms.
 
-Phase 4 input assets are `Input/IA_Sprint` and `Input/IA_Crouch`, mapped to Left Shift and Left Control in `Input/IMC_Gameplay`. Existing Phase 3 move, look, and jump assets remain unchanged.
+Phase 4 input assets are `Input/IA_Sprint` and `Input/IA_Crouch`, mapped to Left Shift and Left Control in `Input/IMC_Gameplay`. Phase 5 adds `Input/IA_Aim`, mapped to Right Mouse Button. Existing move, look, and jump assets remain unchanged.
+
+The Phase 5 weapon component owns a reliable aim state transition rather than sending aim input every frame. The owning client applies camera FOV and local viewmodel interpolation immediately; the server replicates the state and applies the per-weapon spread multiplier authoritatively. Reloading or switching weapons cancels aim and requires a new aim press. The normal HUD shows crosshair, confirmed body/head hitmarkers, stamina, and bottom-right ammo. F3 toggles the compact development overlay.
 
 ## Phase 3 Unreal assets
 
@@ -98,8 +100,8 @@ The Phase 3 input and Blueprint assets live under `Content/ArenaDuel/`:
 1. `Input/IA_Move` is Axis2D.
 2. `Input/IA_Look` is Axis2D.
 3. `Input/IA_Jump` is Boolean.
-4. `Input/IMC_Gameplay` maps WASD, Mouse2D, and SpaceBar.
-5. `Characters/BP_ArenaDuelCharacter` derives from `AArenaDuelCharacter` and owns the four input references.
+4. `Input/IMC_Gameplay` maps WASD, Mouse2D, SpaceBar, and Right Mouse Button for aim.
+5. `Characters/BP_ArenaDuelCharacter` derives from `AArenaDuelCharacter` and owns the movement, weapon, and aim input references.
 6. `Game/BP_ArenaDuelGameMode` derives from `AArenaDuelGameMode` and selects the Character Blueprint as its default pawn.
 7. `Maps/L_Phase3Test` is a temporary flat movement and two PlayerStart test map.
 

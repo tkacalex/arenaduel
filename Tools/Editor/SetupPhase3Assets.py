@@ -93,13 +93,15 @@ def configure_input_actions():
     sprint = load_or_create_data_asset("IA_Sprint", INPUT_PATH, unreal.InputAction)
     crouch = load_or_create_data_asset("IA_Crouch", INPUT_PATH, unreal.InputAction)
     slide = load_or_create_data_asset("IA_Slide", INPUT_PATH, unreal.InputAction)
+    aim = load_or_create_data_asset("IA_Aim", INPUT_PATH, unreal.InputAction)
     move.set_editor_property("value_type", unreal.InputActionValueType.AXIS2D)
     look.set_editor_property("value_type", unreal.InputActionValueType.AXIS2D)
     jump.set_editor_property("value_type", unreal.InputActionValueType.BOOLEAN)
     sprint.set_editor_property("value_type", unreal.InputActionValueType.BOOLEAN)
     crouch.set_editor_property("value_type", unreal.InputActionValueType.BOOLEAN)
     slide.set_editor_property("value_type", unreal.InputActionValueType.BOOLEAN)
-    for action in [move, look, jump, sprint, crouch, slide]:
+    aim.set_editor_property("value_type", unreal.InputActionValueType.BOOLEAN)
+    for action in [move, look, jump, sprint, crouch, slide, aim]:
         save(action)
     log("ACTION_TYPES " + str(move.get_editor_property("value_type")) + " " + str(look.get_editor_property("value_type")) + " " + str(jump.get_editor_property("value_type")) + " " + str(sprint.get_editor_property("value_type")) + " " + str(crouch.get_editor_property("value_type")) + " " + str(slide.get_editor_property("value_type")))
     fire = load_or_create_data_asset("IA_Fire", INPUT_PATH, unreal.InputAction)
@@ -111,7 +113,7 @@ def configure_input_actions():
     for action in [fire, reload_action, weapon1, weapon2, weapon3, weapon4]:
         action.set_editor_property("value_type", unreal.InputActionValueType.BOOLEAN)
         save(action)
-    return move, look, jump, sprint, crouch, slide, fire, reload_action, weapon1, weapon2, weapon3, weapon4
+    return move, look, jump, sprint, crouch, slide, aim, fire, reload_action, weapon1, weapon2, weapon3, weapon4
 
 
 def modifier_swizzle(outer):
@@ -126,7 +128,7 @@ def modifier_negate(outer):
     return modifier
 
 
-def configure_mapping_context(move, look, jump, sprint, crouch, slide, fire, reload_action, weapon1, weapon2, weapon3, weapon4):
+def configure_mapping_context(move, look, jump, sprint, crouch, slide, aim, fire, reload_action, weapon1, weapon2, weapon3, weapon4):
     context = load_or_create_data_asset("IMC_Gameplay", INPUT_PATH, unreal.InputMappingContext)
     context.unmap_all()
     entries = []
@@ -145,6 +147,7 @@ def configure_mapping_context(move, look, jump, sprint, crouch, slide, fire, rel
     add(sprint, "LeftShift")
     add(crouch, "C")
     add(slide, "LeftControl")
+    add(aim, "RightMouseButton")
     add(fire, "LeftMouseButton")
     add(reload_action, "R")
     add(weapon1, "One")
@@ -166,7 +169,7 @@ def configure_mapping_context(move, look, jump, sprint, crouch, slide, fire, rel
     return context
 
 
-def configure_blueprints(context, move, look, jump, sprint, crouch, slide, fire, reload_action, weapon1, weapon2, weapon3, weapon4):
+def configure_blueprints(context, move, look, jump, sprint, crouch, slide, aim, fire, reload_action, weapon1, weapon2, weapon3, weapon4):
     character_class = unreal.load_class(None, "/Script/ArenaDuel.ArenaDuelCharacter")
     game_mode_class = unreal.load_class(None, "/Script/ArenaDuel.ArenaDuelGameMode")
     if not character_class or not game_mode_class:
@@ -182,6 +185,7 @@ def configure_blueprints(context, move, look, jump, sprint, crouch, slide, fire,
         "sprint_action": sprint,
         "crouch_action": crouch,
         "slide_action": slide,
+        "aim_action": aim,
         "fire_action": fire,
         "reload_action": reload_action,
         "weapon1_action": weapon1,
@@ -369,9 +373,9 @@ def create_phase4_map():
 
 
 def main():
-    move, look, jump, sprint, crouch, slide, fire, reload_action, weapon1, weapon2, weapon3, weapon4 = configure_input_actions()
-    context = configure_mapping_context(move, look, jump, sprint, crouch, slide, fire, reload_action, weapon1, weapon2, weapon3, weapon4)
-    character_bp, game_mode_bp, _, game_mode_class = configure_blueprints(context, move, look, jump, sprint, crouch, slide, fire, reload_action, weapon1, weapon2, weapon3, weapon4)
+    move, look, jump, sprint, crouch, slide, aim, fire, reload_action, weapon1, weapon2, weapon3, weapon4 = configure_input_actions()
+    context = configure_mapping_context(move, look, jump, sprint, crouch, slide, aim, fire, reload_action, weapon1, weapon2, weapon3, weapon4)
+    character_bp, game_mode_bp, _, game_mode_class = configure_blueprints(context, move, look, jump, sprint, crouch, slide, aim, fire, reload_action, weapon1, weapon2, weapon3, weapon4)
     map_path = create_test_map()
     phase4_map_path = create_phase4_map()
     log("DONE " + character_bp.get_path_name() + " " + game_mode_bp.get_path_name() + " " + map_path + " " + phase4_map_path)

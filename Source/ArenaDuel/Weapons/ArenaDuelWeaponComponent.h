@@ -76,6 +76,21 @@ struct ARENADUEL_API FArenaDuelWeaponDefinition
 	float RecoilHorizontal = 0.08f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	float AimFOV = 78.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	float AimSensitivityMultiplier = 0.8f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	float AimSpreadMultiplier = 0.65f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	FVector AimViewmodelLocation = FVector(55.0f, 2.0f, -12.0f);
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	FRotator AimViewmodelRotation = FRotator::ZeroRotator;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float ReloadDuration = 1.8f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
@@ -101,6 +116,8 @@ public:
 	void StopFire();
 	void Reload();
 	void EquipWeapon(int32 Index);
+	void StartAim();
+	void StopAim();
 
 	const FArenaDuelWeaponDefinition& GetCurrentDefinition() const;
 	int32 GetWeaponDefinitionCount() const { return WeaponDefinitions.Num(); }
@@ -111,6 +128,8 @@ public:
 	int32 GetReserveAmmo() const;
 	bool IsReloading() const { return bReloading; }
 	bool IsFireHeld() const { return bFireHeld; }
+	bool IsAiming() const { return bAiming; }
+	float GetAimSensitivityMultiplier() const { return GetCurrentDefinition().AimSensitivityMultiplier; }
 	EArenaDuelShotResult GetLastShotResult() const { return LastShotResult; }
 	float GetLastShotDistance() const { return LastShotDistance; }
 	float GetLastShotAge() const;
@@ -125,6 +144,9 @@ protected:
 	void ServerSetFireHeld(bool bHeld);
 
 	UFUNCTION(Server, Reliable)
+	void ServerSetAiming(bool bAimingState);
+
+	UFUNCTION(Server, Reliable)
 	void ServerRequestReload();
 
 	UFUNCTION(Server, Reliable)
@@ -135,6 +157,7 @@ protected:
 	void StopAuthoritativeFire();
 	bool CanBeginAuthoritativeFire() const;
 	void CancelLocalAndServerFire();
+	void UpdateAimVisual();
 	void ApplyLocalRecoil();
 	void LocalCosmeticShot();
 	void RecoverCosmeticKick();
@@ -157,6 +180,9 @@ protected:
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Weapons")
 	bool bReloading = false;
 
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Weapons")
+	bool bAiming = false;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Weapons")
 	TObjectPtr<UStaticMeshComponent> FirstPersonWeaponMesh;
 
@@ -175,11 +201,13 @@ protected:
 	FTimerHandle AutomaticFireTimerHandle;
 	FTimerHandle LocalCosmeticFireTimerHandle;
 	FTimerHandle LocalCosmeticRecoveryTimerHandle;
+	FTimerHandle AimVisualTimerHandle;
 	TArray<double> NextAllowedFireServerTimes;
 	float LocalWeaponKick = 0.0f;
 	float LocalRecoilPitchRemaining = 0.0f;
 	float LocalRecoilYawRemaining = 0.0f;
 	float LastCosmeticShotWorldTime = -1.0f;
+	float HipFOV = 90.0f;
 
 	UFUNCTION()
 	void OnRep_EquippedWeapon();

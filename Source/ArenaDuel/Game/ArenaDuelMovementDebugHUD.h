@@ -13,4 +13,5 @@ class ARENADUEL_API AArenaDuelMovementDebugHUD : public AHUD
 
 protected:
 	virtual void DrawHUD() override;
+	bool bShowDebugOverlay = false;
 };

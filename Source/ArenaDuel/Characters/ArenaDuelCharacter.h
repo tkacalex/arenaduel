@@ -42,6 +42,8 @@ protected:
 	void SlideCompleted();
 	void WeaponFireStarted();
 	void WeaponFireCompleted();
+	void AimStarted();
+	void AimCompleted();
 	void WeaponReloadStarted();
 	void Weapon1Started();
 	void Weapon2Started();
@@ -74,6 +76,9 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> FireAction;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> AimAction;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> ReloadAction;

@@ -31,3 +31,5 @@ Important project files will include `ArenaDuel.uproject`, `Config/`, `Content/`
 Generated directories such as `Binaries/`, `DerivedDataCache/`, `Intermediate/`, `Saved/`, and `.vs/` are excluded from source control. Unreal asset packages use Git LFS.
 
 See `docs/DEVELOPMENT.md`, `docs/ARCHITECTURE.md`, and `docs/ROADMAP.md` for current decisions.
+
+Phase 5 adds the playable four-weapon prototype, compact competitive HUD, and hold-to-aim ADS with server-aware spread. Human tuning of visual feel remains a separate playtest step.

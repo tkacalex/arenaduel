@@ -155,6 +155,12 @@ void AArenaDuelCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Completed, this, &AArenaDuelCharacter::WeaponFireCompleted);
 		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Canceled, this, &AArenaDuelCharacter::WeaponFireCompleted);
 	}
+	if (AimAction)
+	{
+		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Started, this, &AArenaDuelCharacter::AimStarted);
+		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &AArenaDuelCharacter::AimCompleted);
+		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Canceled, this, &AArenaDuelCharacter::AimCompleted);
+	}
 	if (ReloadAction) EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &AArenaDuelCharacter::WeaponReloadStarted);
 	if (Weapon1Action) EnhancedInputComponent->BindAction(Weapon1Action, ETriggerEvent::Started, this, &AArenaDuelCharacter::Weapon1Started);
 	if (Weapon2Action) EnhancedInputComponent->BindAction(Weapon2Action, ETriggerEvent::Started, this, &AArenaDuelCharacter::Weapon2Started);
@@ -184,7 +190,11 @@ void AArenaDuelCharacter::Look(const FInputActionValue& Value)
 		return;
 	}
 
-	const FVector2D LookAxisVector = Value.Get<FVector2D>();
+	FVector2D LookAxisVector = Value.Get<FVector2D>();
+	if (WeaponComponent && WeaponComponent->IsAiming())
+	{
+		LookAxisVector *= WeaponComponent->GetAimSensitivityMultiplier();
+	}
 	AddControllerYawInput(LookAxisVector.X);
 	// Unreal's mouse Y convention is positive while moving down. Negate once here
 	// so the default ArenaDuel camera follows normal FPS behavior: mouse up looks up.
@@ -301,6 +311,8 @@ void AArenaDuelCharacter::SlideCompleted()
 
 void AArenaDuelCharacter::WeaponFireStarted() { if (WeaponComponent) WeaponComponent->StartFire(); }
 void AArenaDuelCharacter::WeaponFireCompleted() { if (WeaponComponent) WeaponComponent->StopFire(); }
+void AArenaDuelCharacter::AimStarted() { if (WeaponComponent) WeaponComponent->StartAim(); }
+void AArenaDuelCharacter::AimCompleted() { if (WeaponComponent) WeaponComponent->StopAim(); }
 void AArenaDuelCharacter::WeaponReloadStarted() { if (WeaponComponent) WeaponComponent->Reload(); }
 void AArenaDuelCharacter::Weapon1Started() { if (WeaponComponent) WeaponComponent->EquipWeapon(0); }
 void AArenaDuelCharacter::Weapon2Started() { if (WeaponComponent) WeaponComponent->EquipWeapon(1); }
