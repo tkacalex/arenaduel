@@ -9,12 +9,18 @@
 #include "ArenaDuel/Abilities/ArenaDuelGameplayTags.h"
 #include "ArenaDuel/Abilities/ArenaDuelGA_ShadowStep.h"
 #include "ArenaDuel/Abilities/ArenaDuelGA_VeilWall.h"
+#include "ArenaDuel/Abilities/ArenaDuelGA_ArcBarrier.h"
+#include "ArenaDuel/Abilities/ArenaDuelGA_BurstLeap.h"
+#include "ArenaDuel/Abilities/ArenaDuelArcBarrier.h"
 #include "ArenaDuel/Abilities/ArenaDuelShadowCooldownEffects.h"
 #include "ArenaDuel/Abilities/ArenaDuelVeilWall.h"
 #include "ArenaDuel/Player/ArenaDuelPlayerState.h"
 #include "ArenaDuel/Characters/ArenaDuelCharacter.h"
 #include "ArenaDuel/Game/ArenaDuelGameMode.h"
 #include "ArenaDuel/Game/ArenaDuelGameState.h"
+#include "ArenaDuel/Weapons/ArenaDuelWeaponComponent.h"
+#include "ArenaDuel/UI/ArenaDuelAdminTypes.h"
+#include "ArenaDuel/Player/ArenaDuelPlayerController.h"
 #include "AbilitySystemComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
@@ -33,23 +39,36 @@ bool FArenaDuelPhase7ShadowAbilityContractTest::RunTest(const FString& Parameter
 	TestTrue(TEXT("Veil Wall uses predicted GAS execution"), VeilWallAbility && VeilWallAbility->GetNetExecutionPolicy() == EGameplayAbilityNetExecutionPolicy::LocalPredicted);
 	TestTrue(TEXT("Shadow Step exposes its native ability and cooldown tags"), ShadowStep && ShadowStep->GetAssetTags().HasTagExact(TAG_Ability_Shadow_ShadowStep.GetTag()) && ShadowStep->GetCooldownTags()->HasTagExact(TAG_Cooldown_Shadow_ShadowStep.GetTag()));
 	TestTrue(TEXT("Veil Wall exposes its native ability and cooldown tags"), VeilWallAbility && VeilWallAbility->GetAssetTags().HasTagExact(TAG_Ability_Shadow_VeilWall.GetTag()) && VeilWallAbility->GetCooldownTags()->HasTagExact(TAG_Cooldown_Shadow_VeilWall.GetTag()));
+	const UArenaDuelGA_ArcBarrier* ArcBarrier = GetDefault<UArenaDuelGA_ArcBarrier>();
+	const UArenaDuelGA_BurstLeap* BurstLeap = GetDefault<UArenaDuelGA_BurstLeap>();
+	TestTrue(TEXT("Warden abilities use predicted GAS execution"), ArcBarrier && ArcBarrier->GetNetExecutionPolicy() == EGameplayAbilityNetExecutionPolicy::LocalPredicted && BurstLeap && BurstLeap->GetNetExecutionPolicy() == EGameplayAbilityNetExecutionPolicy::LocalPredicted);
+	TestTrue(TEXT("Warden ability and cooldown tags are registered"), ArcBarrier && ArcBarrier->GetAssetTags().HasTagExact(TAG_Ability_Warden_ArcBarrier.GetTag()) && ArcBarrier->GetCooldownTags()->HasTagExact(TAG_Cooldown_Warden_ArcBarrier.GetTag()) && BurstLeap && BurstLeap->GetAssetTags().HasTagExact(TAG_Ability_Warden_BurstLeap.GetTag()) && BurstLeap->GetCooldownTags()->HasTagExact(TAG_Cooldown_Warden_BurstLeap.GetTag()));
 
 	const UGameplayEffect* StepCooldown = GetDefault<UArenaDuelGE_ShadowStepCooldown>();
 	const UGameplayEffect* WallCooldown = GetDefault<UArenaDuelGE_VeilWallCooldown>();
+	const UGameplayEffect* BarrierCooldown = GetDefault<UArenaDuelGE_ArcBarrierCooldown>();
+	const UGameplayEffect* LeapCooldown = GetDefault<UArenaDuelGE_BurstLeapCooldown>();
 	float StepDuration = 0.0f;
 	float WallDuration = 0.0f;
+	float BarrierDuration = 0.0f;
+	float LeapDuration = 0.0f;
 	const bool bHasStepDuration = StepCooldown && StepCooldown->DurationMagnitude.GetStaticMagnitudeIfPossible(1.0f, StepDuration);
 	const bool bHasWallDuration = WallCooldown && WallCooldown->DurationMagnitude.GetStaticMagnitudeIfPossible(1.0f, WallDuration);
+	const bool bHasBarrierDuration = BarrierCooldown && BarrierCooldown->DurationMagnitude.GetStaticMagnitudeIfPossible(1.0f, BarrierDuration);
+	const bool bHasLeapDuration = LeapCooldown && LeapCooldown->DurationMagnitude.GetStaticMagnitudeIfPossible(1.0f, LeapDuration);
 	TestTrue(TEXT("Shadow Step cooldown is a five second duration effect"), StepCooldown && StepCooldown->DurationPolicy == EGameplayEffectDurationType::HasDuration && bHasStepDuration && FMath::IsNearlyEqual(StepDuration, 5.0f));
 	TestTrue(TEXT("Veil Wall cooldown is a twelve second duration effect"), WallCooldown && WallCooldown->DurationPolicy == EGameplayEffectDurationType::HasDuration && bHasWallDuration && FMath::IsNearlyEqual(WallDuration, 12.0f));
+	TestTrue(TEXT("Arc Barrier cooldown is a fourteen second duration effect"), BarrierCooldown && BarrierCooldown->DurationPolicy == EGameplayEffectDurationType::HasDuration && bHasBarrierDuration && FMath::IsNearlyEqual(BarrierDuration, 14.0f));
+	TestTrue(TEXT("Burst Leap cooldown is a seven second duration effect"), LeapCooldown && LeapCooldown->DurationPolicy == EGameplayEffectDurationType::HasDuration && bHasLeapDuration && FMath::IsNearlyEqual(LeapDuration, 7.0f));
 	TestTrue(TEXT("Cooldown effects grant the corresponding owned tags"), StepCooldown && StepCooldown->GetGrantedTags().HasTagExact(TAG_Cooldown_Shadow_ShadowStep.GetTag()) && WallCooldown && WallCooldown->GetGrantedTags().HasTagExact(TAG_Cooldown_Shadow_VeilWall.GetTag()));
 
 	AArenaDuelPlayerState* PlayerState = NewObject<AArenaDuelPlayerState>(GetTransientPackage());
 	TestNotNull(TEXT("PlayerState can be created for persistent ability grant check"), PlayerState);
 	if (PlayerState)
 	{
-		PlayerState->GrantShadowAbilities();
-		PlayerState->GrantShadowAbilities();
+		TestTrue(TEXT("Default archetype is Shadow"), PlayerState->GetCharacterArchetype() == EArenaDuelCharacterArchetype::Shadow);
+		PlayerState->GrantCharacterAbilities();
+		PlayerState->GrantCharacterAbilities();
 		UAbilitySystemComponent* ASC = PlayerState->GetAbilitySystemComponent();
 		TestTrue(TEXT("PlayerState ASC has exactly one Shadow Step spec"), ASC && ASC->FindAbilitySpecFromClass(UArenaDuelGA_ShadowStep::StaticClass()));
 		TestTrue(TEXT("PlayerState ASC has exactly one Veil Wall spec"), ASC && ASC->FindAbilitySpecFromClass(UArenaDuelGA_VeilWall::StaticClass()));
@@ -79,6 +98,17 @@ bool FArenaDuelPhase7ShadowAbilityContractTest::RunTest(const FString& Parameter
 		{
 			TestEqual(TEXT("Veil Wall visuals have no movement or hitscan collision"), Primitive->GetCollisionEnabled(), ECollisionEnabled::NoCollision);
 		}
+	}
+	const AArenaDuelArcBarrier* Barrier = GetDefault<AArenaDuelArcBarrier>();
+	TestTrue(TEXT("Arc Barrier replicates and has a five second lifetime"), Barrier && Barrier->GetIsReplicated() && FMath::IsNearlyEqual(Barrier->InitialLifeSpan, 5.0f));
+	TestTrue(TEXT("Arc Barrier development dimensions are 425 by 245 units"), Barrier && Barrier->GetBarrierHalfExtents().Equals(FVector(12.5f, 212.5f, 122.5f)));
+	if (Barrier)
+	{
+		const UPrimitiveComponent* Collision = Cast<UPrimitiveComponent>(Barrier->GetRootComponent());
+		TestTrue(TEXT("Arc Barrier physically blocks Pawn movement"), Collision && Collision->GetCollisionEnabled() == ECollisionEnabled::QueryAndPhysics && Collision->GetCollisionResponseToChannel(ECC_Pawn) == ECR_Block);
+		TestTrue(TEXT("Arc Barrier blocks current Visibility hitscan"), Collision && Collision->GetCollisionResponseToChannel(ECC_Visibility) == ECR_Block);
+		const UStaticMeshComponent* Visual = Barrier->FindComponentByClass<UStaticMeshComponent>();
+		TestTrue(TEXT("Arc Barrier visual does not duplicate collision"), Visual && Visual->GetCollisionEnabled() == ECollisionEnabled::NoCollision);
 	}
 	return true;
 }
@@ -123,6 +153,160 @@ namespace ArenaDuelPhase7NetworkTests
 		return Count;
 	}
 }
+
+NETWORK_TEST_CLASS(FArenaDuelPhase7WardenNetworkSmokeTest, "ArenaDuel.Phase7.WardenNetworkSmoke")
+{
+	FPIENetworkComponent<FArenaDuelPhase7NetworkState> Network{TestRunner, TestCommandBuilder, bInitializing};
+
+	BEFORE_EACH()
+	{
+		UClass* GameModeClass = LoadClass<AGameModeBase>(nullptr, ArenaDuelPhase7NetworkTests::GameModeClassPath);
+		FNetworkComponentBuilder<FArenaDuelPhase7NetworkState>().WithClients(1).AsListenServer().WithGameMode(GameModeClass).Build(Network);
+	}
+
+	TEST_METHOD(WardenKitBarrierLeapAndPersistentArchetype)
+	{
+		Network
+			.UntilServer(TEXT("Assign Warden kit to Player 2 while Player 1 remains Shadow"), [](FArenaDuelPhase7NetworkState& State)
+			{
+				AArenaDuelGameMode* GameMode = State.World->GetAuthGameMode<AArenaDuelGameMode>();
+				AArenaDuelPlayerState* P1 = GameMode ? GameMode->FindPlayerStateByDuelSlot(0) : nullptr;
+				AArenaDuelPlayerState* P2 = GameMode ? GameMode->FindPlayerStateByDuelSlot(1) : nullptr;
+				if (!P1 || !P2) return false;
+				P2->SetCharacterArchetypeForDevelopment(EArenaDuelCharacterArchetype::Warden);
+				return P1->GetCharacterArchetype() == EArenaDuelCharacterArchetype::Shadow && P2->GetCharacterArchetype() == EArenaDuelCharacterArchetype::Warden;
+			}, FTimespan::FromSeconds(10.0))
+			.UntilClient(TEXT("Owning client observes Warden archetype and exactly the Warden kit"), 0, [](FArenaDuelPhase7NetworkState& State)
+			{
+				for (TActorIterator<AArenaDuelCharacter> It(State.World); It; ++It)
+				{
+					if (!It->IsLocallyControlled()) continue;
+					AArenaDuelPlayerState* PS = It->GetPlayerState<AArenaDuelPlayerState>();
+					return PS && PS->GetCharacterArchetype() == EArenaDuelCharacterArchetype::Warden
+						&& ArenaDuelPhase7NetworkTests::CountAbilitySpecs(PS, UArenaDuelGA_ArcBarrier::StaticClass()) == 1
+						&& ArenaDuelPhase7NetworkTests::CountAbilitySpecs(PS, UArenaDuelGA_BurstLeap::StaticClass()) == 1
+						&& ArenaDuelPhase7NetworkTests::CountAbilitySpecs(PS, UArenaDuelGA_ShadowStep::StaticClass()) == 0
+						&& ArenaDuelPhase7NetworkTests::CountAbilitySpecs(PS, UArenaDuelGA_VeilWall::StaticClass()) == 0;
+				}
+				return false;
+			}, FTimespan::FromSeconds(10.0))
+			.ThenClient(TEXT("Client activates predicted Arc Barrier"), 0, [this](FArenaDuelPhase7NetworkState& State)
+			{
+				for (TActorIterator<AArenaDuelCharacter> It(State.World); It; ++It)
+				{
+					if (!It->IsLocallyControlled()) continue;
+					AArenaDuelPlayerState* PS = It->GetPlayerState<AArenaDuelPlayerState>();
+					if (AArenaDuelPlayerController* PC = Cast<AArenaDuelPlayerController>(It->GetController()))
+					{
+						PC->ServerExecuteAdminCommand(EArenaDuelAdminCommand::SetArchetypeShadow, PS ? PS->GetDuelSlot() : 1, 0.0f);
+					}
+					if (!PS || !PS->TryActivatePrimaryAbility()) TestRunner->AddError(TEXT("Generic primary slot did not activate Warden Arc Barrier"));
+					else if (PS->TryActivatePrimaryAbility()) TestRunner->AddError(TEXT("Arc Barrier cooldown did not reject an immediate second activation"));
+					return;
+				}
+				TestRunner->AddError(TEXT("No locally controlled Warden Character on client"));
+			})
+			.UntilServer(TEXT("Server confirms replicated physical barrier and authoritative hitscan damage"), [](FArenaDuelPhase7NetworkState& State)
+			{
+				AArenaDuelCharacter* Warden = ArenaDuelPhase7NetworkTests::FindRemoteCharacter(State.World);
+				AArenaDuelPlayerState* PS = Warden ? Warden->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
+				AArenaDuelArcBarrier* Barrier = nullptr;
+				for (TActorIterator<AArenaDuelArcBarrier> It(State.World); It; ++It) { Barrier = *It; break; }
+				if (!Warden || !PS || !Barrier || Barrier->GetOwner() != PS || PS->GetPrimaryAbilityCooldownRemaining() < 13.0f) return false;
+				if (Barrier->GetBarrierHealth() >= 350.0f)
+				{
+					if (UArenaDuelWeaponComponent* Weapon = Warden->GetWeaponComponent()) Weapon->StartFire();
+					return false;
+				}
+				if (Warden->GetHealth() < 99.9f) return false;
+				for (FConstPlayerControllerIterator It = State.World->GetPlayerControllerIterator(); It; ++It)
+				{
+					const APlayerController* OtherController = It->Get();
+					const AArenaDuelPlayerState* OtherState = OtherController ? OtherController->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
+					const AArenaDuelCharacter* OtherCharacter = OtherController ? Cast<AArenaDuelCharacter>(OtherController->GetPawn()) : nullptr;
+					if (OtherState && OtherState != PS && OtherCharacter && OtherCharacter->GetHealth() < 99.9f) return false;
+				}
+				if (UArenaDuelWeaponComponent* Weapon = Warden->GetWeaponComponent()) Weapon->StopFire();
+				return Barrier->GetBarrierHealth() < 350.0f;
+			}, FTimespan::FromSeconds(5.0))
+			.UntilClient(TEXT("Arc Barrier replicates to the owning client with matching owner and blocking channels"), 0, [](FArenaDuelPhase7NetworkState& State)
+			{
+				AArenaDuelCharacter* LocalCharacter = nullptr;
+				for (TActorIterator<AArenaDuelCharacter> It(State.World); It; ++It) if (It->IsLocallyControlled()) { LocalCharacter = *It; break; }
+				AArenaDuelPlayerState* PS = LocalCharacter ? LocalCharacter->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
+				for (TActorIterator<AArenaDuelArcBarrier> It(State.World); It; ++It)
+				{
+					const UPrimitiveComponent* Collision = Cast<UPrimitiveComponent>(It->GetRootComponent());
+					return PS && It->GetOwner() == PS && Collision
+						&& Collision->GetCollisionResponseToChannel(ECC_Pawn) == ECR_Block
+						&& Collision->GetCollisionResponseToChannel(ECC_Visibility) == ECR_Block;
+				}
+				return false;
+			}, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Client activates predicted Warden Burst Leap with cooldown"), 0, [this](FArenaDuelPhase7NetworkState& State)
+			{
+				for (TActorIterator<AArenaDuelCharacter> It(State.World); It; ++It)
+				{
+					if (!It->IsLocallyControlled()) continue;
+					AArenaDuelPlayerState* PS = It->GetPlayerState<AArenaDuelPlayerState>();
+					if (!PS || !PS->TryActivateSecondaryAbility()) TestRunner->AddError(TEXT("Generic secondary slot did not activate Warden Burst Leap"));
+					else if (PS->TryActivateSecondaryAbility()) TestRunner->AddError(TEXT("Burst Leap cooldown did not reject an immediate second activation"));
+					return;
+				}
+				TestRunner->AddError(TEXT("No locally controlled Warden Character for Burst Leap"));
+			})
+			.UntilServer(TEXT("Server observes Burst Leap movement and cooldown without damage"), [](FArenaDuelPhase7NetworkState& State)
+			{
+				AArenaDuelCharacter* Warden = ArenaDuelPhase7NetworkTests::FindRemoteCharacter(State.World);
+				AArenaDuelPlayerState* PS = Warden ? Warden->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
+				return Warden && PS && PS->GetSecondaryAbilityCooldownRemaining() > 6.0f && Warden->GetVelocity().Z > 100.0f && Warden->GetHealth() >= 99.9f;
+			}, FTimespan::FromSeconds(3.0))
+			.ThenServer(TEXT("Archetype and Warden kit survive a round reset without duplicates and with ready cooldowns"), [](FArenaDuelPhase7NetworkState& State)
+			{
+				AArenaDuelCharacter* Warden = ArenaDuelPhase7NetworkTests::FindRemoteCharacter(State.World);
+				AArenaDuelPlayerState* PS = Warden ? Warden->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
+				AArenaDuelGameMode* GameMode = State.World->GetAuthGameMode<AArenaDuelGameMode>();
+				if (GameMode) GameMode->AdminRestartRound();
+				if (!PS || PS->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Warden) return;
+				PS->ResetAbilitiesForNewRound();
+			})
+			.UntilServer(TEXT("Warden specs remain unique after respawn"), [](FArenaDuelPhase7NetworkState& State)
+			{
+				AArenaDuelCharacter* Warden = ArenaDuelPhase7NetworkTests::FindRemoteCharacter(State.World);
+				AArenaDuelPlayerState* PS = Warden ? Warden->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
+				return PS && PS->GetCharacterArchetype() == EArenaDuelCharacterArchetype::Warden
+					&& ArenaDuelPhase7NetworkTests::CountAbilitySpecs(PS, UArenaDuelGA_ArcBarrier::StaticClass()) == 1
+					&& ArenaDuelPhase7NetworkTests::CountAbilitySpecs(PS, UArenaDuelGA_BurstLeap::StaticClass()) == 1
+					&& ArenaDuelPhase7NetworkTests::CountAbilitySpecs(PS, UArenaDuelGA_ShadowStep::StaticClass()) == 0
+					&& ArenaDuelPhase7NetworkTests::CountAbilitySpecs(PS, UArenaDuelGA_VeilWall::StaticClass()) == 0
+					&& PS->GetPrimaryAbilityCooldownRemaining() <= KINDA_SMALL_NUMBER
+					&& PS->GetSecondaryAbilityCooldownRemaining() <= KINDA_SMALL_NUMBER;
+			}, FTimespan::FromSeconds(5.0))
+			.ThenServer(TEXT("Fresh match reset preserves Warden, then Warden to Shadow kit replacement removes old specs"), [](FArenaDuelPhase7NetworkState& State)
+			{
+				AArenaDuelGameMode* GameMode = State.World->GetAuthGameMode<AArenaDuelGameMode>();
+				AArenaDuelPlayerState* PS = GameMode ? GameMode->FindPlayerStateByDuelSlot(1) : nullptr;
+				if (!PS || !GameMode) return;
+				GameMode->AdminResetMatch();
+				if (PS->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Warden)
+				{
+					TestRunner->AddError(TEXT("Fresh match reset unexpectedly changed Warden archetype"));
+					return;
+				}
+				PS->SetCharacterArchetypeForDevelopment(EArenaDuelCharacterArchetype::Shadow);
+			})
+			.UntilServer(TEXT("Switching back to Shadow leaves only the Shadow kit"), [](FArenaDuelPhase7NetworkState& State)
+			{
+				AArenaDuelGameMode* GameMode = State.World->GetAuthGameMode<AArenaDuelGameMode>();
+				AArenaDuelPlayerState* PS = GameMode ? GameMode->FindPlayerStateByDuelSlot(1) : nullptr;
+				return PS && PS->GetCharacterArchetype() == EArenaDuelCharacterArchetype::Shadow
+					&& ArenaDuelPhase7NetworkTests::CountAbilitySpecs(PS, UArenaDuelGA_ShadowStep::StaticClass()) == 1
+					&& ArenaDuelPhase7NetworkTests::CountAbilitySpecs(PS, UArenaDuelGA_VeilWall::StaticClass()) == 1
+					&& ArenaDuelPhase7NetworkTests::CountAbilitySpecs(PS, UArenaDuelGA_ArcBarrier::StaticClass()) == 0
+					&& ArenaDuelPhase7NetworkTests::CountAbilitySpecs(PS, UArenaDuelGA_BurstLeap::StaticClass()) == 0;
+			}, FTimespan::FromSeconds(5.0));
+	}
+};
 
 NETWORK_TEST_CLASS(FArenaDuelPhase7ShadowNetworkSmokeTest, "ArenaDuel.Phase7.ShadowNetwork")
 {
@@ -259,7 +443,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase7ShadowNetworkSmokeTest, "ArenaDuel.Phase7.Sha
 					return;
 				}
 				GameMode->AdminAwardRound(RemoteState->GetDuelSlot() == 0 ? 1 : 0);
-				RemoteState->ResetShadowAbilitiesForNewRound();
+				RemoteState->ResetAbilitiesForNewRound();
 				const AArenaDuelGameState* GameState = State.World->GetGameState<AArenaDuelGameState>();
 				if (!GameState || GameState->IsRoundInProgress()) TestRunner->AddError(TEXT("GameMode did not enter the authoritative round-break state"));
 			})

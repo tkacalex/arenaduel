@@ -5,6 +5,7 @@
 #include "ArenaDuelShadowCooldownEffects.h"
 #include "ArenaDuelVeilWall.h"
 #include "../Characters/ArenaDuelCharacter.h"
+#include "../Player/ArenaDuelPlayerState.h"
 
 UArenaDuelGA_VeilWall::UArenaDuelGA_VeilWall()
 {
@@ -37,7 +38,7 @@ void UArenaDuelGA_VeilWall::ActivateAbility(const FGameplayAbilitySpecHandle Han
 		const FVector SpawnLocation = Character->GetActorLocation() + Facing * 300.0f;
 		const FRotator SpawnRotation(0.0f, Facing.Rotation().Yaw, 0.0f);
 		FActorSpawnParameters SpawnParameters;
-		SpawnParameters.Owner = Character;
+		SpawnParameters.Owner = Character->GetPlayerState<AArenaDuelPlayerState>();
 		SpawnParameters.Instigator = Character;
 		Character->GetWorld()->SpawnActor<AArenaDuelVeilWall>(AArenaDuelVeilWall::StaticClass(), SpawnLocation, SpawnRotation, SpawnParameters);
 	}

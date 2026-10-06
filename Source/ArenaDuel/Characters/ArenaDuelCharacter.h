@@ -76,8 +76,8 @@ protected:
 	void Weapon2Started();
 	void Weapon3Started();
 	void Weapon4Started();
-	void ShadowStepStarted();
-	void VeilWallStarted();
+	void PrimaryAbilityStarted();
+	void SecondaryAbilityStarted();
 	void InitializeAbilityActorInfo();
 	void HandleDeath();
 	void ApplyDevelopmentDeathPose();

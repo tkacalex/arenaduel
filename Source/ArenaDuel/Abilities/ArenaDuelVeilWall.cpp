@@ -8,6 +8,7 @@
 #include "EngineUtils.h"
 #include "Net/UnrealNetwork.h"
 #include "UObject/ConstructorHelpers.h"
+#include "../Player/ArenaDuelPlayerState.h"
 
 AArenaDuelVeilWall::AArenaDuelVeilWall()
 {
@@ -47,6 +48,12 @@ void AArenaDuelVeilWall::DestroyAllForRound(UWorld* World)
 {
 	if (!World || !World->GetAuthGameMode()) return;
 	for (TActorIterator<AArenaDuelVeilWall> It(World); It; ++It) It->Destroy();
+}
+
+void AArenaDuelVeilWall::DestroyOwnedByPlayerState(UWorld* World, const AArenaDuelPlayerState* OwnerState)
+{
+	if (!World || !OwnerState || !World->GetAuthGameMode()) return;
+	for (TActorIterator<AArenaDuelVeilWall> It(World); It; ++It) if (It->GetOwner() == OwnerState) It->Destroy();
 }
 
 void AArenaDuelVeilWall::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

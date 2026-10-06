@@ -5,6 +5,7 @@
 #include "../Characters/ArenaDuelCharacter.h"
 #include "ArenaDuelGameState.h"
 #include "../Abilities/ArenaDuelVeilWall.h"
+#include "../Abilities/ArenaDuelArcBarrier.h"
 #include "../Player/ArenaDuelPlayerController.h"
 #include "../Player/ArenaDuelPlayerState.h"
 #include "ArenaDuelMovementDebugHUD.h"
@@ -100,6 +101,7 @@ void AArenaDuelGameMode::EndRoundForDevelopment(AArenaDuelPlayerState* WinningPl
 	AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>();
 	if (!ArenaGameState || !ArenaGameState->IsRoundInProgress()) return;
 	AArenaDuelVeilWall::DestroyAllForRound(GetWorld());
+	AArenaDuelArcBarrier::DestroyAllForRound(GetWorld());
 	if (WinningPlayerState) WinningPlayerState->AwardRoundWin();
 	const int32 WinnerSlot = WinningPlayerState ? static_cast<int32>(WinningPlayerState->GetDuelSlot()) : INDEX_NONE;
 	ArenaGameState->SetRoundState(ArenaGameState->GetRoundNumber(), false, WinnerSlot);
@@ -230,6 +232,7 @@ void AArenaDuelGameMode::RestartDuelPlayers()
 {
 	if (!HasAuthority() || !GetWorld()) return;
 	AArenaDuelVeilWall::DestroyAllForRound(GetWorld());
+	AArenaDuelArcBarrier::DestroyAllForRound(GetWorld());
 	TArray<APlayerController*> Controllers;
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
@@ -238,7 +241,7 @@ void AArenaDuelGameMode::RestartDuelPlayers()
 			Controllers.Add(PlayerController);
 			if (AArenaDuelPlayerState* PlayerState = PlayerController->GetPlayerState<AArenaDuelPlayerState>())
 			{
-				PlayerState->ResetShadowAbilitiesForNewRound();
+				PlayerState->ResetAbilitiesForNewRound();
 			}
 			if (APawn* OldPawn = PlayerController->GetPawn())
 			{

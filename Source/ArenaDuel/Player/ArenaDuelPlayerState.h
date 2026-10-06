@@ -12,6 +12,14 @@ class UAbilitySystemComponent;
 class UArenaDuelAttributeSet;
 class UGameplayAbility;
 
+UENUM(BlueprintType)
+enum class EArenaDuelCharacterArchetype : uint8
+{
+	Shadow UMETA(DisplayName="Shadow"),
+	Warden UMETA(DisplayName="Warden"),
+	Rift UMETA(DisplayName="Rift")
+};
+
 UCLASS()
 class ARENADUEL_API AArenaDuelPlayerState : public APlayerState, public IAbilitySystemInterface
 {
@@ -26,8 +34,17 @@ public:
 	bool HasAdminGodMode() const { return bAdminGodMode; }
 	bool HasAdminInfiniteAmmo() const { return bAdminInfiniteAmmo; }
 	bool HasAdminInfiniteStamina() const { return bAdminInfiniteStamina; }
-	void GrantShadowAbilities();
-	void ResetShadowAbilitiesForNewRound();
+	EArenaDuelCharacterArchetype GetCharacterArchetype() const { return CharacterArchetype; }
+	FText GetCharacterArchetypeDisplayName() const;
+	bool SetCharacterArchetypeForDevelopment(EArenaDuelCharacterArchetype NewArchetype);
+	void GrantCharacterAbilities();
+	void ResetAbilitiesForNewRound();
+	bool TryActivatePrimaryAbility();
+	bool TryActivateSecondaryAbility();
+	float GetPrimaryAbilityCooldownRemaining() const;
+	float GetSecondaryAbilityCooldownRemaining() const;
+	FText GetPrimaryAbilityDisplayName() const;
+	FText GetSecondaryAbilityDisplayName() const;
 	float GetShadowStepCooldownRemaining() const;
 	float GetVeilWallCooldownRemaining() const;
 	void SetDuelSlot(uint8 NewDuelSlot);
@@ -40,7 +57,10 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	UFUNCTION() void OnRep_CharacterArchetype();
 	float GetCooldownRemaining(const FGameplayTag& CooldownTag) const;
+	void RemoveAllKitAbilitiesAndCooldowns();
+	void GrantCurrentKit();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Replicated, Category="Abilities")
 	TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
@@ -53,6 +73,9 @@ protected:
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
 	int32 RoundWins = 0;
+
+	UPROPERTY(ReplicatedUsing=OnRep_CharacterArchetype, VisibleInstanceOnly, BlueprintReadOnly, Category="Character")
+	EArenaDuelCharacterArchetype CharacterArchetype = EArenaDuelCharacterArchetype::Shadow;
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Development")
 	bool bAdminGodMode = false;

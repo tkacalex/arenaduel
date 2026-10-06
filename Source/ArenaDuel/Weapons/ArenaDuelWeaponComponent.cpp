@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "ArenaDuelWeaponComponent.h"
+#include "../Abilities/ArenaDuelArcBarrier.h"
 #include "../Characters/ArenaDuelCharacter.h"
 #include "../Game/ArenaDuelGameState.h"
 #include "../Player/ArenaDuelPlayerState.h"
@@ -335,6 +336,14 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 		FHitResult Hit;
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelWeaponTrace), true, Character);
 		if (!GetWorld()->LineTraceSingleByChannel(Hit, Origin, Origin + PelletDirection * Definition.Range, ECC_Visibility, Params)) continue;
+		if (AArenaDuelArcBarrier* Barrier = Cast<AArenaDuelArcBarrier>(Hit.GetActor()))
+		{
+			Barrier->ApplyBarrierDamage(Definition.BodyDamage);
+			ClosestDistance = FMath::Min(ClosestDistance, FVector::Dist(Origin, Hit.Location));
+			LastTarget = Barrier;
+			++WorldPellets;
+			continue;
+		}
 		const EArenaDuelShotResult Result = ClassifyHit(Hit);
 		if ((Result == EArenaDuelShotResult::Body || Result == EArenaDuelShotResult::Head) && Hit.GetActor() != Character)
 		{

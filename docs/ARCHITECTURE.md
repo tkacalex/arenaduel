@@ -60,13 +60,19 @@ The local `AArenaDuelMovementDebugHUD` creates one native `UArenaDuelHUDWidget`;
 
 When an authoritative Character dies, GameMode ends the round, locks movement and combat for both players, increments the surviving player's replicated win count, and restarts both player controllers after three seconds using normal PlayerStarts. Client input checks replicated round state and the server independently rejects weapon actions during the break. At five wins, replicated GameState match completion and winner slot replace the normal round timer; both players see a centered final result for five seconds, then the server resets scores and starts a fresh match. This remains a development flow without a round timer, selection, disconnect rules, or final rematch controls.
 
-## Phase 7A Shadow ability foundation
+## Phase 7 ability foundation
 
 `AArenaDuelPlayerState` remains the owner of the replicated GAS ASC. It grants one native `UArenaDuelGA_ShadowStep` and one `UArenaDuelGA_VeilWall` spec on authority, guarded by class lookup so the specs persist without duplication when the Character is replaced. Each newly possessed Character refreshes the ASC ActorInfo with PlayerState as OwnerActor and the current Character as AvatarActor. Both abilities use native gameplay tags and duration GameplayEffects for their 5 second and 12 second cooldowns.
 
 Q activates predicted, collision-respecting CharacterMovement launch locomotion in the current planar input/acceleration direction, falling back to control-forward when no movement input is present. E asks the server to create a fixed-distance, three-second replicated visual wall. The wall has no collision, so it is not a player barrier and cannot intercept the existing hitscan traces. Both abilities reject missing GAS/avatar state, dead Characters, inactive rounds, and locally open admin menus. Death cancels running abilities. Round end destroys temporary Veil Walls, and the authoritative next-round pawn reset cancels abilities and removes only Shadow cooldown effects without clearing the persistent specs or player round wins. The gameplay HUD queries the actual ASC cooldown effects for Q and E.
 
 The native HUD also shows a temporary match-result overlay from replicated GameState winner state and final PlayerState scores. It hides the local defeated label while the result is active. This adds presentation only; match authority remains in GameMode/GameState.
+
+### Phase 7B character archetypes and Warden kit
+
+`AArenaDuelPlayerState` stores the replicated `EArenaDuelCharacterArchetype`; it defaults to Shadow and survives pawn replacement and fresh-match resets, but is not saved between application runs. The PlayerState-owned ASC grants only the selected kit's two ability specs. Archetype replacement is a host-only development admin command: it cancels active abilities, destroys that PlayerState's temporary ability actors, removes kit specs and cooldown effects, changes the archetype, grants the new kit, and reinitializes the current AvatarActor. Character input invokes generic Primary (Q) and Secondary (E) methods, while the HUD reads archetype-specific names and real GAS cooldowns.
+
+Shadow remains unchanged: Q Shadow Step has a five-second cooldown; E Veil Wall has a twelve-second cooldown and creates a three-second replicated visual occluder with no collision. Warden Q Arc Barrier has a fourteen-second cooldown, 350 server-owned health, and a five-second maximum lifespan. Its cyan physical cover blocks Pawn movement and `ECC_Visibility` hitscan; the weapon server applies the weapon's base body damage to it and stops that trace there. Warden E Burst Leap has a seven-second cooldown and uses a predicted CharacterMovement launch. Neither Warden ability deals damage. Round cleanup removes Veil Walls and Arc Barriers, and fresh rounds clear cooldowns while preserving the selected kit. Rift is only an enum/display value; it has no granted abilities.
 
 ## Development admin control
 

@@ -23,8 +23,6 @@
 #include "../Game/ArenaDuelGameState.h"
 #include "../Combat/ArenaDuelAttributeSet.h"
 #include "AbilitySystemComponent.h"
-#include "../Abilities/ArenaDuelGA_ShadowStep.h"
-#include "../Abilities/ArenaDuelGA_VeilWall.h"
 #include "InputCoreTypes.h"
 #include "GameplayEffect.h"
 #include "Net/UnrealNetwork.h"
@@ -106,7 +104,7 @@ void AArenaDuelCharacter::InitializeAbilityActorInfo()
 		if (UAbilitySystemComponent* ASC = State->GetAbilitySystemComponent())
 		{
 			ASC->InitAbilityActorInfo(State, this);
-			State->GrantShadowAbilities();
+			State->GrantCharacterAbilities();
 			if (HasAuthority() && State->GetArenaDuelAttributes())
 			{
 				State->GetArenaDuelAttributes()->SetMaxHealth(100.0f);
@@ -449,20 +447,20 @@ void AArenaDuelCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 	if (Weapon2Action) EnhancedInputComponent->BindAction(Weapon2Action, ETriggerEvent::Started, this, &AArenaDuelCharacter::Weapon2Started);
 	if (Weapon3Action) EnhancedInputComponent->BindAction(Weapon3Action, ETriggerEvent::Started, this, &AArenaDuelCharacter::Weapon3Started);
 	if (Weapon4Action) EnhancedInputComponent->BindAction(Weapon4Action, ETriggerEvent::Started, this, &AArenaDuelCharacter::Weapon4Started);
-	PlayerInputComponent->BindKey(EKeys::Q, IE_Pressed, this, &AArenaDuelCharacter::ShadowStepStarted);
-	PlayerInputComponent->BindKey(EKeys::E, IE_Pressed, this, &AArenaDuelCharacter::VeilWallStarted);
+	PlayerInputComponent->BindKey(EKeys::Q, IE_Pressed, this, &AArenaDuelCharacter::PrimaryAbilityStarted);
+	PlayerInputComponent->BindKey(EKeys::E, IE_Pressed, this, &AArenaDuelCharacter::SecondaryAbilityStarted);
 }
 
-void AArenaDuelCharacter::ShadowStepStarted()
+void AArenaDuelCharacter::PrimaryAbilityStarted()
 {
 	if (!CanProcessGameplayInput()) return;
-	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponent()) ASC->TryActivateAbilityByClass(UArenaDuelGA_ShadowStep::StaticClass());
+	if (AArenaDuelPlayerState* State = GetPlayerState<AArenaDuelPlayerState>()) State->TryActivatePrimaryAbility();
 }
 
-void AArenaDuelCharacter::VeilWallStarted()
+void AArenaDuelCharacter::SecondaryAbilityStarted()
 {
 	if (!CanProcessGameplayInput()) return;
-	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponent()) ASC->TryActivateAbilityByClass(UArenaDuelGA_VeilWall::StaticClass());
+	if (AArenaDuelPlayerState* State = GetPlayerState<AArenaDuelPlayerState>()) State->TryActivateSecondaryAbility();
 }
 
 void AArenaDuelCharacter::Move(const FInputActionValue& Value)

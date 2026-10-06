@@ -7,6 +7,7 @@
 #include "ArenaDuelVeilWall.generated.h"
 
 class UStaticMeshComponent;
+class AArenaDuelPlayerState;
 
 UCLASS()
 class ARENADUEL_API AArenaDuelVeilWall : public AActor
@@ -16,6 +17,7 @@ class ARENADUEL_API AArenaDuelVeilWall : public AActor
 public:
 	AArenaDuelVeilWall();
 	static void DestroyAllForRound(UWorld* World);
+	static void DestroyOwnedByPlayerState(UWorld* World, const AArenaDuelPlayerState* OwnerState);
 	virtual void BeginPlay() override;
 	FVector GetVisualScale() const;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;

@@ -205,10 +205,11 @@ void UArenaDuelHUDWidget::RefreshData()
 	if (!Character) return;
 	if (const AArenaDuelPlayerState* PlayerState = Character->GetPlayerState<AArenaDuelPlayerState>())
 	{
-		const float ShadowStepCooldown = PlayerState->GetShadowStepCooldownRemaining();
-		const float VeilWallCooldown = PlayerState->GetVeilWallCooldownRemaining();
-		SetAbilitySlotState(0, FText::FromString(TEXT("SHADOW STEP")), FText::FromString(TEXT("Q")), ShadowStepCooldown, ShadowStepCooldown <= KINDA_SMALL_NUMBER);
-		SetAbilitySlotState(1, FText::FromString(TEXT("VEIL WALL")), FText::FromString(TEXT("E")), VeilWallCooldown, VeilWallCooldown <= KINDA_SMALL_NUMBER);
+		const float PrimaryCooldown = PlayerState->GetPrimaryAbilityCooldownRemaining();
+		const float SecondaryCooldown = PlayerState->GetSecondaryAbilityCooldownRemaining();
+		bWardenAbilityPalette = PlayerState->GetCharacterArchetype() == EArenaDuelCharacterArchetype::Warden;
+		SetAbilitySlotState(0, PlayerState->GetPrimaryAbilityDisplayName(), FText::FromString(TEXT("Q")), PrimaryCooldown, PrimaryCooldown <= KINDA_SMALL_NUMBER);
+		SetAbilitySlotState(1, PlayerState->GetSecondaryAbilityDisplayName(), FText::FromString(TEXT("E")), SecondaryCooldown, SecondaryCooldown <= KINDA_SMALL_NUMBER);
 	}
 	const float MaxHealth = FMath::Max(Character->GetMaxHealth(), 1.0f);
 	SetText(HealthValue, FText::AsNumber(FMath::Max(0, FMath::RoundToInt(Character->GetHealth()))));
@@ -323,7 +324,7 @@ void UArenaDuelHUDWidget::SetAbilitySlotState(int32 Index, const FText& Name, co
 		SetText(AbilityCooldowns[Index], FText::FromString(FString::Printf(TEXT("%.1f"), FMath::Max(0.0f, Cooldown))));
 		AbilityCooldowns[Index]->SetVisibility(bCoolingDown ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	}
-	const FLinearColor Accent = Index == 0 ? Cyan : Violet;
+	const FLinearColor Accent = Index == 0 ? Cyan : bWardenAbilityPalette ? FLinearColor(0.68f, 0.88f, 1.0f, 1.0f) : Violet;
 	AbilityNames[Index]->SetColorAndOpacity(bReady ? Accent : Secondary);
 	AbilityKeys[Index]->SetColorAndOpacity(Accent);
 	if (AbilityBackgrounds.IsValidIndex(Index)) AbilityBackgrounds[Index]->SetBrushColor(FLinearColor(0.027f, 0.063f, 0.106f, bReady ? 0.82f : 0.58f));

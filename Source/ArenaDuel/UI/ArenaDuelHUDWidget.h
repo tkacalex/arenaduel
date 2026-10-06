@@ -80,6 +80,7 @@ protected:
 	int32 LastRoundNumber = INDEX_NONE;
 	bool bLastRoundInProgress = false;
 	bool bLastMatchComplete = false;
+	bool bWardenAbilityPalette = false;
 	int32 LastHealthBand = INDEX_NONE;
 	FTimerHandle RefreshTimer;
 	FTimerHandle MatchRefreshTimer;

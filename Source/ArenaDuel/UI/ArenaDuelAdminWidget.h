@@ -38,6 +38,7 @@ public:
 	uint8 GetSelectedDuelSlot() const { return SelectedDuelSlot; }
 	int32 GetAdminSectionCount() const { return Pages.Num(); }
 	bool HasPlayerSelector() const { return TargetButtons.Num() == 2; }
+	bool HasImplementedArchetypeSelector() const { return ArchetypeButtons.Num() == 2; }
 
 protected:
 	void BuildWidgetTree();
@@ -77,6 +78,7 @@ protected:
 	UPROPERTY() TObjectPtr<UArenaDuelAdminActionButton> SetPlayer2WinsButton;
 	UPROPERTY() TObjectPtr<UArenaDuelAdminActionButton> ResetMatchButton;
 	UPROPERTY() TArray<TObjectPtr<UArenaDuelAdminActionButton>> WeaponButtons;
+	UPROPERTY() TArray<TObjectPtr<UArenaDuelAdminActionButton>> ArchetypeButtons;
 	UPROPERTY() TArray<TObjectPtr<UVerticalBox>> Pages;
 	TArray<FString> PageNames;
 	TArray<FString> PageDescriptions;

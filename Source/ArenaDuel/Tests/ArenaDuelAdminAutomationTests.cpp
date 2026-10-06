@@ -14,6 +14,11 @@
 #include "ArenaDuel/Player/ArenaDuelPlayerState.h"
 #include "ArenaDuel/UI/ArenaDuelAdminWidget.h"
 #include "ArenaDuel/Weapons/ArenaDuelWeaponComponent.h"
+#include "ArenaDuel/Abilities/ArenaDuelGA_ShadowStep.h"
+#include "ArenaDuel/Abilities/ArenaDuelGA_VeilWall.h"
+#include "ArenaDuel/Abilities/ArenaDuelGA_ArcBarrier.h"
+#include "ArenaDuel/Abilities/ArenaDuelGA_BurstLeap.h"
+#include "AbilitySystemComponent.h"
 #include "Components/Overlay.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -30,6 +35,7 @@ bool FArenaDuelAdminWidgetConstructionTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Admin widget is focusable"), Widget->IsFocusable());
 	TestTrue(TEXT("Widget uses a fullscreen overlay root"), Cast<UOverlay>(Widget->GetRootWidget()) != nullptr);
 	TestTrue(TEXT("Player selector has both duel slots"), Widget->HasPlayerSelector());
+	TestTrue(TEXT("Player page contains Shadow and Warden archetype controls"), Widget->HasImplementedArchetypeSelector());
 	TestEqual(TEXT("All five useful admin sections are constructed"), Widget->GetAdminSectionCount(), 5);
 	TestFalse(TEXT("Repeated initialization does not rebuild the admin tree"), Widget->Initialize());
 	return true;
@@ -115,6 +121,21 @@ NETWORK_TEST_CLASS(FArenaDuelAdminNetworkTest, "ArenaDuel.Admin.Network")
 				State.InitialRound = GameState->GetRoundNumber();
 				if (!Host->CanUseDevelopmentAdmin()) TestRunner->AddError(TEXT("Listen-server host was not authorized."));
 				if (Remote->CanUseDevelopmentAdmin()) TestRunner->AddError(TEXT("Remote client's server PlayerController was incorrectly authorized."));
+				const uint8 HostSlot = HostState->GetDuelSlot();
+				Remote->ServerExecuteAdminCommand(EArenaDuelAdminCommand::SetArchetypeWarden, HostSlot, 0.0f);
+				if (HostState->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Shadow) TestRunner->AddError(TEXT("Remote client changed another player's archetype through an admin RPC."));
+				Host->SubmitAdminCommand(EArenaDuelAdminCommand::SetArchetypeWarden, State.TargetSlot, 0.0f);
+				UAbilitySystemComponent* RemoteASC = RemoteState->GetAbilitySystemComponent();
+				if (!RemoteASC)
+				{
+					TestRunner->AddError(TEXT("Target PlayerState ASC is unavailable for archetype switch validation."));
+					return;
+				}
+				if (RemoteState->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Warden || !RemoteASC->FindAbilitySpecFromClass(UArenaDuelGA_ArcBarrier::StaticClass()) || !RemoteASC->FindAbilitySpecFromClass(UArenaDuelGA_BurstLeap::StaticClass()) || RemoteASC->FindAbilitySpecFromClass(UArenaDuelGA_ShadowStep::StaticClass()) || RemoteASC->FindAbilitySpecFromClass(UArenaDuelGA_VeilWall::StaticClass())) TestRunner->AddError(TEXT("Host archetype command did not replace the target's Shadow kit with Warden."));
+				Remote->ServerExecuteAdminCommand(EArenaDuelAdminCommand::SetArchetypeShadow, State.TargetSlot, 0.0f);
+				if (RemoteState->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Warden) TestRunner->AddError(TEXT("Remote client changed its own archetype through an admin RPC."));
+				Host->SubmitAdminCommand(EArenaDuelAdminCommand::SetArchetypeShadow, State.TargetSlot, 0.0f);
+				if (RemoteState->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Shadow || !RemoteASC->FindAbilitySpecFromClass(UArenaDuelGA_ShadowStep::StaticClass()) || !RemoteASC->FindAbilitySpecFromClass(UArenaDuelGA_VeilWall::StaticClass()) || RemoteASC->FindAbilitySpecFromClass(UArenaDuelGA_ArcBarrier::StaticClass()) || RemoteASC->FindAbilitySpecFromClass(UArenaDuelGA_BurstLeap::StaticClass())) TestRunner->AddError(TEXT("Returning to Shadow did not cleanly restore exactly the Shadow kit."));
 
 				const int32 InitialHealth = FMath::RoundToInt(RemotePawn->GetHealth());
 				Remote->ServerExecuteAdminCommand(EArenaDuelAdminCommand::SetHealth, State.TargetSlot, 17.0f);

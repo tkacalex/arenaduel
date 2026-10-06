@@ -33,3 +33,23 @@ UArenaDuelGE_VeilWallCooldown::UArenaDuelGE_VeilWallCooldown(const FObjectInitia
 	GrantedTags.AddTag(TAG_Cooldown_Shadow_VeilWall.GetTag());
 	TargetTags->SetAndApplyTargetTagChanges(GrantedTags);
 }
+
+UArenaDuelGE_ArcBarrierCooldown::UArenaDuelGE_ArcBarrierCooldown(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+	UTargetTagsGameplayEffectComponent* TargetTags = ConfigureCooldown(*this, ObjectInitializer, 14.0f);
+	GEComponents.Add(TargetTags);
+	FInheritedTagContainer GrantedTags;
+	GrantedTags.AddTag(TAG_Cooldown_Warden_ArcBarrier.GetTag());
+	TargetTags->SetAndApplyTargetTagChanges(GrantedTags);
+}
+
+UArenaDuelGE_BurstLeapCooldown::UArenaDuelGE_BurstLeapCooldown(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+	UTargetTagsGameplayEffectComponent* TargetTags = ConfigureCooldown(*this, ObjectInitializer, 7.0f);
+	GEComponents.Add(TargetTags);
+	FInheritedTagContainer GrantedTags;
+	GrantedTags.AddTag(TAG_Cooldown_Warden_BurstLeap.GetTag());
+	TargetTags->SetAndApplyTargetTagChanges(GrantedTags);
+}

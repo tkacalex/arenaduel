@@ -23,3 +23,19 @@ class ARENADUEL_API UArenaDuelGE_VeilWallCooldown : public UGameplayEffect
 public:
 	UArenaDuelGE_VeilWallCooldown(const FObjectInitializer& ObjectInitializer);
 };
+
+UCLASS()
+class ARENADUEL_API UArenaDuelGE_ArcBarrierCooldown : public UGameplayEffect
+{
+	GENERATED_BODY()
+public:
+	UArenaDuelGE_ArcBarrierCooldown(const FObjectInitializer& ObjectInitializer);
+};
+
+UCLASS()
+class ARENADUEL_API UArenaDuelGE_BurstLeapCooldown : public UGameplayEffect
+{
+	GENERATED_BODY()
+public:
+	UArenaDuelGE_BurstLeapCooldown(const FObjectInitializer& ObjectInitializer);
+};

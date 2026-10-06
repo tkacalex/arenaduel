@@ -32,7 +32,7 @@ Current playtest support also includes a minimal server-authoritative round rest
 
 Shadow, Warden, Rift, and non damaging utility and movement abilities.
 
-Phase 7A implementation: Shadow Step (Q) and Veil Wall (E) are native GAS abilities granted once on the persistent PlayerState ASC. Their authoritative cooldowns are 5 and 12 seconds; Veil Wall is a three-second replicated visual-only occluder. Match completion now publishes the first-to-five winner, presents the final score for five seconds, then starts a fresh 0:0 match. Camera recoil recovery after a burst is time-bounded instead of scaling linearly with shot count. Human tuning/feel validation remains. Warden, Rift, damage abilities, selection, and broader character-kit work have not started.
+Phase 7A Shadow is implemented and human-approved: Shadow Step (Q) and Veil Wall (E) use the persistent PlayerState ASC, with 5 and 12 second cooldowns; Veil Wall is a three-second replicated visual-only occluder. Phase 7B adds the replicated PlayerState archetype and host-only development switching between Shadow and Warden. Warden Q Arc Barrier is a 350-health, five-second physical barrier that blocks Pawn movement and authoritative hitscan, with a 14 second cooldown. Warden E Burst Leap is predicted CharacterMovement launch locomotion with a 7 second cooldown and no damage. Kit switching removes stale specs/cooldowns; round reset preserves the selected archetype, clears cooldowns, and cleans temporary actors. Focused Phase 7 listen-server and Phase 5 regression tests pass, and the editor target builds. Human two-player feel and visual tuning remain. Rift abilities, public character selection, and damage abilities are not implemented.
 
 ## Phase 8: Round system, selections, and RPG upgrades
 

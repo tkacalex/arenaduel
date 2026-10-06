@@ -4,7 +4,7 @@ ArenaDuel is a competitive one versus one first person fantasy movement shooter 
 
 ## Current status
 
-The repository contains an Unreal Engine 5.8.3 C++ project with first-person movement, advanced traversal, four server-authoritative weapons, GAS health and death, a development round restart loop, the compact competitive HUD, and a host-only development admin control menu. The `ArenaDuelEditor` Win64 Development target builds successfully from this repository.
+The repository contains an Unreal Engine 5.8.3 C++ project with first-person movement, advanced traversal, four server-authoritative weapons, GAS health and death, a development round loop, the compact competitive HUD, a host-only development admin control menu, and native GAS kits for Shadow and Warden. The `ArenaDuelEditor` Win64 Development target builds successfully from this repository.
 
 Verified engine path: `C:\Program Files\Epic Games\UE_5.8`.
 

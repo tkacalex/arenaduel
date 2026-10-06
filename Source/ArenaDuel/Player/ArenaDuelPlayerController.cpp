@@ -206,6 +206,12 @@ void AArenaDuelPlayerController::ExecuteAdminCommandAuthoritatively(EArenaDuelAd
 	case EArenaDuelAdminCommand::ToggleInfiniteStamina:
 		if (TargetState) TargetState->ToggleAdminInfiniteStamina();
 		break;
+	case EArenaDuelAdminCommand::SetArchetypeShadow:
+		if (TargetState) TargetState->SetCharacterArchetypeForDevelopment(EArenaDuelCharacterArchetype::Shadow);
+		break;
+	case EArenaDuelAdminCommand::SetArchetypeWarden:
+		if (TargetState) TargetState->SetCharacterArchetypeForDevelopment(EArenaDuelCharacterArchetype::Warden);
+		break;
 	default: break;
 	}
 #endif
