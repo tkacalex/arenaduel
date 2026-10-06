@@ -21,6 +21,7 @@ namespace
 		FArenaDuelWeaponDefinition Arc;
 		Arc.Id = EArenaDuelWeaponId::ArcRifle;
 		Arc.DisplayName = TEXT("Arc Rifle");
+		Arc.AimSensitivityMultiplier = 0.75f;
 		FArenaDuelWeaponDefinition SMG = Arc;
 		SMG.Id = EArenaDuelWeaponId::ShadeSMG; SMG.DisplayName = TEXT("Shade SMG"); SMG.MagazineCapacity = 32; SMG.ReserveCapacity = 128; SMG.RoundsPerMinute = 900.0f; SMG.BaseSpreadDegrees = 0.65f; SMG.MovementSpreadDegrees = 1.8f;
 		SMG.AimFOV = 80.0f; SMG.AimSensitivityMultiplier = 0.80f; SMG.AimSpreadMultiplier = 0.75f; SMG.AimViewmodelLocation = FVector(48.0f, 3.0f, -13.0f);
