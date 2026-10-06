@@ -15,7 +15,10 @@ public:
 	int32 GetRoundNumber() const { return RoundNumber; }
 	bool IsRoundInProgress() const { return bRoundInProgress; }
 	int32 GetLastRoundWinnerSlot() const { return LastRoundWinnerSlot; }
+	bool IsMatchComplete() const { return bMatchComplete; }
+	int32 GetMatchWinnerSlot() const { return MatchWinnerSlot; }
 	void SetRoundState(int32 NewRoundNumber, bool bNewRoundInProgress, int32 NewLastRoundWinnerSlot);
+	void SetMatchComplete(bool bNewMatchComplete, int32 NewMatchWinnerSlot);
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
@@ -27,6 +30,12 @@ protected:
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
 	int32 LastRoundWinnerSlot = INDEX_NONE;
+
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
+	bool bMatchComplete = false;
+
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
+	int32 MatchWinnerSlot = INDEX_NONE;
 
 	UFUNCTION()
 	void OnRep_RoundInProgress();

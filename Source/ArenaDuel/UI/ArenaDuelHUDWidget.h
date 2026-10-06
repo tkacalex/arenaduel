@@ -11,6 +11,7 @@ class UProgressBar;
 class UCanvasPanel;
 class UBorder;
 class UWidget;
+class UCanvasPanel;
 class AArenaDuelGameState;
 class AArenaDuelPlayerState;
 
@@ -45,6 +46,7 @@ protected:
 	UPROPERTY() TObjectPtr<UWidget> WeaponPanelRoot;
 	UPROPERTY() TObjectPtr<UWidget> MatchHeaderRoot;
 	UPROPERTY() TObjectPtr<UWidget> DefeatedRoot;
+	UPROPERTY() TObjectPtr<UWidget> MatchResultRoot;
 	UPROPERTY() TObjectPtr<UTextBlock> HealthValue;
 	UPROPERTY() TObjectPtr<UTextBlock> HealthLabel;
 	UPROPERTY() TObjectPtr<UTextBlock> StaminaLabel;
@@ -56,6 +58,9 @@ protected:
 	UPROPERTY() TObjectPtr<UTextBlock> ReserveAmmo;
 	UPROPERTY() TObjectPtr<UTextBlock> ReloadLabel;
 	UPROPERTY() TObjectPtr<UTextBlock> DefeatedLabel;
+	UPROPERTY() TObjectPtr<UTextBlock> MatchWinnerLabel;
+	UPROPERTY() TObjectPtr<UTextBlock> MatchFinalScoreLabel;
+	UPROPERTY() TObjectPtr<UTextBlock> MatchRestartLabel;
 	UPROPERTY() TObjectPtr<UTextBlock> PlayerLeft;
 	UPROPERTY() TObjectPtr<UTextBlock> PlayerRight;
 	UPROPERTY() TObjectPtr<UTextBlock> ScoreLeft;
@@ -74,6 +79,7 @@ protected:
 	int32 LastRightWins = INDEX_NONE;
 	int32 LastRoundNumber = INDEX_NONE;
 	bool bLastRoundInProgress = false;
+	bool bLastMatchComplete = false;
 	int32 LastHealthBand = INDEX_NONE;
 	FTimerHandle RefreshTimer;
 	FTimerHandle MatchRefreshTimer;

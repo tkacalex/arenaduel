@@ -30,9 +30,12 @@ public:
 protected:
 	void StartNextRound();
 	void RestartDuelPlayers();
+	void ResetMatchAndRestartPlayers();
+	void ClearPendingRoundAndMatchTimers();
 	void AssignDuelSlot(AArenaDuelPlayerState* JoiningPlayerState);
 	void EndRoundForDevelopment(AArenaDuelPlayerState* WinningPlayerState);
 
 	FTimerHandle RoundRestartTimer;
+	FTimerHandle MatchResetTimer;
 	bool bRoundRestartPending = false;
 };

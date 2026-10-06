@@ -14,12 +14,22 @@ void AArenaDuelGameState::SetRoundState(int32 NewRoundNumber, bool bNewRoundInPr
 	ForceNetUpdate();
 }
 
+void AArenaDuelGameState::SetMatchComplete(bool bNewMatchComplete, int32 NewMatchWinnerSlot)
+{
+	if (!HasAuthority()) return;
+	bMatchComplete = bNewMatchComplete;
+	MatchWinnerSlot = bNewMatchComplete && NewMatchWinnerSlot >= 0 && NewMatchWinnerSlot <= 1 ? NewMatchWinnerSlot : INDEX_NONE;
+	ForceNetUpdate();
+}
+
 void AArenaDuelGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AArenaDuelGameState, RoundNumber);
 	DOREPLIFETIME(AArenaDuelGameState, bRoundInProgress);
 	DOREPLIFETIME(AArenaDuelGameState, LastRoundWinnerSlot);
+	DOREPLIFETIME(AArenaDuelGameState, bMatchComplete);
+	DOREPLIFETIME(AArenaDuelGameState, MatchWinnerSlot);
 }
 
 void AArenaDuelGameState::OnRep_RoundInProgress()

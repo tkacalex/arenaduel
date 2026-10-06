@@ -161,7 +161,7 @@ void UArenaDuelWeaponComponent::Reload()
 void UArenaDuelWeaponComponent::EquipWeapon(int32 Index)
 {
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
-	CancelLocalAndServerFire();
+	CancelLocalAndServerFire(true);
 	StopAim();
 	if (GetOwnerRole() == ROLE_Authority) ServerRequestEquip_Implementation(Index); else ServerRequestEquip(Index);
 }
@@ -200,7 +200,7 @@ void UArenaDuelWeaponComponent::CancelCombatActions()
 	}
 	if (bLocalOwner)
 	{
-		CancelLocalAndServerFire();
+		CancelLocalAndServerFire(true);
 		StopAim();
 		if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticRecoveryTimerHandle);
 	}
@@ -267,10 +267,26 @@ void UArenaDuelWeaponComponent::StartAuthoritativeFire()
 	if (GetCurrentDefinition().bAutomatic) { const float Interval = 60.0f / FMath::Max(GetCurrentDefinition().RoundsPerMinute, 1.0f); GetWorld()->GetTimerManager().SetTimer(AutomaticFireTimerHandle, this, &UArenaDuelWeaponComponent::FireAuthoritative, Interval, true, Interval); }
 }
 void UArenaDuelWeaponComponent::StopAuthoritativeFire() { bServerFireHeld = false; if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(AutomaticFireTimerHandle); }
-void UArenaDuelWeaponComponent::CancelLocalAndServerFire()
+void UArenaDuelWeaponComponent::CancelLocalAndServerFire(bool bClearLocalRecoil)
 {
+	const bool bWasFireHeld = bFireHeld;
 	bFireHeld = false;
 	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticFireTimerHandle);
+	if (bClearLocalRecoil)
+	{
+		LocalWeaponKick = 0.0f;
+		LocalRecoilPitchRemaining = 0.0f;
+		LocalRecoilYawRemaining = 0.0f;
+		LocalRecoilRecoveryTimeRemaining = 0.0f;
+		if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticRecoveryTimerHandle);
+		RefreshWeaponVisual();
+	}
+	else if (bWasFireHeld && (FMath::Abs(LocalRecoilPitchRemaining) > KINDA_SMALL_NUMBER || FMath::Abs(LocalRecoilYawRemaining) > KINDA_SMALL_NUMBER))
+	{
+		const float AccumulatedKick = FMath::Max(FMath::Abs(LocalRecoilPitchRemaining), FMath::Abs(LocalRecoilYawRemaining));
+		LocalRecoilRecoveryTimeRemaining = FMath::Lerp(0.25f, 0.55f, FMath::Clamp(AccumulatedKick / 10.0f, 0.0f, 1.0f));
+		if (GetWorld()) GetWorld()->GetTimerManager().SetTimer(LocalCosmeticRecoveryTimerHandle, this, &UArenaDuelWeaponComponent::RecoverCosmeticKick, 0.02f, true);
+	}
 	if (GetOwnerRole() == ROLE_Authority) StopAuthoritativeFire();
 	else ServerSetFireHeld(false);
 }
@@ -366,23 +382,37 @@ void UArenaDuelWeaponComponent::LocalCosmeticShot()
 	LastCosmeticShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
 	LocalWeaponKick = 1.0f;
 	ApplyLocalRecoil();
+	LocalRecoilRecoveryTimeRemaining = 0.0f;
 	if (GetWorld()) GetWorld()->GetTimerManager().SetTimer(LocalCosmeticRecoveryTimerHandle, this, &UArenaDuelWeaponComponent::RecoverCosmeticKick, 0.02f, true);
 }
 void UArenaDuelWeaponComponent::RecoverCosmeticKick()
 {
-	if (AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled())
+	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	const bool bCanRecoverCamera = Character && Character->IsLocallyControlled() && !bFireHeld;
+	const float DeltaSeconds = GetWorld() ? FMath::Max(GetWorld()->GetDeltaSeconds(), 0.001f) : 0.02f;
+	if (bCanRecoverCamera)
 	{
 		if (APlayerController* Controller = Cast<APlayerController>(Character->GetController()))
 		{
-			const float PitchStep = FMath::Min(LocalRecoilPitchRemaining, 0.025f);
-			const float YawStep = FMath::Clamp(LocalRecoilYawRemaining, -0.01f, 0.01f);
+			if (LocalRecoilRecoveryTimeRemaining <= 0.0f
+				&& (!FMath::IsNearlyZero(LocalRecoilPitchRemaining) || !FMath::IsNearlyZero(LocalRecoilYawRemaining)))
+			{
+				const float AccumulatedKick = FMath::Max(FMath::Abs(LocalRecoilPitchRemaining), FMath::Abs(LocalRecoilYawRemaining));
+				LocalRecoilRecoveryTimeRemaining = FMath::Lerp(0.25f, 0.55f, FMath::Clamp(AccumulatedKick / 10.0f, 0.0f, 1.0f));
+			}
+			const float RecoveryAlpha = LocalRecoilRecoveryTimeRemaining > 0.0f
+				? FMath::Clamp(DeltaSeconds / LocalRecoilRecoveryTimeRemaining, 0.0f, 1.0f)
+				: 1.0f;
+			const float PitchStep = LocalRecoilPitchRemaining * RecoveryAlpha;
+			const float YawStep = LocalRecoilYawRemaining * RecoveryAlpha;
 			Controller->AddPitchInput(PitchStep);
 			Controller->AddYawInput(-YawStep);
-			LocalRecoilPitchRemaining -= PitchStep;
-			LocalRecoilYawRemaining -= YawStep;
+			LocalRecoilPitchRemaining *= 1.0f - RecoveryAlpha;
+			LocalRecoilYawRemaining *= 1.0f - RecoveryAlpha;
+			LocalRecoilRecoveryTimeRemaining = FMath::Max(0.0f, LocalRecoilRecoveryTimeRemaining - DeltaSeconds);
 		}
 	}
-	LocalWeaponKick = FMath::FInterpTo(LocalWeaponKick, 0.0f, 0.02f, 12.0f);
+	LocalWeaponKick = FMath::FInterpTo(LocalWeaponKick, 0.0f, DeltaSeconds, 12.0f);
 	if (FirstPersonWeaponMesh)
 	{
 		FVector BaseLocation;
@@ -391,11 +421,12 @@ void UArenaDuelWeaponComponent::RecoverCosmeticKick()
 		FirstPersonWeaponMesh->SetRelativeLocation(BaseLocation + FVector(-5.0f * LocalWeaponKick, 0.0f, 2.0f * LocalWeaponKick));
 		FirstPersonWeaponMesh->SetRelativeRotation(BaseRotation + FRotator(-1.5f * LocalWeaponKick, 0.0f, 0.0f));
 	}
-	if (FMath::IsNearlyZero(LocalWeaponKick, KINDA_SMALL_NUMBER) && FMath::IsNearlyZero(LocalRecoilPitchRemaining, KINDA_SMALL_NUMBER) && FMath::IsNearlyZero(LocalRecoilYawRemaining, KINDA_SMALL_NUMBER))
+	if (!bFireHeld && FMath::IsNearlyZero(LocalWeaponKick, KINDA_SMALL_NUMBER) && FMath::IsNearlyZero(LocalRecoilPitchRemaining, 0.005f) && FMath::IsNearlyZero(LocalRecoilYawRemaining, 0.005f))
 	{
 		LocalWeaponKick = 0.0f;
 		LocalRecoilPitchRemaining = 0.0f;
 		LocalRecoilYawRemaining = 0.0f;
+		LocalRecoilRecoveryTimeRemaining = 0.0f;
 		RefreshWeaponVisual();
 		if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticRecoveryTimerHandle);
 	}

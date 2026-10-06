@@ -167,7 +167,7 @@ protected:
 	bool IsRoundInProgress() const;
 	bool HasInfiniteAmmoForDevelopment() const;
 	bool IsLocalAdminMenuOpen() const;
-	void CancelLocalAndServerFire();
+	void CancelLocalAndServerFire(bool bClearLocalRecoil = false);
 	void UpdateAimVisual();
 	void ApplyLocalRecoil();
 	void LocalCosmeticShot();
@@ -218,6 +218,7 @@ protected:
 	float LocalWeaponKick = 0.0f;
 	float LocalRecoilPitchRemaining = 0.0f;
 	float LocalRecoilYawRemaining = 0.0f;
+	float LocalRecoilRecoveryTimeRemaining = 0.0f;
 	float LastCosmeticShotWorldTime = -1.0f;
 	float HipFOV = 90.0f;
 

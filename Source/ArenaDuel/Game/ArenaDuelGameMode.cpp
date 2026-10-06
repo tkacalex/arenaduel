@@ -27,6 +27,7 @@ void AArenaDuelGameMode::BeginPlay()
 	Super::BeginPlay();
 	if (AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>())
 	{
+		ArenaGameState->SetMatchComplete(false, INDEX_NONE);
 		ArenaGameState->SetRoundState(1, true, INDEX_NONE);
 	}
 }
@@ -115,7 +116,12 @@ void AArenaDuelGameMode::EndRoundForDevelopment(AArenaDuelPlayerState* WinningPl
 	bRoundRestartPending = true;
 
 	const bool bMatchComplete = WinningPlayerState && WinningPlayerState->GetRoundWins() >= 5;
-	if (!bMatchComplete && GetWorld())
+	if (bMatchComplete)
+	{
+		ArenaGameState->SetMatchComplete(true, WinnerSlot);
+		if (GetWorld()) GetWorldTimerManager().SetTimer(MatchResetTimer, this, &AArenaDuelGameMode::ResetMatchAndRestartPlayers, 5.0f, false);
+	}
+	else if (GetWorld())
 	{
 		GetWorldTimerManager().SetTimer(RoundRestartTimer, this, &AArenaDuelGameMode::StartNextRound, 3.0f, false);
 	}
@@ -124,10 +130,11 @@ void AArenaDuelGameMode::EndRoundForDevelopment(AArenaDuelPlayerState* WinningPl
 void AArenaDuelGameMode::AdminRestartRound()
 {
 	if (!HasAuthority() || !GetWorld()) return;
-	GetWorldTimerManager().ClearTimer(RoundRestartTimer);
+	ClearPendingRoundAndMatchTimers();
 	bRoundRestartPending = false;
 	if (AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>())
 	{
+		ArenaGameState->SetMatchComplete(false, INDEX_NONE);
 		ArenaGameState->SetRoundState(ArenaGameState->GetRoundNumber(), true, INDEX_NONE);
 		RestartDuelPlayers();
 	}
@@ -136,10 +143,11 @@ void AArenaDuelGameMode::AdminRestartRound()
 void AArenaDuelGameMode::AdminAdvanceRound()
 {
 	if (!HasAuthority() || !GetWorld()) return;
-	GetWorldTimerManager().ClearTimer(RoundRestartTimer);
+	ClearPendingRoundAndMatchTimers();
 	bRoundRestartPending = false;
 	if (AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>())
 	{
+		ArenaGameState->SetMatchComplete(false, INDEX_NONE);
 		ArenaGameState->SetRoundState(ArenaGameState->GetRoundNumber() + 1, true, INDEX_NONE);
 		RestartDuelPlayers();
 	}
@@ -157,7 +165,7 @@ void AArenaDuelGameMode::AdminAwardRound(uint8 WinningDuelSlot)
 void AArenaDuelGameMode::AdminResetMatch()
 {
 	if (!HasAuthority() || !GetWorld()) return;
-	GetWorldTimerManager().ClearTimer(RoundRestartTimer);
+	ClearPendingRoundAndMatchTimers();
 	bRoundRestartPending = false;
 	if (AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>())
 	{
@@ -168,6 +176,7 @@ void AArenaDuelGameMode::AdminResetMatch()
 				ArenaPlayerState->SetRoundWinsForDevelopment(0);
 			}
 		}
+		ArenaGameState->SetMatchComplete(false, INDEX_NONE);
 		ArenaGameState->SetRoundState(1, true, INDEX_NONE);
 		RestartDuelPlayers();
 	}
@@ -177,7 +186,7 @@ void AArenaDuelGameMode::StartNextRound()
 {
 	if (!HasAuthority()) return;
 	AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>();
-	if (!ArenaGameState) return;
+	if (!ArenaGameState || ArenaGameState->IsMatchComplete()) return;
 	for (APlayerState* PlayerState : ArenaGameState->PlayerArray)
 	{
 		const AArenaDuelPlayerState* ArenaPlayerState = Cast<AArenaDuelPlayerState>(PlayerState);
@@ -191,6 +200,30 @@ void AArenaDuelGameMode::StartNextRound()
 	ArenaGameState->SetRoundState(ArenaGameState->GetRoundNumber() + 1, true, ArenaGameState->GetLastRoundWinnerSlot());
 	RestartDuelPlayers();
 	bRoundRestartPending = false;
+}
+
+void AArenaDuelGameMode::ClearPendingRoundAndMatchTimers()
+{
+	GetWorldTimerManager().ClearTimer(RoundRestartTimer);
+	GetWorldTimerManager().ClearTimer(MatchResetTimer);
+}
+
+void AArenaDuelGameMode::ResetMatchAndRestartPlayers()
+{
+	if (!HasAuthority() || !GetWorld()) return;
+	bRoundRestartPending = false;
+	AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>();
+	if (!ArenaGameState) return;
+	for (APlayerState* PlayerState : ArenaGameState->PlayerArray)
+	{
+		if (AArenaDuelPlayerState* ArenaPlayerState = Cast<AArenaDuelPlayerState>(PlayerState))
+		{
+			ArenaPlayerState->SetRoundWinsForDevelopment(0);
+		}
+	}
+	ArenaGameState->SetMatchComplete(false, INDEX_NONE);
+	ArenaGameState->SetRoundState(1, true, INDEX_NONE);
+	RestartDuelPlayers();
 }
 
 void AArenaDuelGameMode::RestartDuelPlayers()

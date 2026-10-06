@@ -79,13 +79,14 @@ bool UArenaDuelHUDWidget::Initialize()
 	BuildWidgetTree();
 	const bool bHasExpectedTree = WidgetTree->RootWidget == RootCanvas
 		&& RootCanvas
-		&& RootCanvas->GetChildrenCount() == 6
+		&& RootCanvas->GetChildrenCount() == 7
 		&& RootCanvas->HasChild(HealthPanelRoot)
 		&& RootCanvas->HasChild(WeaponPanelRoot)
 		&& RootCanvas->HasChild(AbilityRoots.IsValidIndex(0) ? AbilityRoots[0] : nullptr)
 		&& RootCanvas->HasChild(AbilityRoots.IsValidIndex(1) ? AbilityRoots[1] : nullptr)
 		&& RootCanvas->HasChild(MatchHeaderRoot)
-		&& RootCanvas->HasChild(DefeatedRoot);
+		&& RootCanvas->HasChild(DefeatedRoot)
+		&& RootCanvas->HasChild(MatchResultRoot);
 	ensureMsgf(bHasExpectedTree, TEXT("ArenaDuel HUD native widget tree is incomplete"));
 	return true;
 }
@@ -167,6 +168,29 @@ void UArenaDuelHUDWidget::BuildWidgetTree()
 	}
 
 	DefeatedLabel = Text(WidgetTree, TEXT("DEFEATED"), 46, Danger); DefeatedLabel->SetJustification(ETextJustify::Center); DefeatedLabel->SetVisibility(ESlateVisibility::Collapsed); DefeatedRoot = DefeatedLabel; RootCanvas->AddChild(DefeatedLabel); PlaceFixed(DefeatedLabel, FVector2D(0.5f,0.5f), FVector2D(0,0), FVector2D(340,64), FVector2D(0.5f,0.5f));
+
+	UOverlay* MatchResult = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass(), TEXT("MatchResultRoot"));
+	MatchResultRoot = MatchResult;
+	MatchResult->SetVisibility(ESlateVisibility::Collapsed);
+	RootCanvas->AddChild(MatchResult);
+	PlaceFixed(MatchResult, FVector2D(0.5f,0.5f), FVector2D::ZeroVector, FVector2D(520,230), FVector2D(0.5f,0.5f));
+	UBorder* MatchResultBackground = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+	MatchResultBackground->SetBrushColor(FLinearColor(0.018f, 0.035f, 0.067f, 0.94f));
+	MatchResult->AddChild(MatchResultBackground);
+	UCanvasPanel* MatchResultCanvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass());
+	MatchResult->AddChild(MatchResultCanvas);
+	MatchWinnerLabel = Text(WidgetTree, TEXT("PLAYER 1 WINS"), 54, Cyan);
+	MatchWinnerLabel->SetJustification(ETextJustify::Center);
+	MatchResultCanvas->AddChild(MatchWinnerLabel);
+	PlaceFixed(MatchWinnerLabel, FVector2D(0.5f,0), FVector2D(0,34), FVector2D(480,70), FVector2D(0.5f,0));
+	MatchFinalScoreLabel = Text(WidgetTree, TEXT("FINAL SCORE   5 - 0"), 30, Primary);
+	MatchFinalScoreLabel->SetJustification(ETextJustify::Center);
+	MatchResultCanvas->AddChild(MatchFinalScoreLabel);
+	PlaceFixed(MatchFinalScoreLabel, FVector2D(0.5f,0), FVector2D(0,112), FVector2D(480,46), FVector2D(0.5f,0));
+	MatchRestartLabel = Text(WidgetTree, TEXT("NEW MATCH STARTING..."), 14, Secondary);
+	MatchRestartLabel->SetJustification(ETextJustify::Center);
+	MatchResultCanvas->AddChild(MatchRestartLabel);
+	PlaceFixed(MatchRestartLabel, FVector2D(0.5f,0), FVector2D(0,177), FVector2D(480,25), FVector2D(0.5f,0));
 	TimerLabel->SetJustification(ETextJustify::Center);
 	ScoreLeft->SetJustification(ETextJustify::Center);
 	ScoreRight->SetJustification(ETextJustify::Center);
@@ -210,7 +234,8 @@ void UArenaDuelHUDWidget::RefreshData()
 		const ESlateVisibility ReloadVisibility = Weapon->IsReloading() ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
 		if (ReloadLabel->GetVisibility() != ReloadVisibility) ReloadLabel->SetVisibility(ReloadVisibility);
 	}
-	const ESlateVisibility DefeatedVisibility = Character->IsDead() ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
+	const AArenaDuelGameState* GameState = GetWorld() ? GetWorld()->GetGameState<AArenaDuelGameState>() : nullptr;
+	const ESlateVisibility DefeatedVisibility = Character->IsDead() && !(GameState && GameState->IsMatchComplete()) ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
 	if (DefeatedLabel->GetVisibility() != DefeatedVisibility) DefeatedLabel->SetVisibility(DefeatedVisibility);
 }
 
@@ -224,6 +249,10 @@ void UArenaDuelHUDWidget::RefreshMatchData()
 		CachedPlayerStates[1] = nullptr;
 	}
 	if (!GameState) return;
+	const bool bMatchComplete = GameState->IsMatchComplete();
+	const int32 MatchWinner = GameState->GetMatchWinnerSlot();
+	const ESlateVisibility ResultVisibility = bMatchComplete ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
+	if (MatchResultRoot && MatchResultRoot->GetVisibility() != ResultVisibility) MatchResultRoot->SetVisibility(ResultVisibility);
 
 	if (!CachedPlayerStates[0].IsValid() || !CachedPlayerStates[1].IsValid())
 	{
@@ -243,6 +272,12 @@ void UArenaDuelHUDWidget::RefreshMatchData()
 	const AArenaDuelPlayerState* RightState = CachedPlayerStates[1].Get();
 	const int32 LeftWins = LeftState ? LeftState->GetRoundWins() : 0;
 	const int32 RightWins = RightState ? RightState->GetRoundWins() : 0;
+	if (bMatchComplete && MatchWinner >= 0 && MatchWinner <= 1)
+	{
+		SetText(MatchWinnerLabel, FText::FromString(MatchWinner == 0 ? TEXT("PLAYER 1 WINS") : TEXT("PLAYER 2 WINS")));
+		if (MatchWinnerLabel) MatchWinnerLabel->SetColorAndOpacity(MatchWinner == 0 ? Cyan : Violet);
+		SetText(MatchFinalScoreLabel, FText::FromString(FString::Printf(TEXT("FINAL SCORE   %d - %d"), LeftWins, RightWins)));
+	}
 	if (LeftWins != LastLeftWins || RightWins != LastRightWins)
 	{
 		SetRoundWins(LeftWins, RightWins);
@@ -253,11 +288,12 @@ void UArenaDuelHUDWidget::RefreshMatchData()
 
 	const int32 RoundNumber = GameState->GetRoundNumber();
 	const bool bRoundInProgress = GameState->IsRoundInProgress();
-	if (RoundNumber != LastRoundNumber || bRoundInProgress != bLastRoundInProgress)
+	if (RoundNumber != LastRoundNumber || bRoundInProgress != bLastRoundInProgress || bMatchComplete != bLastMatchComplete)
 	{
-		SetRoundTimer(FText::FromString(bRoundInProgress ? FString::Printf(TEXT("ROUND %d"), RoundNumber) : TEXT("ROUND END")));
+		SetRoundTimer(FText::FromString(bMatchComplete ? TEXT("MATCH OVER") : bRoundInProgress ? FString::Printf(TEXT("ROUND %d"), RoundNumber) : TEXT("ROUND END")));
 		LastRoundNumber = RoundNumber;
 		bLastRoundInProgress = bRoundInProgress;
+		bLastMatchComplete = bMatchComplete;
 	}
 }
 
