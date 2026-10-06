@@ -18,6 +18,7 @@
 #include "InputMappingContext.h"
 #include "Engine/LocalPlayer.h"
 #include "../Player/ArenaDuelPlayerState.h"
+#include "../Player/ArenaDuelPlayerController.h"
 #include "../Game/ArenaDuelGameMode.h"
 #include "../Game/ArenaDuelGameState.h"
 #include "../Combat/ArenaDuelAttributeSet.h"
@@ -126,6 +127,8 @@ float AArenaDuelCharacter::GetMaxHealth() const
 void AArenaDuelCharacter::ApplyServerDamage(float DamageAmount)
 {
 	if (!HasAuthority() || bDead || DamageAmount <= 0.0f) return;
+	const AArenaDuelPlayerState* ArenaPlayerState = GetPlayerState<AArenaDuelPlayerState>();
+	if (ArenaPlayerState && ArenaPlayerState->HasAdminGodMode()) return;
 	UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
 	if (!ASC) return;
 	UGameplayEffect* DamageEffect = NewObject<UGameplayEffect>(GetTransientPackage(), TEXT("ArenaDuelDamageEffect"));
@@ -137,6 +140,43 @@ void AArenaDuelCharacter::ApplyServerDamage(float DamageAmount)
 	DamageEffect->Modifiers.Add(Modifier);
 	ASC->ApplyGameplayEffectToSelf(DamageEffect, 1.0f, ASC->MakeEffectContext());
 	if (GetHealth() <= 0.0f) HandleDeath();
+}
+
+void AArenaDuelCharacter::AdminSetHealth(float NewHealth)
+{
+	if (!HasAuthority() || bDead) return;
+	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponent())
+	{
+		const float ClampedHealth = FMath::Clamp(NewHealth, 0.0f, GetMaxHealth());
+		ASC->SetNumericAttributeBase(UArenaDuelAttributeSet::GetHealthAttribute(), ClampedHealth);
+		if (ClampedHealth <= 0.0f) HandleDeath();
+	}
+}
+
+void AArenaDuelCharacter::AdminKill()
+{
+	if (!HasAuthority() || bDead) return;
+	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponent())
+	{
+		ASC->SetNumericAttributeBase(UArenaDuelAttributeSet::GetHealthAttribute(), 0.0f);
+	}
+	HandleDeath();
+}
+
+void AArenaDuelCharacter::AdminResetPlayer()
+{
+	if (!HasAuthority() || bDead) return;
+	AdminSetHealth(GetMaxHealth());
+	if (WeaponComponent)
+	{
+		WeaponComponent->CancelCombatActions();
+		WeaponComponent->RefillAllAmmoForDevelopment();
+	}
+	if (UArenaDuelCharacterMovementComponent* Movement = GetArenaDuelMovementComponent())
+	{
+		Movement->ResetMovementIntentForDevelopment();
+		Movement->RefillStaminaForDevelopment();
+	}
 }
 
 void AArenaDuelCharacter::HandleDeath()
@@ -168,6 +208,7 @@ void AArenaDuelCharacter::SetDeadState()
 bool AArenaDuelCharacter::CanProcessGameplayInput() const
 {
 	if (!IsLocallyControlled() || bDead) return false;
+	if (const AArenaDuelPlayerController* PlayerController = Cast<AArenaDuelPlayerController>(GetController()); PlayerController && PlayerController->IsAdminMenuOpen()) return false;
 	const AArenaDuelGameState* GameState = GetWorld() ? GetWorld()->GetGameState<AArenaDuelGameState>() : nullptr;
 	return !GameState || GameState->IsRoundInProgress();
 }

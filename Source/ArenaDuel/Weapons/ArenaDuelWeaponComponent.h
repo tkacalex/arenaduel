@@ -125,6 +125,7 @@ public:
 	void StartAim();
 	void StopAim();
 	void CancelCombatActions();
+	void RefillAllAmmoForDevelopment();
 
 	const FArenaDuelWeaponDefinition& GetCurrentDefinition() const;
 	int32 GetWeaponDefinitionCount() const { return WeaponDefinitions.Num(); }
@@ -164,6 +165,8 @@ protected:
 	void StopAuthoritativeFire();
 	bool CanBeginAuthoritativeFire() const;
 	bool IsRoundInProgress() const;
+	bool HasInfiniteAmmoForDevelopment() const;
+	bool IsLocalAdminMenuOpen() const;
 	void CancelLocalAndServerFire();
 	void UpdateAimVisual();
 	void ApplyLocalRecoil();

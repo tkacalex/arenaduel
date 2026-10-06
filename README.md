@@ -4,11 +4,11 @@ ArenaDuel is a competitive one versus one first person fantasy movement shooter 
 
 ## Current status
 
-The repository contains a minimal Unreal Engine 5.8.3 C++ gameplay framework foundation. The `ArenaDuelEditor` Win64 Development target builds successfully from this repository.
+The repository contains an Unreal Engine 5.8.3 C++ project with first-person movement, advanced traversal, four server-authoritative weapons, GAS health and death, a development round restart loop, the compact competitive HUD, and a host-only development admin control menu. The `ArenaDuelEditor` Win64 Development target builds successfully from this repository.
 
 Verified engine path: `C:\Program Files\Epic Games\UE_5.8`.
 
-The project contains the first multiplayer framework and first person Character foundation. Phase 3 input assets, Blueprint subclasses, and a minimal movement test map are now serialized by Unreal and versioned with Git LFS. It has no health, combat, Gameplay Ability System setup, UI, online services, or match gameplay.
+The project contains a first multiplayer framework and first-person Character foundation. Phase 3 input assets, Blueprint subclasses, and movement test maps are serialized by Unreal and versioned with Git LFS. Current development tools include the F1 admin menu for standalone play and the listen-server host; remote clients and Shipping builds are denied admin access. This remains a development prototype, not a final match or online-services implementation.
 
 The generated Blank project already includes the Enhanced Input module and default input classes. ArenaDuel now contains `IA_Move`, `IA_Look`, `IA_Jump`, `IA_Sprint`, `IA_Crouch`, `IMC_Gameplay`, and configured Blueprint references created through Unreal Editor Python automation. Phase 4 adds a C++ movement component with sprint, crouch, slide, slide jump, air control tuning, stamina, momentum bounds, and basic traversal modes.
 

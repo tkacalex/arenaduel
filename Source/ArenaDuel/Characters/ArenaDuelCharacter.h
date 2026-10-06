@@ -37,9 +37,13 @@ public:
 	bool IsCrouchInputHeld() const { return bCrouchInputHeld; }
 	bool IsDead() const { return bDead; }
 	void SetRoundInputLocked(bool bLocked);
+	bool CanProcessGameplayInput() const;
 	float GetHealth() const;
 	float GetMaxHealth() const;
 	void ApplyServerDamage(float DamageAmount);
+	void AdminSetHealth(float NewHealth);
+	void AdminKill();
+	void AdminResetPlayer();
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
 	TObjectPtr<UBoxComponent> BodyHitZone;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
@@ -76,7 +80,6 @@ protected:
 	void ApplyDevelopmentDeathPose();
 	void StartLocalDeathCamera();
 	void UpdateLocalDeathCamera();
-	bool CanProcessGameplayInput() const;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCameraComponent> FirstPersonCamera;

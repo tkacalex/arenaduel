@@ -39,6 +39,9 @@ public:
 	void SetSprintIntentFromNetwork(bool bWantsSprintIntent);
 	void SetSlideIntentFromNetwork(bool bWantsSlideIntent);
 	void ConsumeStamina(float Amount);
+	void RefillStaminaForDevelopment();
+	void ResetMovementIntentForDevelopment();
+	FString GetDevelopmentMovementState() const;
 	bool IsMantling() const { return MovementMode == MOVE_Custom && CustomMovementMode == static_cast<uint8>(EArenaDuelCustomMovementMode::Mantle); }
 
 	bool TrySlideJump();

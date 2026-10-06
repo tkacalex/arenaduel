@@ -9,6 +9,9 @@
 #include "Engine/Engine.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
+#include "Components/BoxComponent.h"
+#include "DrawDebugHelpers.h"
+#include "EngineUtils.h"
 
 void AArenaDuelMovementDebugHUD::BeginPlay()
 {
@@ -80,6 +83,20 @@ void AArenaDuelMovementDebugHUD::DrawHUD()
 	}
 
 	#if !UE_BUILD_SHIPPING
+	if (bShowHitZones && GetWorld())
+	{
+		for (TActorIterator<AArenaDuelCharacter> It(GetWorld()); It; ++It)
+		{
+			if (UBoxComponent* Body = It->BodyHitZone)
+			{
+				DrawDebugBox(GetWorld(), Body->GetComponentLocation(), Body->GetScaledBoxExtent(), Body->GetComponentQuat(), FColor(90, 210, 255), false, 0.0f, 0, 1.5f);
+			}
+			if (UBoxComponent* Head = It->HeadHitZone)
+			{
+				DrawDebugBox(GetWorld(), Head->GetComponentLocation(), Head->GetScaledBoxExtent(), Head->GetComponentQuat(), FColor(220, 100, 255), false, 0.0f, 0, 1.5f);
+			}
+		}
+	}
 	if (bShowDebugOverlay && Character && Movement)
 	{
 		const FString Debug = FString::Printf(TEXT("SPEED %03d\nSTATE %s\nSTAMINA %02d / %02d\nSPREAD %.2f\nSEQ %d\nF3 HIDE"), FMath::RoundToInt(Movement->Velocity.Size2D()), *MovementState(Movement), FMath::RoundToInt(Movement->GetStamina()), FMath::RoundToInt(Movement->GetMaxStamina()), Spread, Weapon ? Weapon->GetLastShotSequence() : 0);

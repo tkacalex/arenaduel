@@ -3,6 +3,7 @@
 #include "ArenaDuelCharacterMovementComponent.h"
 
 #include "ArenaDuelCharacter.h"
+#include "../Player/ArenaDuelPlayerState.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
@@ -398,6 +399,14 @@ void UArenaDuelCharacterMovementComponent::OnMovementModeChanged(EMovementMode P
 void UArenaDuelCharacterMovementComponent::TickComponent(float DeltaSeconds, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaSeconds, TickType, ThisTickFunction);
+	const AArenaDuelCharacter* ArenaCharacter = Cast<AArenaDuelCharacter>(CharacterOwner);
+	const AArenaDuelPlayerState* PlayerState = ArenaCharacter ? ArenaCharacter->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
+	if (PlayerState && PlayerState->HasAdminInfiniteStamina())
+	{
+		Stamina = MaxStamina;
+		TimeSinceStaminaUse = StaminaRegenDelay;
+		return;
+	}
 	if (!IsWallRunning())
 	{
 		TimeSinceStaminaUse += DeltaSeconds;
@@ -588,6 +597,48 @@ void UArenaDuelCharacterMovementComponent::ExitWallRun()
 
 void UArenaDuelCharacterMovementComponent::ConsumeStamina(float Amount)
 {
+	const AArenaDuelCharacter* ArenaCharacter = Cast<AArenaDuelCharacter>(CharacterOwner);
+	const AArenaDuelPlayerState* PlayerState = ArenaCharacter ? ArenaCharacter->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
+	if (PlayerState && PlayerState->HasAdminInfiniteStamina())
+	{
+		Stamina = MaxStamina;
+		TimeSinceStaminaUse = StaminaRegenDelay;
+		return;
+	}
 	Stamina = FMath::Clamp(Stamina - Amount, 0.0f, MaxStamina);
 	TimeSinceStaminaUse = 0.0f;
+}
+
+void UArenaDuelCharacterMovementComponent::RefillStaminaForDevelopment()
+{
+	if (CharacterOwner && CharacterOwner->HasAuthority())
+	{
+		Stamina = MaxStamina;
+		TimeSinceStaminaUse = StaminaRegenDelay;
+		CharacterOwner->ForceNetUpdate();
+	}
+}
+
+void UArenaDuelCharacterMovementComponent::ResetMovementIntentForDevelopment()
+{
+	if (!CharacterOwner || !CharacterOwner->HasAuthority()) return;
+	StopSprint();
+	StopSlide();
+	bSlideQueued = false;
+	SlideInputBufferRemaining = 0.0f;
+	ClearAdvancedJumpIntent();
+	CharacterOwner->UnCrouch();
+	CharacterOwner->ForceNetUpdate();
+}
+
+FString UArenaDuelCharacterMovementComponent::GetDevelopmentMovementState() const
+{
+	if (IsWallRunning()) return TEXT("WALL RUN");
+	if (IsMantling()) return TEXT("MANTLE");
+	if (MovementMode == MOVE_Custom && CustomMovementMode == static_cast<uint8>(EArenaDuelCustomMovementMode::Vault)) return TEXT("VAULT");
+	if (IsSliding()) return TEXT("SLIDE");
+	if (IsCrouching()) return TEXT("CROUCH");
+	if (IsFalling()) return TEXT("AIR");
+	if (IsSprinting()) return TEXT("SPRINT");
+	return TEXT("WALK");
 }

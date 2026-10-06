@@ -3,6 +3,8 @@
 #include "ArenaDuelWeaponComponent.h"
 #include "../Characters/ArenaDuelCharacter.h"
 #include "../Game/ArenaDuelGameState.h"
+#include "../Player/ArenaDuelPlayerState.h"
+#include "../Player/ArenaDuelPlayerController.h"
 #include "ArenaDuelWeaponTarget.h"
 #include "Components/StaticMeshComponent.h"
 #include "Camera/CameraComponent.h"
@@ -130,9 +132,9 @@ float UArenaDuelWeaponComponent::GetCurrentSpreadDegrees() const
 
 void UArenaDuelWeaponComponent::StartFire()
 {
-	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress()) return;
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
 	if (bFireHeld) return;
-	if (bReloading || GetCurrentMagazineAmmo() <= 0 || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
+	if (bReloading || (GetCurrentMagazineAmmo() <= 0 && !HasInfiniteAmmoForDevelopment()) || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	bFireHeld = true;
 	if (AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled())
 	{
@@ -151,21 +153,21 @@ void UArenaDuelWeaponComponent::StopFire()
 }
 void UArenaDuelWeaponComponent::Reload()
 {
-	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress()) return;
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
 	CancelLocalAndServerFire();
 	StopAim();
 	if (GetOwnerRole() == ROLE_Authority) ServerRequestReload_Implementation(); else ServerRequestReload();
 }
 void UArenaDuelWeaponComponent::EquipWeapon(int32 Index)
 {
-	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress()) return;
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
 	CancelLocalAndServerFire();
 	StopAim();
 	if (GetOwnerRole() == ROLE_Authority) ServerRequestEquip_Implementation(Index); else ServerRequestEquip(Index);
 }
 void UArenaDuelWeaponComponent::StartAim()
 {
-	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress()) return;
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
 	if (bAiming) return;
 	bAiming = true;
 	if (GetOwnerRole() == ROLE_Authority) ServerSetAiming_Implementation(true); else ServerSetAiming(true);
@@ -214,6 +216,18 @@ void UArenaDuelWeaponComponent::CancelCombatActions()
 		}
 	}
 }
+void UArenaDuelWeaponComponent::RefillAllAmmoForDevelopment()
+{
+	if (GetOwnerRole() != ROLE_Authority) return;
+	if (RuntimeAmmo.Num() != WeaponDefinitions.Num()) RuntimeAmmo.SetNum(WeaponDefinitions.Num());
+	for (int32 Index = 0; Index < WeaponDefinitions.Num(); ++Index)
+	{
+		RuntimeAmmo[Index].MagazineAmmo = WeaponDefinitions[Index].MagazineCapacity;
+		RuntimeAmmo[Index].ReserveAmmo = WeaponDefinitions[Index].ReserveCapacity;
+	}
+	if (AActor* Owner = GetOwner()) Owner->ForceNetUpdate();
+}
+
 void UArenaDuelWeaponComponent::ServerSetAiming_Implementation(bool bAimingState)
 {
 	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
@@ -228,10 +242,22 @@ bool UArenaDuelWeaponComponent::IsRoundInProgress() const
 	const AArenaDuelGameState* GameState = World ? World->GetGameState<AArenaDuelGameState>() : nullptr;
 	return !GameState || GameState->IsRoundInProgress();
 }
+bool UArenaDuelWeaponComponent::HasInfiniteAmmoForDevelopment() const
+{
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	const AArenaDuelPlayerState* PlayerState = Character ? Character->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
+	return PlayerState && PlayerState->HasAdminInfiniteAmmo();
+}
+bool UArenaDuelWeaponComponent::IsLocalAdminMenuOpen() const
+{
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	const AArenaDuelPlayerController* PlayerController = Character && Character->IsLocallyControlled() ? Cast<AArenaDuelPlayerController>(Character->GetController()) : nullptr;
+	return PlayerController && PlayerController->IsAdminMenuOpen();
+}
 bool UArenaDuelWeaponComponent::CanBeginAuthoritativeFire() const
 {
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
-	return Character && !Character->IsDead() && IsRoundInProgress() && Character->GetController() && GetWorld() && WeaponDefinitions.IsValidIndex(EquippedWeaponIndex) && !bReloading && GetCurrentMagazineAmmo() > 0;
+	return Character && !Character->IsDead() && IsRoundInProgress() && Character->GetController() && GetWorld() && WeaponDefinitions.IsValidIndex(EquippedWeaponIndex) && !bReloading && (GetCurrentMagazineAmmo() > 0 || HasInfiniteAmmoForDevelopment());
 }
 void UArenaDuelWeaponComponent::StartAuthoritativeFire()
 {
@@ -253,7 +279,7 @@ void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character || Character->IsDead() || !IsRoundInProgress()) return;
 	FArenaDuelWeaponRuntimeState* State = GetMutableCurrentRuntimeState();
-	if (!State || bReloading || State->MagazineAmmo >= GetCurrentDefinition().MagazineCapacity || State->ReserveAmmo <= 0) return;
+	if (!State || bReloading || State->MagazineAmmo >= GetCurrentDefinition().MagazineCapacity || (State->ReserveAmmo <= 0 && !HasInfiniteAmmoForDevelopment())) return;
 	StopAuthoritativeFire();
 	bReloading = true;
 	FTimerDelegate ReloadDelegate; ReloadDelegate.BindUObject(this, &UArenaDuelWeaponComponent::CompleteReload);
@@ -274,12 +300,12 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 	const FArenaDuelWeaponDefinition& Definition = GetCurrentDefinition();
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	const AController* Controller = Character ? Character->GetController() : nullptr;
-	if (!State || !GetOwner() || !Character || !Controller || !GetWorld() || Character->IsDead() || bReloading || State->MagazineAmmo <= 0) return;
+	if (!State || !GetOwner() || !Character || !Controller || !GetWorld() || Character->IsDead() || bReloading || (State->MagazineAmmo <= 0 && !HasInfiniteAmmoForDevelopment())) return;
 	const int32 DefinitionIndex = static_cast<int32>(EquippedWeaponIndex);
 	const double ServerTime = GetWorld()->GetTimeSeconds();
 	if (!NextAllowedFireServerTimes.IsValidIndex(DefinitionIndex)) NextAllowedFireServerTimes.SetNum(WeaponDefinitions.Num());
 	if (NextAllowedFireServerTimes.IsValidIndex(DefinitionIndex) && ServerTime + KINDA_SMALL_NUMBER < NextAllowedFireServerTimes[DefinitionIndex]) return;
-	State->MagazineAmmo--;
+	if (!HasInfiniteAmmoForDevelopment()) State->MagazineAmmo--;
 	NextAllowedFireServerTimes[DefinitionIndex] = ServerTime + 60.0 / FMath::Max(static_cast<double>(Definition.RoundsPerMinute), 1.0);
 	const FVector Origin = Character->GetPawnViewLocation();
 	const FVector Direction = Controller->GetControlRotation().Vector();
@@ -318,8 +344,11 @@ void UArenaDuelWeaponComponent::CompleteReload()
 	FArenaDuelWeaponRuntimeState* State = GetMutableCurrentRuntimeState();
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress()) { bReloading = false; return; }
 	if (!State || !bReloading) return;
-	const int32 Loaded = FMath::Min(FMath::Max(0, GetCurrentDefinition().MagazineCapacity - State->MagazineAmmo), State->ReserveAmmo);
-	State->MagazineAmmo += Loaded; State->ReserveAmmo -= Loaded; bReloading = false;
+	const int32 MissingAmmo = FMath::Max(0, GetCurrentDefinition().MagazineCapacity - State->MagazineAmmo);
+	const int32 Loaded = HasInfiniteAmmoForDevelopment() ? MissingAmmo : FMath::Min(MissingAmmo, State->ReserveAmmo);
+	State->MagazineAmmo += Loaded;
+	if (!HasInfiniteAmmoForDevelopment()) State->ReserveAmmo -= Loaded;
+	bReloading = false;
 }
 void UArenaDuelWeaponComponent::ApplyLocalRecoil()
 {
@@ -333,7 +362,7 @@ void UArenaDuelWeaponComponent::ApplyLocalRecoil()
 }
 void UArenaDuelWeaponComponent::LocalCosmeticShot()
 {
-	if (!bFireHeld || bReloading || GetCurrentMagazineAmmo() <= 0 || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
+	if (!bFireHeld || bReloading || (GetCurrentMagazineAmmo() <= 0 && !HasInfiniteAmmoForDevelopment()) || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	LastCosmeticShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
 	LocalWeaponKick = 1.0f;
 	ApplyLocalRecoil();

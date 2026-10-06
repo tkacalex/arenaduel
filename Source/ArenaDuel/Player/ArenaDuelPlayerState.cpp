@@ -35,10 +35,35 @@ void AArenaDuelPlayerState::AwardRoundWin()
 	}
 }
 
+void AArenaDuelPlayerState::SetRoundWinsForDevelopment(int32 NewRoundWins)
+{
+	if (!HasAuthority()) return;
+	RoundWins = FMath::Clamp(NewRoundWins, 0, 5);
+	ForceNetUpdate();
+}
+
+void AArenaDuelPlayerState::ToggleAdminGodMode()
+{
+	if (HasAuthority()) { bAdminGodMode = !bAdminGodMode; ForceNetUpdate(); }
+}
+
+void AArenaDuelPlayerState::ToggleAdminInfiniteAmmo()
+{
+	if (HasAuthority()) { bAdminInfiniteAmmo = !bAdminInfiniteAmmo; ForceNetUpdate(); }
+}
+
+void AArenaDuelPlayerState::ToggleAdminInfiniteStamina()
+{
+	if (HasAuthority()) { bAdminInfiniteStamina = !bAdminInfiniteStamina; ForceNetUpdate(); }
+}
+
 void AArenaDuelPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AArenaDuelPlayerState, AbilitySystemComponent);
 	DOREPLIFETIME(AArenaDuelPlayerState, DuelSlot);
 	DOREPLIFETIME(AArenaDuelPlayerState, RoundWins);
+	DOREPLIFETIME(AArenaDuelPlayerState, bAdminGodMode);
+	DOREPLIFETIME(AArenaDuelPlayerState, bAdminInfiniteAmmo);
+	DOREPLIFETIME(AArenaDuelPlayerState, bAdminInfiniteStamina);
 }

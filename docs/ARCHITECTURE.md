@@ -60,6 +60,14 @@ The local `AArenaDuelMovementDebugHUD` creates one native `UArenaDuelHUDWidget`;
 
 When an authoritative Character dies, GameMode ends the round, locks movement and combat for both players, increments the surviving player's replicated win count, and restarts both player controllers after three seconds using normal PlayerStarts. Client input checks replicated round state and the server independently rejects weapon actions during the break. The loop stops at five wins. This is a practical development flow only: it has no round timer, selection, intermission UI, disconnect rules, or full match completion presentation.
 
+## Development admin control
+
+`AArenaDuelPlayerController` owns the F1 development menu so it survives pawn replacement. Its native `UArenaDuelAdminWidget` tree is built in C++, exists only while open, and refreshes readouts at 5 Hz. Opening it uses Game and UI input mode, shows the cursor, blocks local character/weapon input, and never pauses the multiplayer world. Closing restores the prior move/look ignore state and Game input mode. F1 and Escape close the menu.
+
+The server command endpoint rejects Shipping builds and accepts only standalone authority or the local listen-server host. It independently checks authority and local-controller/net mode, validates slot and numeric inputs, and resolves targets by replicated DuelSlot. The remote client's server-side PlayerController is not authorized. God Mode, Infinite Ammo, and Infinite Stamina are server-owned replicated development flags on PlayerState; they are false by default, remain useful across round pawn replacement, and are not saved across application runs. Admin Kill and zero Health use the normal authoritative death path; God Mode blocks only ordinary damage. Reset Player is available only while alive and restores health, movement intent, stamina, combat actions, and the normal weapon ammunition; dead-player recovery uses the round restart path.
+
+The menu provides player, weapon, round, movement, local debug, and network readouts/actions. Hit-zone visualization is local debug drawing only and does not change collision. The admin menu is a prototype developer tool, not authenticated dedicated-server administration.
+
 ## Enhanced Input lifecycle
 
 `AArenaDuelCharacter` adds its configured Mapping Context from `PawnClientRestart()`, not `BeginPlay()`. Unreal calls this lifecycle on the owning client when a player controlled Pawn is restarted, which covers initial possession and future Pawn replacement. The code checks local control, resolves the LocalPlayer subsystem, and checks `HasMappingContext()` before adding the context. Remote clients and dedicated servers do not register local input mappings.

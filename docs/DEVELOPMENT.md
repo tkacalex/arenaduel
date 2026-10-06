@@ -34,6 +34,10 @@ The automation plugins are editor only and are not listed in `ArenaDuel.uproject
 
 The Android File Server editor settings section is intentionally absent for this Win64-only development milestone. ArenaDuel does not use Android File Server, so removing that project-owned section prevents Unreal from regenerating a local `SecurityToken` in tracked configuration.
 
+## Development admin menu
+
+In a Development/Editor standalone session or as the listen-server host, press F1 to open the native admin control menu and F1 or Escape to close it. The menu does not pause the game. Remote clients cannot open the menu or pass server-side admin authorization. Shipping builds compile out menu opening and reject the server admin command endpoint. Player/weapon/round/movement commands run on authority; debug overlay and hit-zone drawing are local diagnostics. Reset Player only affects a living target; use Restart Round to recover a dead player without awarding a win.
+
 ## Phase 4 validation
 
 `Tools/Tests/RunPhase4Validation.ps1` builds `ArenaDuelEditor` and runs the Phase 3 regression suite plus the Phase 4 asset and movement-state suite twice. The Phase 4 suite validates the temporary movement map, input assets, Blueprint assignments, sprint and slide state transitions, slide jump, and movement bounds. Unreal's CQTest report is the source of truth; engine PIE NetGUID warnings are tolerated only when the report has no failed or not-run tests.

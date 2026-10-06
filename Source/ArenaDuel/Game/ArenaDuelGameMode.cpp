@@ -77,11 +77,28 @@ void AArenaDuelGameMode::HandlePlayerDeath(AArenaDuelCharacter* DeadCharacter)
 		}
 	}
 
-	const int32 WinnerSlot = WinningPlayerState ? static_cast<int32>(WinningPlayerState->GetDuelSlot()) : INDEX_NONE;
-	if (WinningPlayerState)
+	EndRoundForDevelopment(WinningPlayerState);
+}
+
+AArenaDuelPlayerState* AArenaDuelGameMode::FindPlayerStateByDuelSlot(uint8 DuelSlot) const
+{
+	const AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>();
+	if (!ArenaGameState || DuelSlot > 1) return nullptr;
+	for (APlayerState* PlayerState : ArenaGameState->PlayerArray)
 	{
-		WinningPlayerState->AwardRoundWin();
+		AArenaDuelPlayerState* ArenaPlayerState = Cast<AArenaDuelPlayerState>(PlayerState);
+		if (ArenaPlayerState && ArenaPlayerState->GetDuelSlot() == DuelSlot) return ArenaPlayerState;
 	}
+	return nullptr;
+}
+
+void AArenaDuelGameMode::EndRoundForDevelopment(AArenaDuelPlayerState* WinningPlayerState)
+{
+	if (!HasAuthority() || bRoundRestartPending) return;
+	AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>();
+	if (!ArenaGameState || !ArenaGameState->IsRoundInProgress()) return;
+	if (WinningPlayerState) WinningPlayerState->AwardRoundWin();
+	const int32 WinnerSlot = WinningPlayerState ? static_cast<int32>(WinningPlayerState->GetDuelSlot()) : INDEX_NONE;
 	ArenaGameState->SetRoundState(ArenaGameState->GetRoundNumber(), false, WinnerSlot);
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
@@ -99,6 +116,58 @@ void AArenaDuelGameMode::HandlePlayerDeath(AArenaDuelCharacter* DeadCharacter)
 	if (!bMatchComplete && GetWorld())
 	{
 		GetWorldTimerManager().SetTimer(RoundRestartTimer, this, &AArenaDuelGameMode::StartNextRound, 3.0f, false);
+	}
+}
+
+void AArenaDuelGameMode::AdminRestartRound()
+{
+	if (!HasAuthority() || !GetWorld()) return;
+	GetWorldTimerManager().ClearTimer(RoundRestartTimer);
+	bRoundRestartPending = false;
+	if (AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>())
+	{
+		ArenaGameState->SetRoundState(ArenaGameState->GetRoundNumber(), true, INDEX_NONE);
+		RestartDuelPlayers();
+	}
+}
+
+void AArenaDuelGameMode::AdminAdvanceRound()
+{
+	if (!HasAuthority() || !GetWorld()) return;
+	GetWorldTimerManager().ClearTimer(RoundRestartTimer);
+	bRoundRestartPending = false;
+	if (AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>())
+	{
+		ArenaGameState->SetRoundState(ArenaGameState->GetRoundNumber() + 1, true, INDEX_NONE);
+		RestartDuelPlayers();
+	}
+}
+
+void AArenaDuelGameMode::AdminAwardRound(uint8 WinningDuelSlot)
+{
+	if (!HasAuthority() || !GetWorld()) return;
+	AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>();
+	if (!ArenaGameState || !ArenaGameState->IsRoundInProgress() || bRoundRestartPending) return;
+	AArenaDuelPlayerState* Winner = FindPlayerStateByDuelSlot(WinningDuelSlot);
+	if (Winner) EndRoundForDevelopment(Winner);
+}
+
+void AArenaDuelGameMode::AdminResetMatch()
+{
+	if (!HasAuthority() || !GetWorld()) return;
+	GetWorldTimerManager().ClearTimer(RoundRestartTimer);
+	bRoundRestartPending = false;
+	if (AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>())
+	{
+		for (APlayerState* PlayerState : ArenaGameState->PlayerArray)
+		{
+			if (AArenaDuelPlayerState* ArenaPlayerState = Cast<AArenaDuelPlayerState>(PlayerState))
+			{
+				ArenaPlayerState->SetRoundWinsForDevelopment(0);
+			}
+		}
+		ArenaGameState->SetRoundState(1, true, INDEX_NONE);
+		RestartDuelPlayers();
 	}
 }
 
