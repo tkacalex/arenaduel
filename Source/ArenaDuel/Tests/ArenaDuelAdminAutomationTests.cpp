@@ -119,6 +119,8 @@ NETWORK_TEST_CLASS(FArenaDuelAdminNetworkTest, "ArenaDuel.Admin.Network")
 				}
 				State.TargetSlot = RemoteState->GetDuelSlot();
 				State.InitialRound = GameState->GetRoundNumber();
+				State.World->GetAuthGameMode<AArenaDuelGameMode>()->AdminRestartRound();
+				RemotePawn = Cast<AArenaDuelCharacter>(Remote->GetPawn());
 				if (!Host->CanUseDevelopmentAdmin()) TestRunner->AddError(TEXT("Listen-server host was not authorized."));
 				if (Remote->CanUseDevelopmentAdmin()) TestRunner->AddError(TEXT("Remote client's server PlayerController was incorrectly authorized."));
 				const uint8 HostSlot = HostState->GetDuelSlot();

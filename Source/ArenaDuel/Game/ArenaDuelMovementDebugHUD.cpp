@@ -2,6 +2,7 @@
 
 #include "ArenaDuelMovementDebugHUD.h"
 #include "../UI/ArenaDuelHUDWidget.h"
+#include "ArenaDuelGameState.h"
 #include "../Characters/ArenaDuelCharacter.h"
 #include "../Characters/ArenaDuelCharacterMovementComponent.h"
 #include "../Weapons/ArenaDuelWeaponComponent.h"
@@ -23,8 +24,15 @@ void AArenaDuelMovementDebugHUD::BeginPlay()
 		if (GameplayWidget)
 		{
 			GameplayWidget->AddToViewport(0);
+			const AArenaDuelGameState* State = GetWorld()->GetGameState<AArenaDuelGameState>();
+			SetCharacterSelectVisible(!State || State->IsCharacterSelectVisible());
 		}
 	}
+}
+
+void AArenaDuelMovementDebugHUD::SetCharacterSelectVisible(bool bVisible)
+{
+	if (GameplayWidget) GameplayWidget->SetVisibility(bVisible ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
 }
 
 namespace
@@ -52,6 +60,7 @@ namespace
 void AArenaDuelMovementDebugHUD::DrawHUD()
 {
 	Super::DrawHUD();
+	if (const AArenaDuelGameState* State = GetWorld()->GetGameState<AArenaDuelGameState>(); !State || State->IsCharacterSelectVisible()) return;
 	APlayerController* Controller = GetOwningPlayerController();
 	#if !UE_BUILD_SHIPPING
 	if (Controller && Controller->WasInputKeyJustPressed(EKeys::F3)) bShowDebugOverlay = !bShowDebugOverlay;

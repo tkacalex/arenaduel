@@ -32,11 +32,13 @@ Current playtest support also includes a minimal server-authoritative round rest
 
 Shadow, Warden, Rift, and non damaging utility and movement abilities.
 
-Phase 7A Shadow is implemented and human-approved: Shadow Step (Q) and Veil Wall (E) use the persistent PlayerState ASC, with 5 and 12 second cooldowns; Veil Wall is a three-second replicated visual-only occluder. Phase 7B adds the replicated PlayerState archetype and host-only development switching between Shadow and Warden. Warden Q Arc Barrier is a 350-health, five-second physical barrier that blocks Pawn movement and authoritative hitscan, with a 14 second cooldown. Warden E Burst Leap is predicted CharacterMovement launch locomotion with a 7 second cooldown and no damage. Kit switching removes stale specs/cooldowns; round reset preserves the selected archetype, clears cooldowns, and cleans temporary actors. Focused Phase 7 listen-server and Phase 5 regression tests pass, and the editor target builds. Human two-player feel and visual tuning remain. Rift abilities, public character selection, and damage abilities are not implemented.
+Phase 7A Shadow is implemented and human-approved: Shadow Step (Q) and Veil Wall (E) use the persistent PlayerState ASC, with 5 and 12 second cooldowns; Veil Wall is a three-second replicated visual-only occluder. Phase 7B adds the replicated PlayerState archetype and host-only development switching between Shadow and Warden. Warden Q Arc Barrier is a 350-health, five-second physical barrier that blocks Pawn movement and authoritative hitscan, with a 14 second cooldown. Warden E Burst Leap is predicted CharacterMovement launch locomotion with a 7 second cooldown and no damage. Kit switching removes stale specs/cooldowns; round reset preserves the selected archetype, clears cooldowns, and cleans temporary actors. Focused Phase 7 listen-server and Phase 5 regression tests pass, and the editor target builds. Human two-player feel and visual tuning remain. Rift abilities and damage abilities are not implemented. The public Shadow/Warden selection frontend is documented under Phase 8.
 
 ## Phase 8: Round system, selections, and RPG upgrades
 
 First to 5 rounds, round flow, fighter and weapon selection, and match based upgrade choices.
+
+The public pre-match frontend now implements replicated Shadow/Warden selection and ready state, authoritative countdown, combat locking, and return to selection after match results. It uses a fullscreen native UI with procedural development portraits. Rift selection, account identity, ranked disconnect rules, and RPG upgrades remain pending. Visual fidelity and real two-player usability remain human acceptance checks.
 
 ## Phase 9: Arena, UI, audiovisual polish, and optimization
 

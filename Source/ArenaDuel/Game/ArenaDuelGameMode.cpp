@@ -26,11 +26,7 @@ AArenaDuelGameMode::AArenaDuelGameMode()
 void AArenaDuelGameMode::BeginPlay()
 {
 	Super::BeginPlay();
-	if (AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>())
-	{
-		ArenaGameState->SetMatchComplete(false, INDEX_NONE);
-		ArenaGameState->SetRoundState(1, true, INDEX_NONE);
-	}
+	EnterCharacterSelect();
 }
 
 void AArenaDuelGameMode::PostLogin(APlayerController* NewPlayer)
@@ -56,7 +52,92 @@ void AArenaDuelGameMode::AssignDuelSlot(AArenaDuelPlayerState* JoiningPlayerStat
 			bSlotTaken[ArenaPlayerState->GetDuelSlot()] = true;
 		}
 	}
-	JoiningPlayerState->SetDuelSlot(bSlotTaken[0] ? 1 : 0);
+	JoiningPlayerState->SetDuelSlot(bSlotTaken[0] ? (bSlotTaken[1] ? 255 : 1) : 0);
+}
+
+void AArenaDuelGameMode::RestartPlayer(AController* NewPlayer)
+{
+	Super::RestartPlayer(NewPlayer);
+	const AArenaDuelGameState* State = GetGameState<AArenaDuelGameState>();
+	if (State && !State->IsRoundInProgress() && NewPlayer)
+	{
+		if (AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(NewPlayer->GetPawn())) Character->SetRoundInputLocked(true);
+	}
+}
+
+void AArenaDuelGameMode::Logout(AController* Exiting)
+{
+	if (const APlayerController* Controller = Cast<APlayerController>(Exiting))
+		if (AArenaDuelPlayerState* Player = Controller->GetPlayerState<AArenaDuelPlayerState>())
+		{
+			Player->SetCharacterReadyAuthoritatively(false);
+			Player->SetDuelSlot(255);
+		}
+	Super::Logout(Exiting);
+	// No ranked forfeit here. A missing opponent safely returns the duel to selection.
+	if (GetWorld() && !GetWorld()->bIsTearingDown) EnterCharacterSelect();
+}
+
+void AArenaDuelGameMode::EnterCharacterSelect()
+{
+	if (!HasAuthority() || !GetWorld()) return;
+	ClearPendingRoundAndMatchTimers();
+	bRoundRestartPending = false;
+	AArenaDuelGameState* State = GetGameState<AArenaDuelGameState>();
+	if (!State) return;
+	for (APlayerState* Player : State->PlayerArray)
+	{
+		if (AArenaDuelPlayerState* DuelPlayer = Cast<AArenaDuelPlayerState>(Player))
+		{
+			DuelPlayer->SetRoundWinsForDevelopment(0);
+			DuelPlayer->SetCharacterReadyAuthoritatively(false);
+		}
+	}
+	State->SetMatchComplete(false, INDEX_NONE);
+	State->SetRoundState(1, false, INDEX_NONE);
+	State->SetMatchPhase(EArenaDuelMatchPhase::CharacterSelect);
+	RestartDuelPlayers();
+}
+
+void AArenaDuelGameMode::RequestCharacterSelection(APlayerController* Requester, EArenaDuelCharacterArchetype Archetype)
+{
+	const AArenaDuelGameState* State = GetGameState<AArenaDuelGameState>();
+	AArenaDuelPlayerState* Player = Requester ? Requester->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
+	if (!HasAuthority() || !State || State->GetMatchPhase() != EArenaDuelMatchPhase::CharacterSelect || !Player || Player->GetOwner() != Requester || Player->GetDuelSlot() > 1 || Player->IsCharacterReady()) return;
+	Player->SetCharacterArchetypeAuthoritatively(Archetype);
+}
+
+void AArenaDuelGameMode::RequestCharacterReady(APlayerController* Requester, bool bReady)
+{
+	const AArenaDuelGameState* State = GetGameState<AArenaDuelGameState>();
+	AArenaDuelPlayerState* Player = Requester ? Requester->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
+	if (!HasAuthority() || !State || State->GetMatchPhase() != EArenaDuelMatchPhase::CharacterSelect || !Player || Player->GetOwner() != Requester || Player->GetDuelSlot() > 1) return;
+	if (Player->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Shadow && Player->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Warden) return;
+	Player->SetCharacterReadyAuthoritatively(bReady);
+	CheckBothReady();
+}
+
+void AArenaDuelGameMode::CheckBothReady()
+{
+	AArenaDuelGameState* State = GetGameState<AArenaDuelGameState>();
+	AArenaDuelPlayerState* Left = FindPlayerStateByDuelSlot(0);
+	AArenaDuelPlayerState* Right = FindPlayerStateByDuelSlot(1);
+	if (!State || State->GetMatchPhase() != EArenaDuelMatchPhase::CharacterSelect || !Left || !Right || !Left->IsCharacterReady() || !Right->IsCharacterReady()) return;
+	// Three numbered seconds plus a brief FIGHT beat, derived locally from one timestamp.
+	State->SetMatchPhase(EArenaDuelMatchPhase::Countdown, State->GetServerWorldTimeSeconds() + 3.35f);
+	GetWorldTimerManager().SetTimer(CharacterCountdownTimer, this, &AArenaDuelGameMode::StartSelectedMatch, 3.35f, false);
+}
+
+void AArenaDuelGameMode::StartSelectedMatch()
+{
+	AArenaDuelGameState* State = GetGameState<AArenaDuelGameState>();
+	if (!State || State->GetMatchPhase() != EArenaDuelMatchPhase::Countdown) return;
+	if (!FindPlayerStateByDuelSlot(0) || !FindPlayerStateByDuelSlot(1)) { EnterCharacterSelect(); return; }
+	for (APlayerState* Player : State->PlayerArray)
+		if (AArenaDuelPlayerState* DuelPlayer = Cast<AArenaDuelPlayerState>(Player)) DuelPlayer->SetCharacterReadyAuthoritatively(false);
+	State->SetMatchComplete(false, INDEX_NONE);
+	State->SetRoundState(1, true, INDEX_NONE);
+	RestartDuelPlayers();
 }
 
 void AArenaDuelGameMode::HandlePlayerDeath(AArenaDuelCharacter* DeadCharacter)
@@ -90,7 +171,7 @@ AArenaDuelPlayerState* AArenaDuelGameMode::FindPlayerStateByDuelSlot(uint8 DuelS
 	for (APlayerState* PlayerState : ArenaGameState->PlayerArray)
 	{
 		AArenaDuelPlayerState* ArenaPlayerState = Cast<AArenaDuelPlayerState>(PlayerState);
-		if (ArenaPlayerState && ArenaPlayerState->GetDuelSlot() == DuelSlot) return ArenaPlayerState;
+		if (ArenaPlayerState && !ArenaPlayerState->IsInactive() && ArenaPlayerState->GetDuelSlot() == DuelSlot) return ArenaPlayerState;
 	}
 	return nullptr;
 }
@@ -121,6 +202,7 @@ void AArenaDuelGameMode::EndRoundForDevelopment(AArenaDuelPlayerState* WinningPl
 	if (bMatchComplete)
 	{
 		ArenaGameState->SetMatchComplete(true, WinnerSlot);
+		ArenaGameState->SetMatchPhase(EArenaDuelMatchPhase::MatchResult);
 		if (GetWorld()) GetWorldTimerManager().SetTimer(MatchResetTimer, this, &AArenaDuelGameMode::ResetMatchAndRestartPlayers, 5.0f, false);
 	}
 	else if (GetWorld())
@@ -208,24 +290,12 @@ void AArenaDuelGameMode::ClearPendingRoundAndMatchTimers()
 {
 	GetWorldTimerManager().ClearTimer(RoundRestartTimer);
 	GetWorldTimerManager().ClearTimer(MatchResetTimer);
+	GetWorldTimerManager().ClearTimer(CharacterCountdownTimer);
 }
 
 void AArenaDuelGameMode::ResetMatchAndRestartPlayers()
 {
-	if (!HasAuthority() || !GetWorld()) return;
-	bRoundRestartPending = false;
-	AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>();
-	if (!ArenaGameState) return;
-	for (APlayerState* PlayerState : ArenaGameState->PlayerArray)
-	{
-		if (AArenaDuelPlayerState* ArenaPlayerState = Cast<AArenaDuelPlayerState>(PlayerState))
-		{
-			ArenaPlayerState->SetRoundWinsForDevelopment(0);
-		}
-	}
-	ArenaGameState->SetMatchComplete(false, INDEX_NONE);
-	ArenaGameState->SetRoundState(1, true, INDEX_NONE);
-	RestartDuelPlayers();
+	EnterCharacterSelect();
 }
 
 void AArenaDuelGameMode::RestartDuelPlayers()
@@ -238,6 +308,8 @@ void AArenaDuelGameMode::RestartDuelPlayers()
 	{
 		if (APlayerController* PlayerController = It->Get())
 		{
+			const AArenaDuelPlayerState* DuelPlayer = PlayerController->GetPlayerState<AArenaDuelPlayerState>();
+			if (!DuelPlayer || DuelPlayer->GetDuelSlot() > 1 || PlayerController->IsActorBeingDestroyed()) continue;
 			Controllers.Add(PlayerController);
 			if (AArenaDuelPlayerState* PlayerState = PlayerController->GetPlayerState<AArenaDuelPlayerState>())
 			{

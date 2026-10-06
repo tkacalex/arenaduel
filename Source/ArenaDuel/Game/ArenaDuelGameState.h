@@ -6,6 +6,16 @@
 #include "GameFramework/GameState.h"
 #include "ArenaDuelGameState.generated.h"
 
+UENUM(BlueprintType)
+enum class EArenaDuelMatchPhase : uint8
+{
+	CharacterSelect,
+	Countdown,
+	InRound,
+	RoundBreak,
+	MatchResult
+};
+
 UCLASS()
 class ARENADUEL_API AArenaDuelGameState : public AGameState
 {
@@ -13,7 +23,11 @@ class ARENADUEL_API AArenaDuelGameState : public AGameState
 
 public:
 	int32 GetRoundNumber() const { return RoundNumber; }
-	bool IsRoundInProgress() const { return bRoundInProgress; }
+	bool IsRoundInProgress() const { return MatchPhase == EArenaDuelMatchPhase::InRound && bRoundInProgress; }
+	EArenaDuelMatchPhase GetMatchPhase() const { return MatchPhase; }
+	bool IsCharacterSelectVisible() const { return MatchPhase == EArenaDuelMatchPhase::CharacterSelect || MatchPhase == EArenaDuelMatchPhase::Countdown; }
+	float GetCountdownEndServerTime() const { return CountdownEndServerTime; }
+	void SetMatchPhase(EArenaDuelMatchPhase NewPhase, float EndServerTime = 0.0f);
 	int32 GetLastRoundWinnerSlot() const { return LastRoundWinnerSlot; }
 	bool IsMatchComplete() const { return bMatchComplete; }
 	int32 GetMatchWinnerSlot() const { return MatchWinnerSlot; }
@@ -22,11 +36,17 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
+	UPROPERTY(ReplicatedUsing=OnRep_MatchPhase, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
+	EArenaDuelMatchPhase MatchPhase = EArenaDuelMatchPhase::CharacterSelect;
+
+	UPROPERTY(Replicated)
+	float CountdownEndServerTime = 0.0f;
+
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
 	int32 RoundNumber = 1;
 
 	UPROPERTY(ReplicatedUsing=OnRep_RoundInProgress, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
-	bool bRoundInProgress = true;
+	bool bRoundInProgress = false;
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
 	int32 LastRoundWinnerSlot = INDEX_NONE;
@@ -39,4 +59,6 @@ protected:
 
 	UFUNCTION()
 	void OnRep_RoundInProgress();
+	UFUNCTION()
+	void OnRep_MatchPhase();
 };

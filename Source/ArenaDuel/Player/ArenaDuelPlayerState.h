@@ -37,6 +37,10 @@ public:
 	EArenaDuelCharacterArchetype GetCharacterArchetype() const { return CharacterArchetype; }
 	FText GetCharacterArchetypeDisplayName() const;
 	bool SetCharacterArchetypeForDevelopment(EArenaDuelCharacterArchetype NewArchetype);
+	// Authority-only kit replacement shared by public selection and development admin.
+	bool SetCharacterArchetypeAuthoritatively(EArenaDuelCharacterArchetype NewArchetype);
+	bool IsCharacterReady() const { return bCharacterReady; }
+	void SetCharacterReadyAuthoritatively(bool bReady);
 	void GrantCharacterAbilities();
 	void ResetAbilitiesForNewRound();
 	bool TryActivatePrimaryAbility();
@@ -56,6 +60,9 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Character")
+	bool bCharacterReady = false;
+
 	virtual void BeginPlay() override;
 	UFUNCTION() void OnRep_CharacterArchetype();
 	float GetCooldownRemaining(const FGameplayTag& CooldownTag) const;

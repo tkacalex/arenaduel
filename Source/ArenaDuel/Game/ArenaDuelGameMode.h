@@ -10,6 +10,7 @@
 class AArenaDuelCharacter;
 class AArenaDuelGameState;
 class AArenaDuelPlayerState;
+enum class EArenaDuelCharacterArchetype : uint8;
 
 UCLASS()
 class ARENADUEL_API AArenaDuelGameMode : public AGameMode
@@ -20,6 +21,10 @@ public:
 	AArenaDuelGameMode();
 	virtual void BeginPlay() override;
 	virtual void PostLogin(APlayerController* NewPlayer) override;
+	virtual void Logout(AController* Exiting) override;
+	virtual void RestartPlayer(AController* NewPlayer) override;
+	void RequestCharacterSelection(APlayerController* Requester, EArenaDuelCharacterArchetype Archetype);
+	void RequestCharacterReady(APlayerController* Requester, bool bReady);
 	void HandlePlayerDeath(AArenaDuelCharacter* DeadCharacter);
 	void AdminRestartRound();
 	void AdminAdvanceRound();
@@ -34,6 +39,10 @@ protected:
 	void ClearPendingRoundAndMatchTimers();
 	void AssignDuelSlot(AArenaDuelPlayerState* JoiningPlayerState);
 	void EndRoundForDevelopment(AArenaDuelPlayerState* WinningPlayerState);
+	void EnterCharacterSelect();
+	void StartSelectedMatch();
+	void CheckBothReady();
+	FTimerHandle CharacterCountdownTimer;
 
 	FTimerHandle RoundRestartTimer;
 	FTimerHandle MatchResetTimer;

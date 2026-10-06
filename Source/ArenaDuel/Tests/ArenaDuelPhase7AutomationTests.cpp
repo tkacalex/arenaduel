@@ -173,6 +173,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase7WardenNetworkSmokeTest, "ArenaDuel.Phase7.War
 				AArenaDuelPlayerState* P1 = GameMode ? GameMode->FindPlayerStateByDuelSlot(0) : nullptr;
 				AArenaDuelPlayerState* P2 = GameMode ? GameMode->FindPlayerStateByDuelSlot(1) : nullptr;
 				if (!P1 || !P2) return false;
+				if (State.World->GetGameState<AArenaDuelGameState>()->IsCharacterSelectVisible()) GameMode->AdminRestartRound();
 				P2->SetCharacterArchetypeForDevelopment(EArenaDuelCharacterArchetype::Warden);
 				return P1->GetCharacterArchetype() == EArenaDuelCharacterArchetype::Shadow && P2->GetCharacterArchetype() == EArenaDuelCharacterArchetype::Warden;
 			}, FTimespan::FromSeconds(10.0))
@@ -327,6 +328,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase7ShadowNetworkSmokeTest, "ArenaDuel.Phase7.Sha
 		Network
 			.UntilServer(TEXT("Wait for both server PlayerStates with exactly one Shadow ability spec each"), [](FArenaDuelPhase7NetworkState& State)
 			{
+				if (State.World->GetGameState<AArenaDuelGameState>()->IsCharacterSelectVisible()) State.World->GetAuthGameMode<AArenaDuelGameMode>()->AdminRestartRound();
 				int32 Count = 0;
 				for (APlayerState* BaseState : State.World->GetGameState()->PlayerArray)
 				{

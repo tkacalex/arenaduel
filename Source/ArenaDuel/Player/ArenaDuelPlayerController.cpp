@@ -9,6 +9,7 @@
 #include "../Game/ArenaDuelMovementDebugHUD.h"
 #include "../Player/ArenaDuelPlayerState.h"
 #include "../UI/ArenaDuelAdminWidget.h"
+#include "../UI/ArenaDuelCharacterSelectWidget.h"
 #include "../Weapons/ArenaDuelWeaponComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -29,12 +30,70 @@ void AArenaDuelPlayerController::SetupInputComponent()
 void AArenaDuelPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
+	if (IsLocalController())
+	{
+		GetWorldTimerManager().SetTimer(MatchPresentationTimer, this, &AArenaDuelPlayerController::RefreshMatchPresentation, 0.2f, true);
+		RefreshMatchPresentation();
+	}
 }
 
 void AArenaDuelPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	CloseAdminMenu();
+	GetWorldTimerManager().ClearTimer(MatchPresentationTimer);
+	if (CharacterSelectWidget) CharacterSelectWidget->RemoveFromParent();
 	Super::EndPlay(EndPlayReason);
+}
+
+void AArenaDuelPlayerController::RequestCharacterSelection(EArenaDuelCharacterArchetype Archetype)
+{
+	if (IsLocalController()) ServerRequestCharacterSelection(Archetype);
+}
+
+void AArenaDuelPlayerController::ToggleCharacterReady()
+{
+	if (IsLocalController())
+		if (const AArenaDuelPlayerState* State = GetPlayerState<AArenaDuelPlayerState>()) ServerSetCharacterReady(!State->IsCharacterReady());
+}
+
+void AArenaDuelPlayerController::ServerRequestCharacterSelection_Implementation(EArenaDuelCharacterArchetype Archetype)
+{
+	if (AArenaDuelGameMode* Mode = GetWorld()->GetAuthGameMode<AArenaDuelGameMode>()) Mode->RequestCharacterSelection(this, Archetype);
+}
+
+void AArenaDuelPlayerController::ServerSetCharacterReady_Implementation(bool bReady)
+{
+	if (AArenaDuelGameMode* Mode = GetWorld()->GetAuthGameMode<AArenaDuelGameMode>()) Mode->RequestCharacterReady(this, bReady);
+}
+
+void AArenaDuelPlayerController::RefreshMatchPresentation()
+{
+	if (!IsLocalController()) return;
+	const AArenaDuelGameState* State = GetWorld()->GetGameState<AArenaDuelGameState>();
+	if (!State) return;
+	const bool bShow = State->IsCharacterSelectVisible();
+	if (AArenaDuelMovementDebugHUD* HUD = Cast<AArenaDuelMovementDebugHUD>(GetHUD())) HUD->SetCharacterSelectVisible(bShow);
+	if (bShow == bCharacterSelectOpen) return;
+	if (bShow)
+	{
+		CloseAdminMenu();
+		if (!CharacterSelectWidget) CharacterSelectWidget = CreateWidget<UArenaDuelCharacterSelectWidget>(this, UArenaDuelCharacterSelectWidget::StaticClass());
+		if (!CharacterSelectWidget) return;
+		CharacterSelectWidget->AddToViewport(50);
+		bShowMouseCursor = true;
+		FInputModeUIOnly Mode;
+		Mode.SetWidgetToFocus(CharacterSelectWidget->TakeWidget());
+		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		SetInputMode(Mode);
+		CharacterSelectWidget->SetKeyboardFocus();
+	}
+	else
+	{
+		if (CharacterSelectWidget) CharacterSelectWidget->RemoveFromParent();
+		bShowMouseCursor = false;
+		SetInputMode(FInputModeGameOnly());
+	}
+	bCharacterSelectOpen = bShow;
 }
 
 bool AArenaDuelPlayerController::CanUseDevelopmentAdmin() const
@@ -51,6 +110,7 @@ void AArenaDuelPlayerController::ToggleAdminMenu()
 {
 #if !UE_BUILD_SHIPPING
 	if (!IsLocalController()) return;
+	if (const AArenaDuelGameState* State = GetWorld()->GetGameState<AArenaDuelGameState>(); State && State->IsCharacterSelectVisible()) return;
 	if (bAdminMenuOpen)
 	{
 		CloseAdminMenu();

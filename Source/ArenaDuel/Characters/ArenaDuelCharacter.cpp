@@ -112,6 +112,7 @@ void AArenaDuelCharacter::InitializeAbilityActorInfo()
 			}
 		}
 	}
+	if (const AArenaDuelGameState* MatchState = GetWorld() ? GetWorld()->GetGameState<AArenaDuelGameState>() : nullptr) SetRoundInputLocked(!MatchState->IsRoundInProgress());
 }
 
 float AArenaDuelCharacter::GetHealth() const
@@ -129,6 +130,7 @@ float AArenaDuelCharacter::GetMaxHealth() const
 void AArenaDuelCharacter::ApplyServerDamage(float DamageAmount)
 {
 	if (!HasAuthority() || bDead || DamageAmount <= 0.0f) return;
+	if (const AArenaDuelGameState* State = GetWorld() ? GetWorld()->GetGameState<AArenaDuelGameState>() : nullptr; State && !State->IsRoundInProgress()) return;
 	const AArenaDuelPlayerState* ArenaPlayerState = GetPlayerState<AArenaDuelPlayerState>();
 	if (ArenaPlayerState && ArenaPlayerState->HasAdminGodMode()) return;
 	UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
@@ -242,7 +244,12 @@ bool AArenaDuelCharacter::CanProcessGameplayInput() const
 
 void AArenaDuelCharacter::SetRoundInputLocked(bool bLocked)
 {
-	if (!bLocked) return;
+	if (!bLocked)
+	{
+		// GameState and the fresh pawn may arrive in either replication order.
+		if (!bDead && GetCharacterMovement() && GetCharacterMovement()->MovementMode == MOVE_None) GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+		return;
+	}
 	if (WeaponComponent) WeaponComponent->CancelCombatActions();
 	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
 	{

@@ -4,6 +4,7 @@
 
 #include "ArenaDuelCharacter.h"
 #include "../Player/ArenaDuelPlayerState.h"
+#include "../Game/ArenaDuelGameState.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
@@ -241,6 +242,14 @@ void UArenaDuelCharacterMovementComponent::UpdateCharacterStateBeforeMovement(fl
 		return;
 	}
 	Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
+	// Compressed client movement intent cannot unlock a server-owned lobby or round break.
+	if (const AArenaDuelGameState* State = GetWorld() ? GetWorld()->GetGameState<AArenaDuelGameState>() : nullptr; State && !State->IsRoundInProgress())
+	{
+		ClearAdvancedJumpIntent();
+		StopMovementImmediately();
+		DisableMovement();
+		return;
+	}
 	if (bAdvancedJumpRequested)
 	{
 		const bool bExecuted = bAdvancedWallJump ? TryWallJump() : TrySlideJump();

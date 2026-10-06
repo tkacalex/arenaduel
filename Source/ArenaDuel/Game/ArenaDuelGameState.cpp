@@ -11,7 +11,23 @@ void AArenaDuelGameState::SetRoundState(int32 NewRoundNumber, bool bNewRoundInPr
 	RoundNumber = FMath::Max(1, NewRoundNumber);
 	bRoundInProgress = bNewRoundInProgress;
 	LastRoundWinnerSlot = NewLastRoundWinnerSlot;
+	SetMatchPhase(bNewRoundInProgress ? EArenaDuelMatchPhase::InRound : EArenaDuelMatchPhase::RoundBreak);
 	ForceNetUpdate();
+}
+
+void AArenaDuelGameState::SetMatchPhase(EArenaDuelMatchPhase NewPhase, float EndServerTime)
+{
+	if (!HasAuthority()) return;
+	MatchPhase = NewPhase;
+	bRoundInProgress = NewPhase == EArenaDuelMatchPhase::InRound;
+	CountdownEndServerTime = NewPhase == EArenaDuelMatchPhase::Countdown ? EndServerTime : 0.0f;
+	OnRep_MatchPhase();
+	ForceNetUpdate();
+}
+
+void AArenaDuelGameState::OnRep_MatchPhase()
+{
+	OnRep_RoundInProgress();
 }
 
 void AArenaDuelGameState::SetMatchComplete(bool bNewMatchComplete, int32 NewMatchWinnerSlot)
@@ -30,13 +46,15 @@ void AArenaDuelGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	DOREPLIFETIME(AArenaDuelGameState, LastRoundWinnerSlot);
 	DOREPLIFETIME(AArenaDuelGameState, bMatchComplete);
 	DOREPLIFETIME(AArenaDuelGameState, MatchWinnerSlot);
+	DOREPLIFETIME(AArenaDuelGameState, MatchPhase);
+	DOREPLIFETIME(AArenaDuelGameState, CountdownEndServerTime);
 }
 
 void AArenaDuelGameState::OnRep_RoundInProgress()
 {
-	if (bRoundInProgress || !GetWorld()) return;
+	if (!GetWorld()) return;
 	for (TActorIterator<AArenaDuelCharacter> It(GetWorld()); It; ++It)
 	{
-		It->SetRoundInputLocked(true);
+		It->SetRoundInputLocked(!IsRoundInProgress());
 	}
 }

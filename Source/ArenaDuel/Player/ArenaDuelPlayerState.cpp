@@ -93,6 +93,18 @@ void AArenaDuelPlayerState::ResetAbilitiesForNewRound()
 
 bool AArenaDuelPlayerState::SetCharacterArchetypeForDevelopment(EArenaDuelCharacterArchetype NewArchetype)
 {
+	return SetCharacterArchetypeAuthoritatively(NewArchetype);
+}
+
+void AArenaDuelPlayerState::SetCharacterReadyAuthoritatively(bool bReady)
+{
+	if (!HasAuthority()) return;
+	bCharacterReady = bReady;
+	ForceNetUpdate();
+}
+
+bool AArenaDuelPlayerState::SetCharacterArchetypeAuthoritatively(EArenaDuelCharacterArchetype NewArchetype)
+{
 	if (!HasAuthority() || (NewArchetype != EArenaDuelCharacterArchetype::Shadow && NewArchetype != EArenaDuelCharacterArchetype::Warden) || CharacterArchetype == NewArchetype) return false;
 	if (GetWorld())
 	{
@@ -101,6 +113,7 @@ bool AArenaDuelPlayerState::SetCharacterArchetypeForDevelopment(EArenaDuelCharac
 	}
 	RemoveAllKitAbilitiesAndCooldowns();
 	CharacterArchetype = NewArchetype;
+	bCharacterReady = false;
 	GrantCurrentKit();
 	if (APawn* CurrentPawn = GetPawn()) AbilitySystemComponent->InitAbilityActorInfo(this, CurrentPawn);
 	ForceNetUpdate();
@@ -178,7 +191,8 @@ void AArenaDuelPlayerState::SetDuelSlot(uint8 NewDuelSlot)
 {
 	if (HasAuthority())
 	{
-		DuelSlot = FMath::Min<uint8>(NewDuelSlot, 1);
+		// 255 denotes an unassigned/departing player, never either playable duel side.
+		DuelSlot = NewDuelSlot == 255 ? 255 : FMath::Min<uint8>(NewDuelSlot, 1);
 		ForceNetUpdate();
 	}
 }
@@ -221,6 +235,7 @@ void AArenaDuelPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME(AArenaDuelPlayerState, DuelSlot);
 	DOREPLIFETIME(AArenaDuelPlayerState, RoundWins);
 	DOREPLIFETIME(AArenaDuelPlayerState, CharacterArchetype);
+	DOREPLIFETIME(AArenaDuelPlayerState, bCharacterReady);
 	DOREPLIFETIME(AArenaDuelPlayerState, bAdminGodMode);
 	DOREPLIFETIME(AArenaDuelPlayerState, bAdminInfiniteAmmo);
 	DOREPLIFETIME(AArenaDuelPlayerState, bAdminInfiniteStamina);

@@ -14,6 +14,7 @@ class ARENADUEL_API AArenaDuelMovementDebugHUD : public AHUD
 	GENERATED_BODY()
 
 public:
+	void SetCharacterSelectVisible(bool bVisible);
 	void SetShowDebugOverlay(bool bShow) { bShowDebugOverlay = bShow; }
 	bool IsShowingDebugOverlay() const { return bShowDebugOverlay; }
 	void SetShowHitZones(bool bShow) { bShowHitZones = bShow; }

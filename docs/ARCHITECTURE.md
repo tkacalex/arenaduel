@@ -40,7 +40,7 @@ The initial project should use only engine supplied dependencies. Future milesto
 
 ### AArenaDuelPlayerState
 
-`AArenaDuelPlayerState` derives from `APlayerState` and carries replicated GAS attributes plus the temporary duel slot and round wins. It exists on the server and is relevant to clients. Selection and match-upgrade data remain future work.
+`AArenaDuelPlayerState` derives from `APlayerState` and carries replicated GAS attributes plus the temporary duel slot and round wins. It exists on the server and is relevant to clients. Character selection/readiness live here; match-upgrade data remain future work.
 
 ### AArenaDuelCharacter
 
@@ -58,7 +58,7 @@ The first person camera attaches directly to the Character capsule at a 64 centi
 
 The local `AArenaDuelMovementDebugHUD` creates one native `UArenaDuelHUDWidget`; the widget displays live GAS health, movement stamina, weapon state, stable PLAYER 1/PLAYER 2 duel labels, round wins, and round number/state. Health/ammo/death are not duplicated in Canvas. Canvas remains responsible for the crosshair, hitmarkers, and opt-in F3 movement diagnostics. The outer frame and decorative side arcs have been removed. Gameplay HUD values refresh at 10 Hz; cached match data refreshes at 2 Hz. Setters avoid rewriting unchanged text or bar values.
 
-When an authoritative Character dies, GameMode ends the round, locks movement and combat for both players, increments the surviving player's replicated win count, and restarts both player controllers after three seconds using normal PlayerStarts. Client input checks replicated round state and the server independently rejects weapon actions during the break. At five wins, replicated GameState match completion and winner slot replace the normal round timer; both players see a centered final result for five seconds, then the server resets scores and starts a fresh match. This remains a development flow without a round timer, selection, disconnect rules, or final rematch controls.
+When an authoritative Character dies, GameMode ends the round, locks movement and combat for both players, increments the surviving player's replicated win count, and restarts both player controllers after three seconds using normal PlayerStarts. Client input checks replicated round state and the server independently rejects weapon actions during the break. At five wins, replicated GameState match completion and winner slot replace the normal round timer; both players see a centered final result for five seconds, then the server resets scores and returns both players to CharacterSelect with ready cleared. This remains a development flow without a round timer, ranked-forfeit rules, or a final online frontend.
 
 ## Phase 7 ability foundation
 
@@ -70,9 +70,17 @@ The native HUD also shows a temporary match-result overlay from replicated GameS
 
 ### Phase 7B character archetypes and Warden kit
 
-`AArenaDuelPlayerState` stores the replicated `EArenaDuelCharacterArchetype`; it defaults to Shadow and survives pawn replacement and fresh-match resets, but is not saved between application runs. The PlayerState-owned ASC grants only the selected kit's two ability specs. Archetype replacement is a host-only development admin command: it cancels active abilities, destroys that PlayerState's temporary ability actors, removes kit specs and cooldown effects, changes the archetype, grants the new kit, and reinitializes the current AvatarActor. Character input invokes generic Primary (Q) and Secondary (E) methods, while the HUD reads archetype-specific names and real GAS cooldowns.
+`AArenaDuelPlayerState` stores the replicated `EArenaDuelCharacterArchetype`; it defaults to Shadow and survives pawn replacement and fresh-match resets, but is not saved between application runs. The PlayerState-owned ASC grants only the selected kit's two ability specs. Archetype replacement is shared by public self-owned selection and the host-only development admin command: it cancels active abilities, destroys that PlayerState's temporary ability actors, removes kit specs and cooldown effects, changes the archetype, grants the new kit, and reinitializes the current AvatarActor. Character input invokes generic Primary (Q) and Secondary (E) methods, while the HUD reads archetype-specific names and real GAS cooldowns.
 
 Shadow remains unchanged: Q Shadow Step has a five-second cooldown; E Veil Wall has a twelve-second cooldown and creates a three-second replicated visual occluder with no collision. Warden Q Arc Barrier has a fourteen-second cooldown, 350 server-owned health, and a five-second maximum lifespan. Its cyan physical cover blocks Pawn movement and `ECC_Visibility` hitscan; the weapon server applies the weapon's base body damage to it and stops that trace there. Warden E Burst Leap has a seven-second cooldown and uses a predicted CharacterMovement launch. Neither Warden ability deals damage. Round cleanup removes Veil Walls and Arc Barriers, and fresh rounds clear cooldowns while preserving the selected kit. Rift is only an enum/display value; it has no granted abilities.
+
+### Public pre-match character selection
+
+GameMode owns transitions through the replicated GameState `EArenaDuelMatchPhase`: CharacterSelect, Countdown, InRound, RoundBreak, and MatchResult. The phase gates authoritative weapons, GAS activation, normal damage, and movement. Existing round-active accessors require InRound. The public PlayerController selection/ready RPCs resolve only the requester's owned PlayerState, allow Shadow/Warden only in CharacterSelect, and reject selection while ready. They share the authoritative kit-replacement implementation with admin commands; no target slot is accepted from clients.
+
+PlayerState replicates its selected archetype and ready state. Two ready connected duel players start a three-second countdown plus a brief FIGHT beat, represented by one synchronized server-end timestamp. New combat pawns preserve archetypes and reset health/ammo/cooldowns. Normal round deaths retain the three-second round break. After the five-second match result, scores return to 0:0 and round one, both ready flags clear, and selection reopens rather than automatically starting combat. Disconnect returns the remaining player to selection without ranked-forfeit rules.
+
+The persistent local PlayerController owns one focusable native `UArenaDuelCharacterSelectWidget`, built in Initialize before Slate construction. Its fullscreen 1920x1080 reference layout scales uniformly: Player 1 cyan left card, Player 2 violet right card, open central VS/countdown, stat/ability cards, two-entry roster, and ready controls. Only the local side is interactive. A/D or arrows switch character, Enter toggles ready, Escape cancels ready without leaving the session. The timer refreshes at 5 Hz only while displayed. Portraits/background/icons are original procedural development artwork, not final character models or a baked screenshot. Gameplay HUD visibility changes without rebuilding; F1 admin opening is denied during selection/countdown.
 
 ## Development admin control
 
