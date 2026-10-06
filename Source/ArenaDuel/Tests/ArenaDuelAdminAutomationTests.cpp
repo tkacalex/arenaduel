@@ -14,7 +14,7 @@
 #include "ArenaDuel/Player/ArenaDuelPlayerState.h"
 #include "ArenaDuel/UI/ArenaDuelAdminWidget.h"
 #include "ArenaDuel/Weapons/ArenaDuelWeaponComponent.h"
-#include "Components/CanvasPanel.h"
+#include "Components/Overlay.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/GameModeBase.h"
@@ -27,7 +27,9 @@ bool FArenaDuelAdminWidgetConstructionTest::RunTest(const FString& Parameters)
 	TestNotNull(TEXT("Native admin widget is created"), Widget);
 	if (!Widget) return false;
 	TestTrue(TEXT("Native admin widget initializes"), Widget->Initialize());
-	TestTrue(TEXT("Widget root is a canvas"), Cast<UCanvasPanel>(Widget->GetRootWidget()) != nullptr);
+	TestTrue(TEXT("Admin widget is focusable"), Widget->IsFocusable());
+	TestTrue(TEXT("Widget uses a fullscreen overlay root"), Cast<UOverlay>(Widget->GetRootWidget()) != nullptr);
+	TestTrue(TEXT("Player selector has both duel slots"), Widget->HasPlayerSelector());
 	TestEqual(TEXT("All five useful admin sections are constructed"), Widget->GetAdminSectionCount(), 5);
 	TestFalse(TEXT("Repeated initialization does not rebuild the admin tree"), Widget->Initialize());
 	return true;

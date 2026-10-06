@@ -36,7 +36,7 @@ The Android File Server editor settings section is intentionally absent for this
 
 ## Development admin menu
 
-In a Development/Editor standalone session or as the listen-server host, press F1 to open the native admin control menu and F1 or Escape to close it. The menu does not pause the game. Remote clients cannot open the menu or pass server-side admin authorization. Shipping builds compile out menu opening and reject the server admin command endpoint. Player/weapon/round/movement commands run on authority; debug overlay and hit-zone drawing are local diagnostics. Reset Player only affects a living target; use Restart Round to recover a dead player without awarding a win.
+In a Development/Editor standalone session or as the listen-server host, press F1 to open the native fullscreen admin control center and F1 or Escape to close it. The menu does not pause the game. Its five pages use a fixed navigation rail and a scrollable content area; numeric inputs retain keyboard focus, and F1/Escape close keys are handled in widget preview routing. Remote clients cannot open the menu or pass server-side admin authorization. Shipping builds compile out menu opening and reject the server admin command endpoint. Player/weapon/round/movement commands run on authority; debug overlay and hit-zone drawing are local diagnostics. Reset Player only affects a living target; use Restart Round to recover a dead player without awarding a win.
 
 ## Phase 4 validation
 

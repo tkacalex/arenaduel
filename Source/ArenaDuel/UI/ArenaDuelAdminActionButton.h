@@ -17,8 +17,9 @@ class ARENADUEL_API UArenaDuelAdminActionButton : public UButton
 	GENERATED_BODY()
 
 public:
-	void Configure(EArenaDuelAdminCommand InCommand, float InValue, UTextBlock* InLabelWidget, const FLinearColor& InColor, FOnArenaDuelAdminAction InAction);
+	void Configure(EArenaDuelAdminCommand InCommand, float InValue, UTextBlock* InLabelWidget, const FLinearColor& InColor, FOnArenaDuelAdminAction InAction, ETextJustify::Type Justification = ETextJustify::Center);
 	void SetLabel(const FText& InLabel);
+	void SetVisualColor(const FLinearColor& InColor);
 
 protected:
 	UFUNCTION()
@@ -28,4 +29,5 @@ protected:
 	float NumericValue = 0.0f;
 	TObjectPtr<class UTextBlock> LabelWidget;
 	FOnArenaDuelAdminAction Action;
+	FLinearColor BaseColor = FLinearColor::Transparent;
 };

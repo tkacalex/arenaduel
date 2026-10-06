@@ -66,7 +66,7 @@ When an authoritative Character dies, GameMode ends the round, locks movement an
 
 The server command endpoint rejects Shipping builds and accepts only standalone authority or the local listen-server host. It independently checks authority and local-controller/net mode, validates slot and numeric inputs, and resolves targets by replicated DuelSlot. The remote client's server-side PlayerController is not authorized. God Mode, Infinite Ammo, and Infinite Stamina are server-owned replicated development flags on PlayerState; they are false by default, remain useful across round pawn replacement, and are not saved across application runs. Admin Kill and zero Health use the normal authoritative death path; God Mode blocks only ordinary damage. Reset Player is available only while alive and restores health, movement intent, stamina, combat actions, and the normal weapon ammunition; dead-player recovery uses the round restart path.
 
-The menu provides player, weapon, round, movement, local debug, and network readouts/actions. Hit-zone visualization is local debug drawing only and does not change collision. The admin menu is a prototype developer tool, not authenticated dedicated-server administration.
+The menu provides player, weapon, round, movement, local debug, and network readouts/actions. Its fullscreen native UMG tree uses a fixed header/sidebar/footer, a scrollable page area, segmented target selection, structured status cards, and shared action-button styling. It remains built once and refreshed at 5 Hz only while open. Hit-zone visualization is local debug drawing only and does not change collision. The admin menu is a prototype developer tool, not authenticated dedicated-server administration.
 
 ## Enhanced Input lifecycle
 
