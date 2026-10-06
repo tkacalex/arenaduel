@@ -129,24 +129,16 @@ void UArenaDuelWeaponComponent::StartFire()
 }
 void UArenaDuelWeaponComponent::StopFire()
 {
-	if (!bFireHeld) return;
-	bFireHeld = false;
-	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticFireTimerHandle);
-	if (GetOwnerRole() == ROLE_Authority) StopAuthoritativeFire(); else ServerSetFireHeld(false);
+	CancelLocalAndServerFire();
 }
 void UArenaDuelWeaponComponent::Reload()
 {
-	if (AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled())
-	{
-		bFireHeld = false;
-		if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticFireTimerHandle);
-	}
+	CancelLocalAndServerFire();
 	if (GetOwnerRole() == ROLE_Authority) ServerRequestReload_Implementation(); else ServerRequestReload();
 }
 void UArenaDuelWeaponComponent::EquipWeapon(int32 Index)
 {
-	bFireHeld = false;
-	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticFireTimerHandle);
+	CancelLocalAndServerFire();
 	if (GetOwnerRole() == ROLE_Authority) ServerRequestEquip_Implementation(Index); else ServerRequestEquip(Index);
 }
 void UArenaDuelWeaponComponent::ServerSetFireHeld_Implementation(bool bHeld) { if (bHeld) StartAuthoritativeFire(); else StopAuthoritativeFire(); }
@@ -163,6 +155,13 @@ void UArenaDuelWeaponComponent::StartAuthoritativeFire()
 	if (GetCurrentDefinition().bAutomatic) { const float Interval = 60.0f / FMath::Max(GetCurrentDefinition().RoundsPerMinute, 1.0f); GetWorld()->GetTimerManager().SetTimer(AutomaticFireTimerHandle, this, &UArenaDuelWeaponComponent::FireAuthoritative, Interval, true, Interval); }
 }
 void UArenaDuelWeaponComponent::StopAuthoritativeFire() { bServerFireHeld = false; if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(AutomaticFireTimerHandle); }
+void UArenaDuelWeaponComponent::CancelLocalAndServerFire()
+{
+	bFireHeld = false;
+	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticFireTimerHandle);
+	if (GetOwnerRole() == ROLE_Authority) StopAuthoritativeFire();
+	else ServerSetFireHeld(false);
+}
 void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 {
 	FArenaDuelWeaponRuntimeState* State = GetMutableCurrentRuntimeState();

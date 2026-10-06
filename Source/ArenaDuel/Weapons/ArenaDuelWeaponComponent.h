@@ -134,6 +134,7 @@ protected:
 	void StartAuthoritativeFire();
 	void StopAuthoritativeFire();
 	bool CanBeginAuthoritativeFire() const;
+	void CancelLocalAndServerFire();
 	void ApplyLocalRecoil();
 	void LocalCosmeticShot();
 	void RecoverCosmeticKick();
