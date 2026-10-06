@@ -40,8 +40,8 @@ def main():
     spawn_cube("Phase5_SouthSafetyWall", (0, -3000, 250), (80, 0.25, 2.5))
     spawn_cube("Phase5_WestSafetyWall", (-8000, 0, 250), (0.25, 30, 2.5))
     spawn_cube("Phase5_EastSafetyWall", (8000, 0, 250), (0.25, 30, 2.5))
-    spawn_actor("/Script/Engine.PlayerStart", "Phase5_PlayerStart_A", (-2500, -500, 100), (0, 0, 0))
-    spawn_actor("/Script/Engine.PlayerStart", "Phase5_PlayerStart_B", (-2500, 500, 100), (0, 0, 0))
+    spawn_actor("/Script/Engine.PlayerStart", "Phase5_PlayerStart_A", (-2500, -500, 100), (0, 90, 0))
+    spawn_actor("/Script/Engine.PlayerStart", "Phase5_PlayerStart_B", (-2500, 500, 100), (0, -90, 0))
     spawn_actor("/Script/Engine.DirectionalLight", "Phase5_DirectionalLight", (0, 0, 1000), (-45, 0, 0))
     spawn_actor("/Script/Engine.SkyLight", "Phase5_SkyLight", (0, 0, 500), (0, 0, 0))
     for x, label in [(500, "Phase5_Label_5m"), (1000, "Phase5_Label_10m"), (2000, "Phase5_Label_20m"), (3000, "Phase5_Label_30m"), (5000, "Phase5_Label_50m")]:

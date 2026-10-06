@@ -8,6 +8,7 @@
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/BoxComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Components/InputComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -21,6 +22,7 @@
 #include "AbilitySystemComponent.h"
 #include "GameplayEffect.h"
 #include "Net/UnrealNetwork.h"
+#include "UObject/ConstructorHelpers.h"
 
 AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<UArenaDuelCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
@@ -39,8 +41,8 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	WeaponComponent = CreateDefaultSubobject<UArenaDuelWeaponComponent>(TEXT("WeaponComponent"));
 	BodyHitZone = CreateDefaultSubobject<UBoxComponent>(TEXT("BodyHitZone"));
 	BodyHitZone->SetupAttachment(GetCapsuleComponent());
-	BodyHitZone->SetRelativeLocation(FVector(0.0f, 0.0f, 0.0f));
-	BodyHitZone->SetBoxExtent(FVector(38.0f, 38.0f, 52.0f));
+	BodyHitZone->SetRelativeLocation(FVector(0.0f, 0.0f, -16.0f));
+	BodyHitZone->SetBoxExtent(FVector(38.0f, 38.0f, 70.0f));
 	BodyHitZone->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	BodyHitZone->SetCollisionResponseToAllChannels(ECR_Ignore);
 	BodyHitZone->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
@@ -53,6 +55,22 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	HeadHitZone->SetCollisionResponseToAllChannels(ECR_Ignore);
 	HeadHitZone->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	HeadHitZone->ComponentTags.Add(TEXT("HeadHitZone"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> SphereMesh(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+	BodyVisual = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BodyVisual"));
+	BodyVisual->SetupAttachment(GetCapsuleComponent());
+	BodyVisual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	BodyVisual->SetOwnerNoSee(true);
+	BodyVisual->SetRelativeLocation(FVector(0.0f, 0.0f, -16.0f));
+	BodyVisual->SetRelativeScale3D(FVector(0.76f, 0.76f, 1.4f));
+	if (CubeMesh.Succeeded()) BodyVisual->SetStaticMesh(CubeMesh.Object);
+	HeadVisual = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HeadVisual"));
+	HeadVisual->SetupAttachment(GetCapsuleComponent());
+	HeadVisual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	HeadVisual->SetOwnerNoSee(true);
+	HeadVisual->SetRelativeLocation(FVector(0.0f, 0.0f, 68.0f));
+	HeadVisual->SetRelativeScale3D(FVector(0.48f));
+	if (SphereMesh.Succeeded()) HeadVisual->SetStaticMesh(SphereMesh.Object);
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
 	bReplicates = true;
 }

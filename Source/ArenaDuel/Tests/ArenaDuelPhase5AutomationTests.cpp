@@ -181,10 +181,17 @@ bool FArenaDuelPhase5GunRangeTest::RunTest(const FString& Parameters)
 	if (!World || !World->PersistentLevel) return false;
 	TSet<FString> Labels;
 	int32 TargetCount = 0;
+	APlayerStart* PlayerStartA = nullptr;
+	APlayerStart* PlayerStartB = nullptr;
 	for (AActor* Actor : World->PersistentLevel->Actors)
 	{
 		if (!Actor) continue;
 		Labels.Add(Actor->GetActorLabel());
+		if (APlayerStart* Start = Cast<APlayerStart>(Actor))
+		{
+			if (Start->GetActorLabel() == TEXT("Phase5_PlayerStart_A")) PlayerStartA = Start;
+			if (Start->GetActorLabel() == TEXT("Phase5_PlayerStart_B")) PlayerStartB = Start;
+		}
 		if (AArenaDuelWeaponTarget* Target = Cast<AArenaDuelWeaponTarget>(Actor))
 		{
 			++TargetCount;
@@ -204,6 +211,41 @@ bool FArenaDuelPhase5GunRangeTest::RunTest(const FString& Parameters)
 		TestTrue(FString::Printf(TEXT("Distance label exists for %s"), Distance), Labels.Contains(FString::Printf(TEXT("Phase5_Label_%s"), Distance)));
 	}
 	TestEqual(TEXT("Five target actors exist"), TargetCount, 5);
+	TestNotNull(TEXT("PlayerStart A resolves"), PlayerStartA);
+	TestNotNull(TEXT("PlayerStart B resolves"), PlayerStartB);
+	if (PlayerStartA && PlayerStartB)
+	{
+		const FVector AToB = (PlayerStartB->GetActorLocation() - PlayerStartA->GetActorLocation()).GetSafeNormal();
+		const FVector BToA = -AToB;
+		TestTrue(TEXT("PlayerStart A faces PlayerStart B"), FVector::DotProduct(PlayerStartA->GetActorForwardVector(), AToB) > 0.95f);
+		TestTrue(TEXT("PlayerStart B faces PlayerStart A"), FVector::DotProduct(PlayerStartB->GetActorForwardVector(), BToA) > 0.95f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelPhase5CharacterVisualsTest, "ArenaDuel.Phase5.CharacterVisuals", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FArenaDuelPhase5CharacterVisualsTest::RunTest(const FString& Parameters)
+{
+	UClass* CharacterClass = AArenaDuelCharacter::StaticClass();
+	const AArenaDuelCharacter* Character = CharacterClass ? Cast<AArenaDuelCharacter>(CharacterClass->GetDefaultObject()) : nullptr;
+	TestNotNull(TEXT("Native ArenaDuelCharacter CDO exists"), Character);
+	if (!Character) return false;
+	const FBoolProperty* OwnerNoSeeProperty = FindFProperty<FBoolProperty>(UPrimitiveComponent::StaticClass(), TEXT("bOwnerNoSee"));
+	TestNotNull(TEXT("Development body visual exists"), Character->BodyVisual.Get());
+	TestNotNull(TEXT("Development head visual exists"), Character->HeadVisual.Get());
+	if (Character->BodyVisual)
+	{
+		TestEqual(TEXT("Body visual collision is disabled"), Character->BodyVisual->GetCollisionEnabled(), ECollisionEnabled::NoCollision);
+		TestTrue(TEXT("Body visual is hidden from owning player"), OwnerNoSeeProperty && OwnerNoSeeProperty->GetPropertyValue_InContainer(Character->BodyVisual));
+	}
+	if (Character->HeadVisual)
+	{
+		TestEqual(TEXT("Head visual collision is disabled"), Character->HeadVisual->GetCollisionEnabled(), ECollisionEnabled::NoCollision);
+		TestTrue(TEXT("Head visual is hidden from owning player"), OwnerNoSeeProperty && OwnerNoSeeProperty->GetPropertyValue_InContainer(Character->HeadVisual));
+	}
+	TestTrue(TEXT("Body hit zone covers lower standing body"), Character->BodyHitZone && Character->BodyHitZone->GetRelativeLocation().Z <= -15.0f && Character->BodyHitZone->GetScaledBoxExtent().Z >= 70.0f);
+	TestTrue(TEXT("Head hit zone remains above body"), Character->HeadHitZone && Character->HeadHitZone->GetRelativeLocation().Z >= 68.0f);
 	return true;
 }
 

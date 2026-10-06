@@ -9,6 +9,7 @@
 
 class UCameraComponent;
 class UBoxComponent;
+class UStaticMeshComponent;
 class UInputAction;
 class UInputMappingContext;
 class UArenaDuelCharacterMovementComponent;
@@ -41,6 +42,10 @@ public:
 	TObjectPtr<UBoxComponent> BodyHitZone;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
 	TObjectPtr<UBoxComponent> HeadHitZone;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Development")
+	TObjectPtr<UStaticMeshComponent> BodyVisual;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Development")
+	TObjectPtr<UStaticMeshComponent> HeadVisual;
 
 protected:
 	virtual void PawnClientRestart() override;
