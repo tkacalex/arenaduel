@@ -9,6 +9,8 @@
 class UTextBlock;
 class UProgressBar;
 class UCanvasPanel;
+class UBorder;
+class UWidget;
 
 UCLASS()
 class ARENADUEL_API UArenaDuelHUDWidget : public UUserWidget
@@ -32,6 +34,13 @@ protected:
 	void SetText(UTextBlock* TextBlock, const FText& Text) const;
 
 	UPROPERTY() TObjectPtr<UCanvasPanel> RootCanvas;
+	UPROPERTY() TObjectPtr<UCanvasPanel> HealthContentCanvas;
+	UPROPERTY() TObjectPtr<UCanvasPanel> WeaponContentCanvas;
+	UPROPERTY() TObjectPtr<UCanvasPanel> MatchHeaderContentCanvas;
+	UPROPERTY() TObjectPtr<UWidget> HealthPanelRoot;
+	UPROPERTY() TObjectPtr<UWidget> WeaponPanelRoot;
+	UPROPERTY() TObjectPtr<UWidget> MatchHeaderRoot;
+	UPROPERTY() TObjectPtr<UWidget> DefeatedRoot;
 	UPROPERTY() TObjectPtr<UTextBlock> HealthValue;
 	UPROPERTY() TObjectPtr<UTextBlock> HealthLabel;
 	UPROPERTY() TObjectPtr<UTextBlock> StaminaLabel;
@@ -50,5 +59,10 @@ protected:
 	UPROPERTY() TObjectPtr<UTextBlock> TimerLabel;
 	UPROPERTY() TArray<TObjectPtr<UTextBlock>> AbilityKeys;
 	UPROPERTY() TArray<TObjectPtr<UTextBlock>> AbilityNames;
+	UPROPERTY() TArray<TObjectPtr<UTextBlock>> AbilityCooldowns;
+	UPROPERTY() TArray<TObjectPtr<UWidget>> AbilityRoots;
+	UPROPERTY() TArray<TObjectPtr<UBorder>> AbilityBackgrounds;
+	UPROPERTY() TArray<TObjectPtr<UTextBlock>> LeftRoundIndicators;
+	UPROPERTY() TArray<TObjectPtr<UTextBlock>> RightRoundIndicators;
 	FTimerHandle RefreshTimer;
 };

@@ -48,14 +48,15 @@ namespace
 
 void AArenaDuelMovementDebugHUD::DrawHUD()
 {
-#if !UE_BUILD_SHIPPING
 	Super::DrawHUD();
 	APlayerController* Controller = GetOwningPlayerController();
+	#if !UE_BUILD_SHIPPING
 	if (Controller && Controller->WasInputKeyJustPressed(EKeys::F3)) bShowDebugOverlay = !bShowDebugOverlay;
+	#endif
 	AArenaDuelCharacter* Character = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
 	const UArenaDuelCharacterMovementComponent* Movement = Character ? Character->GetArenaDuelMovementComponent() : nullptr;
 	const UArenaDuelWeaponComponent* Weapon = Character ? Character->GetWeaponComponent() : nullptr;
-	if (!Canvas || !Character || !Movement) return;
+	if (!Canvas) return;
 
 	const FVector2D Center(Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f);
 	const float Spread = Weapon ? Weapon->GetCurrentSpreadDegrees() : 0.0f;
@@ -73,20 +74,21 @@ void AArenaDuelMovementDebugHUD::DrawHUD()
 	Canvas->K2_DrawLine(FVector2D(Canvas->SizeX - FrameX, FrameY), FVector2D(Canvas->SizeX - FrameX, FrameY + 52.0f * SY), 1.0f, FrameColor);
 	Canvas->K2_DrawLine(FVector2D(FrameX, Canvas->SizeY - FrameY), FVector2D(FrameX, Canvas->SizeY - FrameY - 52.0f * SY), 1.0f, FrameColor);
 	Canvas->K2_DrawLine(FVector2D(Canvas->SizeX - FrameX, Canvas->SizeY - FrameY), FVector2D(Canvas->SizeX - FrameX, Canvas->SizeY - FrameY - 52.0f * SY), 1.0f, FrameColor);
-	const FVector2D ArcCenter(Canvas->SizeX * 0.5f, Canvas->SizeY * 0.51f);
 	const float ArcRadius = 250.0f * FMath::Min(SX, SY);
+	const FVector2D LeftArcCenter(Canvas->SizeX * 0.03f, Canvas->SizeY * 0.51f);
+	const FVector2D RightArcCenter(Canvas->SizeX * 0.97f, Canvas->SizeY * 0.51f);
 	for (int32 Segment = 0; Segment < 18; ++Segment)
 	{
-		const float A0 = FMath::DegreesToRadians(-58.0f + Segment * 3.0f);
-		const float A1 = FMath::DegreesToRadians(-55.0f + Segment * 3.0f);
-		Canvas->K2_DrawLine(ArcCenter + FVector2D(FMath::Cos(A0), FMath::Sin(A0)) * ArcRadius, ArcCenter + FVector2D(FMath::Cos(A1), FMath::Sin(A1)) * ArcRadius, 2.0f, FLinearColor(0.73f, 0.44f, 1.0f, 0.28f));
-		const float B0 = FMath::DegreesToRadians(238.0f + Segment * 3.0f);
-		const float B1 = FMath::DegreesToRadians(241.0f + Segment * 3.0f);
-		Canvas->K2_DrawLine(ArcCenter + FVector2D(FMath::Cos(B0), FMath::Sin(B0)) * ArcRadius, ArcCenter + FVector2D(FMath::Cos(B1), FMath::Sin(B1)) * ArcRadius, 2.0f, FLinearColor(0.47f, 0.91f, 1.0f, 0.28f));
+		const float LeftA0 = FMath::DegreesToRadians(-58.0f + Segment * 3.0f);
+		const float LeftA1 = FMath::DegreesToRadians(-55.0f + Segment * 3.0f);
+		Canvas->K2_DrawLine(LeftArcCenter + FVector2D(FMath::Cos(LeftA0), FMath::Sin(LeftA0)) * ArcRadius, LeftArcCenter + FVector2D(FMath::Cos(LeftA1), FMath::Sin(LeftA1)) * ArcRadius, 2.0f, FLinearColor(0.73f, 0.44f, 1.0f, 0.28f));
+		const float RightA0 = FMath::DegreesToRadians(126.0f + Segment * 3.0f);
+		const float RightA1 = FMath::DegreesToRadians(129.0f + Segment * 3.0f);
+		Canvas->K2_DrawLine(RightArcCenter + FVector2D(FMath::Cos(RightA0), FMath::Sin(RightA0)) * ArcRadius, RightArcCenter + FVector2D(FMath::Cos(RightA1), FMath::Sin(RightA1)) * ArcRadius, 2.0f, FLinearColor(0.47f, 0.91f, 1.0f, 0.28f));
 	}
 	Canvas->K2_DrawLine(FVector2D(Canvas->SizeX * 0.5f - 18.0f, Canvas->SizeY - 30.0f), FVector2D(Canvas->SizeX * 0.5f, Canvas->SizeY - 20.0f), 1.0f, FrameColor);
 	Canvas->K2_DrawLine(FVector2D(Canvas->SizeX * 0.5f, Canvas->SizeY - 20.0f), FVector2D(Canvas->SizeX * 0.5f + 18.0f, Canvas->SizeY - 30.0f), 1.0f, FrameColor);
-	if (!Character->IsDead())
+	if (Character && Movement && !Character->IsDead())
 	{
 	Canvas->K2_DrawLine(Center + FVector2D(-Gap - 7.0f, 0.0f), Center + FVector2D(-Gap, 0.0f), 1.5f, Crosshair);
 	Canvas->K2_DrawLine(Center + FVector2D(Gap, 0.0f), Center + FVector2D(Gap + 7.0f, 0.0f), 1.5f, Crosshair);
@@ -94,7 +96,7 @@ void AArenaDuelMovementDebugHUD::DrawHUD()
 	Canvas->K2_DrawLine(Center + FVector2D(0.0f, Gap), Center + FVector2D(0.0f, Gap + 7.0f), 1.5f, Crosshair);
 	if (Weapon && Weapon->GetLastShotAge() < 0.16f && Weapon->GetLastShotResult() != EArenaDuelShotResult::Miss && Weapon->GetLastShotResult() != EArenaDuelShotResult::World)
 	{
-		const FLinearColor Marker = Weapon->GetLastShotResult() == EArenaDuelShotResult::Head ? FLinearColor::Yellow : FLinearColor::Red;
+		const FLinearColor Marker = Weapon->GetLastShotResult() == EArenaDuelShotResult::Head ? FLinearColor(0.89f, 0.78f, 0.49f, 1.0f) : FLinearColor(0.85f, 0.96f, 1.0f, 1.0f);
 		Canvas->K2_DrawLine(Center + FVector2D(-14.0f, -14.0f), Center + FVector2D(-5.0f, -5.0f), 2.0f, Marker);
 		Canvas->K2_DrawLine(Center + FVector2D(14.0f, -14.0f), Center + FVector2D(5.0f, -5.0f), 2.0f, Marker);
 		Canvas->K2_DrawLine(Center + FVector2D(-14.0f, 14.0f), Center + FVector2D(-5.0f, 5.0f), 2.0f, Marker);
@@ -102,10 +104,11 @@ void AArenaDuelMovementDebugHUD::DrawHUD()
 	}
 	}
 
-	if (bShowDebugOverlay)
+	#if !UE_BUILD_SHIPPING
+	if (bShowDebugOverlay && Character && Movement)
 	{
 		const FString Debug = FString::Printf(TEXT("SPEED %03d\nSTATE %s\nSTAMINA %02d / %02d\nSPREAD %.2f\nSEQ %d\nF3 HIDE"), FMath::RoundToInt(Movement->Velocity.Size2D()), *MovementState(Movement), FMath::RoundToInt(Movement->GetStamina()), FMath::RoundToInt(Movement->GetMaxStamina()), Spread, Weapon ? Weapon->GetLastShotSequence() : 0);
 		DrawCanvasText(Canvas, Debug, FVector2D(32.0f, 32.0f), FLinearColor(0.8f, 0.9f, 1.0f, 1.0f), GEngine->GetSmallFont());
 	}
-#endif
+	#endif
 }
