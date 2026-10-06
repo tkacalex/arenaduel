@@ -56,10 +56,39 @@ namespace
 	}
 }
 
+bool UArenaDuelHUDWidget::Initialize()
+{
+	if (!Super::Initialize())
+	{
+		return false;
+	}
+
+	if (!WidgetTree)
+	{
+		WidgetTree = NewObject<UWidgetTree>(this, TEXT("WidgetTree"), RF_Transient);
+	}
+	if (!ensureMsgf(WidgetTree, TEXT("ArenaDuel HUD requires a widget tree before Slate rebuild")))
+	{
+		return false;
+	}
+
+	BuildWidgetTree();
+	const bool bHasExpectedTree = WidgetTree->RootWidget == RootCanvas
+		&& RootCanvas
+		&& RootCanvas->GetChildrenCount() == 6
+		&& RootCanvas->HasChild(HealthPanelRoot)
+		&& RootCanvas->HasChild(WeaponPanelRoot)
+		&& RootCanvas->HasChild(AbilityRoots.IsValidIndex(0) ? AbilityRoots[0] : nullptr)
+		&& RootCanvas->HasChild(AbilityRoots.IsValidIndex(1) ? AbilityRoots[1] : nullptr)
+		&& RootCanvas->HasChild(MatchHeaderRoot)
+		&& RootCanvas->HasChild(DefeatedRoot);
+	ensureMsgf(bHasExpectedTree, TEXT("ArenaDuel HUD native widget tree is incomplete"));
+	return true;
+}
+
 void UArenaDuelHUDWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-	BuildWidgetTree();
 	if (GetWorld())
 	{
 		GetWorld()->GetTimerManager().SetTimer(RefreshTimer, this, &UArenaDuelHUDWidget::RefreshData, 0.05f, true);

@@ -3,15 +3,48 @@
 #include "Misc/AutomationTest.h"
 #include "ArenaDuel/Weapons/ArenaDuelWeaponComponent.h"
 #include "ArenaDuel/Weapons/ArenaDuelWeaponTarget.h"
+#include "ArenaDuel/UI/ArenaDuelHUDWidget.h"
 #include "../Characters/ArenaDuelCharacter.h"
 #include "EnhancedInput/Public/InputMappingContext.h"
 #include "Engine/Level.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerStart.h"
 #include "Components/BoxComponent.h"
+#include "Components/CanvasPanel.h"
+#include "Components/Overlay.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "UObject/UnrealType.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelNativeHUDWidgetTreeTest, "ArenaDuel.HUD.NativeWidgetTree", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FArenaDuelNativeHUDWidgetTreeTest::RunTest(const FString& Parameters)
+{
+	UArenaDuelHUDWidget* HUD = NewObject<UArenaDuelHUDWidget>(GetTransientPackage());
+	TestNotNull(TEXT("Native HUD widget was created"), HUD);
+	if (!HUD)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("Native HUD initializes successfully"), HUD->Initialize());
+	UCanvasPanel* RootCanvas = Cast<UCanvasPanel>(HUD->GetRootWidget());
+	TestNotNull(TEXT("Widget tree root is the native canvas"), RootCanvas);
+	if (!RootCanvas)
+	{
+		return false;
+	}
+	TestEqual(TEXT("Root canvas contains six expected top-level widgets"), RootCanvas->GetChildrenCount(), 6);
+	TestTrue(TEXT("Health panel is present"), Cast<UOverlay>(RootCanvas->GetChildAt(0)) != nullptr);
+	TestTrue(TEXT("Weapon panel is present"), Cast<UOverlay>(RootCanvas->GetChildAt(1)) != nullptr);
+	TestTrue(TEXT("Both ability slots are present"), Cast<UOverlay>(RootCanvas->GetChildAt(2)) && Cast<UOverlay>(RootCanvas->GetChildAt(3)));
+	TestTrue(TEXT("Match header is present"), Cast<UOverlay>(RootCanvas->GetChildAt(4)) != nullptr);
+	TestTrue(TEXT("Defeated layer is present"), RootCanvas->GetChildAt(5) != nullptr);
+
+	TestFalse(TEXT("Repeated initialization does not rebuild the widget tree"), HUD->Initialize());
+	TestEqual(TEXT("Root child count remains stable after repeated initialization"), RootCanvas->GetChildrenCount(), 6);
+	return true;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelPhase5WeaponDefinitionsTest, "ArenaDuel.Phase5.WeaponDefinitions", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 

@@ -18,6 +18,7 @@ class ARENADUEL_API UArenaDuelHUDWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
+	virtual bool Initialize() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 
