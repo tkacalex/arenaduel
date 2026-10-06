@@ -148,10 +148,50 @@ void AArenaDuelCharacter::SetDeadState()
 {
 	if (WeaponComponent) WeaponComponent->CancelCombatActionsOnDeath();
 	ApplyDevelopmentDeathPose();
+	StartLocalDeathCamera();
 	if (GetCharacterMovement())
 	{
 		GetCharacterMovement()->StopMovementImmediately();
 		GetCharacterMovement()->DisableMovement();
+	}
+}
+
+void AArenaDuelCharacter::StartLocalDeathCamera()
+{
+	if (!IsLocallyControlled() || !FirstPersonCamera || !GetWorld())
+	{
+		return;
+	}
+
+	FirstPersonCamera->bUsePawnControlRotation = false;
+	LocalDeathCameraStartLocation = FirstPersonCamera->GetRelativeLocation();
+	LocalDeathCameraStartRotation = FirstPersonCamera->GetRelativeRotation();
+	LocalDeathCameraStartTime = GetWorld()->GetTimeSeconds();
+	GetWorldTimerManager().SetTimer(LocalDeathCameraTimer, this, &AArenaDuelCharacter::UpdateLocalDeathCamera, 0.02f, true);
+	UpdateLocalDeathCamera();
+}
+
+void AArenaDuelCharacter::UpdateLocalDeathCamera()
+{
+	if (!FirstPersonCamera || !GetWorld())
+	{
+		return;
+	}
+
+	constexpr float DeathCameraDuration = 0.38f;
+	const float Alpha = FMath::Clamp((GetWorld()->GetTimeSeconds() - LocalDeathCameraStartTime) / DeathCameraDuration, 0.0f, 1.0f);
+	const float SmoothAlpha = FMath::SmoothStep(0.0f, 1.0f, Alpha);
+	const FVector DeathLocation(0.0f, 15.0f, -52.0f);
+	const FRotator DeathRotation(-10.0f, 0.0f, 80.0f);
+
+	FirstPersonCamera->SetRelativeLocation(FMath::Lerp(LocalDeathCameraStartLocation, DeathLocation, SmoothAlpha));
+	FirstPersonCamera->SetRelativeRotation(FMath::Lerp(LocalDeathCameraStartRotation, DeathRotation, SmoothAlpha));
+
+	if (Alpha >= 1.0f)
+	{
+		FirstPersonCamera->SetRelativeLocation(DeathLocation);
+		FirstPersonCamera->SetRelativeRotation(DeathRotation);
+		GetWorldTimerManager().ClearTimer(LocalDeathCameraTimer);
 	}
 }
 

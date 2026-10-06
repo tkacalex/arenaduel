@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "AbilitySystemInterface.h"
+#include "TimerManager.h"
 #include "ArenaDuelCharacter.generated.h"
 
 class UCameraComponent;
@@ -72,6 +73,8 @@ protected:
 	void InitializeAbilityActorInfo();
 	void HandleDeath();
 	void ApplyDevelopmentDeathPose();
+	void StartLocalDeathCamera();
+	void UpdateLocalDeathCamera();
 	bool CanProcessGameplayInput() const { return IsLocallyControlled() && !bDead; }
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
@@ -129,4 +132,9 @@ protected:
 
 	UFUNCTION() void OnRep_Dead();
 	void SetDeadState();
+
+	FTimerHandle LocalDeathCameraTimer;
+	FVector LocalDeathCameraStartLocation = FVector::ZeroVector;
+	FRotator LocalDeathCameraStartRotation = FRotator::ZeroRotator;
+	float LocalDeathCameraStartTime = 0.0f;
 };
