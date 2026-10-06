@@ -9,6 +9,20 @@
 
 class UInputAction;
 class UStaticMeshComponent;
+class USceneComponent;
+class UStaticMesh;
+
+USTRUCT()
+struct FArenaDuelWeaponVisualDefinition
+{
+	GENERATED_BODY()
+	UPROPERTY() TSoftObjectPtr<UStaticMesh> Mesh;
+	UPROPERTY() FVector HipLocation = FVector(35, 18, -34);
+	UPROPERTY() FRotator HipRotation = FRotator::ZeroRotator;
+	UPROPERTY() FVector HandLocation = FVector::ZeroVector;
+	UPROPERTY() FRotator HandRotation = FRotator::ZeroRotator;
+	UPROPERTY() FVector Scale = FVector(1);
+};
 
 UENUM(BlueprintType)
 enum class EArenaDuelWeaponId : uint8
@@ -126,6 +140,9 @@ public:
 	void StopAim();
 	void CancelCombatActions();
 	void RefillAllAmmoForDevelopment();
+	void RefreshWeaponVisual();
+	UStaticMeshComponent* GetFirstPersonWeaponMesh() const { return FirstPersonWeaponMesh; }
+	UStaticMeshComponent* GetThirdPersonWeaponMesh() const { return ThirdPersonWeaponMesh; }
 
 	const FArenaDuelWeaponDefinition& GetCurrentDefinition() const;
 	int32 GetWeaponDefinitionCount() const { return WeaponDefinitions.Num(); }
@@ -173,7 +190,6 @@ protected:
 	void LocalCosmeticShot();
 	void RecoverCosmeticKick();
 	void CompleteReload();
-	void RefreshWeaponVisual();
 	void GetCurrentViewmodelBaseTransform(FVector& OutLocation, FRotator& OutRotation) const;
 	void SetLastShot(EArenaDuelShotResult Result, float Distance, AActor* Target);
 	void InitializeRuntimeAmmo();
@@ -197,6 +213,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Weapons")
 	TObjectPtr<UStaticMeshComponent> FirstPersonWeaponMesh;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Weapons")
+	TObjectPtr<UStaticMeshComponent> ThirdPersonWeaponMesh;
+	UPROPERTY() TArray<FArenaDuelWeaponVisualDefinition> WeaponVisualDefinitions;
 
 	FTimerHandle ReloadTimerHandle;
 

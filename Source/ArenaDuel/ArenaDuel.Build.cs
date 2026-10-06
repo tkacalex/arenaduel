@@ -14,7 +14,7 @@ public class ArenaDuel : ModuleRules
 
 		if (Target.bBuildEditor)
 		{
-			PrivateDependencyModuleNames.AddRange(new string[] { "CQTest", "EngineSettings", "IrisCore", "LevelEditor", "UnrealEd" });
+			PrivateDependencyModuleNames.AddRange(new string[] { "CQTest", "EngineSettings", "IrisCore", "LevelEditor", "UnrealEd", "MeshDescription", "SkeletalMeshDescription", "AnimationCore" });
 		}
 
 		// Uncomment if you are using Slate UI

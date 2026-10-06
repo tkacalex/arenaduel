@@ -11,6 +11,9 @@
 class UCameraComponent;
 class UBoxComponent;
 class UStaticMeshComponent;
+class USkeletalMeshComponent;
+class USceneComponent;
+class UMaterialInterface;
 class UInputAction;
 class UInputMappingContext;
 class UArenaDuelCharacterMovementComponent;
@@ -26,6 +29,10 @@ class ARENADUEL_API AArenaDuelCharacter : public ACharacter, public IAbilitySyst
 
 public:
 	AArenaDuelCharacter(const FObjectInitializer& ObjectInitializer);
+	virtual void BeginPlay() override;
+	void RefreshCharacterVisuals();
+	USkeletalMeshComponent* GetFirstPersonArms() const { return FirstPersonArms; }
+	USceneComponent* GetFirstPersonViewmodelRoot() const { return FirstPersonViewmodelRoot; }
 
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	virtual void PossessedBy(AController* NewController) override;
@@ -88,6 +95,15 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCameraComponent> FirstPersonCamera;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Visuals")
+	TObjectPtr<USceneComponent> FirstPersonViewmodelRoot;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Visuals")
+	TObjectPtr<USkeletalMeshComponent> FirstPersonArms;
+	UPROPERTY() TArray<TObjectPtr<UMaterialInterface>> ArchetypeArmorMaterials;
+	UPROPERTY() TObjectPtr<UMaterialInterface> CyanVisualMaterial;
+	UPROPERTY() TObjectPtr<UMaterialInterface> VioletVisualMaterial;
+	UPROPERTY() TObjectPtr<UStaticMeshComponent> LeftShoulderArmor;
+	UPROPERTY() TObjectPtr<UStaticMeshComponent> RightShoulderArmor;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputMappingContext> DefaultMappingContext;

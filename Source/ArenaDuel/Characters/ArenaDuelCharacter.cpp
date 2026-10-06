@@ -2,6 +2,7 @@
 
 #include "ArenaDuelCharacter.h"
 #include "ArenaDuelCharacterMovementComponent.h"
+#include "ArenaDuelVisualAnimInstance.h"
 #include "../Weapons/ArenaDuelWeaponComponent.h"
 
 #include "../ArenaDuel.h"
@@ -9,6 +10,9 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
+#include "Materials/MaterialInterface.h"
 #include "Components/InputComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -35,6 +39,30 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	FirstPersonCamera->SetupAttachment(GetCapsuleComponent());
 	FirstPersonCamera->SetRelativeLocation(FVector(0.0f, 0.0f, 64.0f));
 	FirstPersonCamera->bUsePawnControlRotation = true;
+	FirstPersonViewmodelRoot = CreateDefaultSubobject<USceneComponent>(TEXT("FirstPersonViewmodelRoot"));
+	FirstPersonViewmodelRoot->SetupAttachment(FirstPersonCamera);
+	FirstPersonArms = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonArms"));
+	FirstPersonArms->SetupAttachment(FirstPersonViewmodelRoot);
+	FirstPersonArms->SetOnlyOwnerSee(true);
+	FirstPersonArms->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	FirstPersonArms->SetCastShadow(false);
+	FirstPersonArms->SetRelativeLocation(FVector(15.0f, -10.0f, -135.0f));
+	FirstPersonArms->SetRelativeRotation(FRotator::ZeroRotator);
+	static ConstructorHelpers::FObjectFinder<USkeletalMesh> Manny(TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"));
+	GetMesh()->SetSkeletalMesh(Manny.Object);
+	GetMesh()->SetRelativeLocation(FVector(0, 0, -GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()));
+	GetMesh()->SetRelativeRotation(FRotator::ZeroRotator);
+	GetMesh()->SetOwnerNoSee(true);
+	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	GetMesh()->SetAnimInstanceClass(UArenaDuelVisualAnimInstance::StaticClass());
+	// The editor setup command can derive the arms on a fresh checkout before they exist.
+	USkeletalMesh* ArmsAsset = LoadObject<USkeletalMesh>(nullptr, TEXT("/Game/ArenaDuel/Characters/Common/SKM_ArenaDuelArms"), nullptr, LOAD_NoWarn);
+	FirstPersonArms->SetSkeletalMesh(ArmsAsset ? ArmsAsset : Manny.Object.Get());
+	FirstPersonArms->SetAnimInstanceClass(UArenaDuelVisualAnimInstance::StaticClass());
+	for (const TCHAR* Path : { TEXT("/Game/ArenaDuel/Characters/Common/M_ShadowArmor"), TEXT("/Game/ArenaDuel/Characters/Common/M_WardenArmor"), TEXT("/Game/ArenaDuel/Characters/Common/M_RiftArmor") })
+		ArchetypeArmorMaterials.Add(LoadObject<UMaterialInterface>(nullptr, Path));
+	CyanVisualMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneCyan"));
+	VioletVisualMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneViolet"));
 
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = true;
@@ -61,6 +89,18 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	HeadHitZone->ComponentTags.Add(TEXT("HeadHitZone"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> SphereMesh(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+	LeftShoulderArmor = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("LeftShoulderArmor"));
+	RightShoulderArmor = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RightShoulderArmor"));
+	LeftShoulderArmor->SetupAttachment(GetMesh(), TEXT("upperarm_l"));
+	RightShoulderArmor->SetupAttachment(GetMesh(), TEXT("upperarm_r"));
+	for (auto* Plate : {LeftShoulderArmor.Get(), RightShoulderArmor.Get()})
+	{
+		Plate->SetStaticMesh(CubeMesh.Object);
+		Plate->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Plate->SetOwnerNoSee(true);
+		Plate->SetRelativeScale3D(FVector(0.20f, 0.24f, 0.10f));
+		Plate->SetRelativeLocation(FVector(4, 0, 6));
+	}
 	BodyVisual = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BodyVisual"));
 	BodyVisual->SetupAttachment(GetCapsuleComponent());
 	BodyVisual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -75,20 +115,55 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	HeadVisual->SetRelativeLocation(FVector(0.0f, 0.0f, 68.0f));
 	HeadVisual->SetRelativeScale3D(FVector(0.48f));
 	if (SphereMesh.Succeeded()) HeadVisual->SetStaticMesh(SphereMesh.Object);
+	// Retained as deprecated development components for existing asset compatibility, never rendered.
+	BodyVisual->SetHiddenInGame(true);
+	HeadVisual->SetHiddenInGame(true);
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
 	bReplicates = true;
+}
+
+void AArenaDuelCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+	RefreshCharacterVisuals();
+}
+
+void AArenaDuelCharacter::RefreshCharacterVisuals()
+{
+	BodyVisual->SetHiddenInGame(true);
+	HeadVisual->SetHiddenInGame(true);
+	GetMesh()->SetOwnerNoSee(true);
+	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	FirstPersonArms->SetVisibility(IsLocallyControlled() && !bDead);
+	// Derived arm-only geometry retains the Epic skeleton, animation and grip socket.
+	const auto* State = GetPlayerState<AArenaDuelPlayerState>();
+	const EArenaDuelCharacterArchetype Archetype = State ? State->GetCharacterArchetype() : EArenaDuelCharacterArchetype::Shadow;
+	const int32 Index = static_cast<int32>(Archetype);
+	UMaterialInterface* Accent = Archetype == EArenaDuelCharacterArchetype::Warden ? CyanVisualMaterial.Get() : VioletVisualMaterial.Get();
+	LeftShoulderArmor->SetVisibility(Archetype == EArenaDuelCharacterArchetype::Warden);
+	RightShoulderArmor->SetVisibility(Archetype != EArenaDuelCharacterArchetype::Shadow);
+	for (auto* Plate : {LeftShoulderArmor.Get(), RightShoulderArmor.Get()}) Plate->SetMaterial(0, CyanVisualMaterial);
+	for (auto* VisualMesh : {GetMesh(), FirstPersonArms.Get()})
+	{
+		if (ArchetypeArmorMaterials.IsValidIndex(Index)) VisualMesh->SetMaterial(0, ArchetypeArmorMaterials[Index]);
+		VisualMesh->SetMaterial(1, Accent);
+	}
+	if (WeaponComponent) WeaponComponent->RefreshWeaponVisual();
+	if (bDead) ApplyDevelopmentDeathPose();
 }
 
 void AArenaDuelCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
 	InitializeAbilityActorInfo();
+	RefreshCharacterVisuals();
 }
 
 void AArenaDuelCharacter::OnRep_PlayerState()
 {
 	Super::OnRep_PlayerState();
 	InitializeAbilityActorInfo();
+	RefreshCharacterVisuals();
 }
 
 UAbilitySystemComponent* AArenaDuelCharacter::GetAbilitySystemComponent() const
@@ -310,7 +385,12 @@ void AArenaDuelCharacter::UpdateLocalDeathCamera()
 
 void AArenaDuelCharacter::ApplyDevelopmentDeathPose()
 {
-	// Temporary primitive pose for Phase 6 playtesting. Replace with final character death animation or ragdoll later.
+	// Cosmetic lying pose until final death animation assets exist. No ragdoll or hitbox changes.
+	GetMesh()->SetRelativeLocation(FVector(0, 0, -GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() + 20));
+	GetMesh()->SetRelativeRotation(FRotator(0, 0, 90));
+	if (GetMesh()->GetAnimInstance()) GetMesh()->GetAnimInstance()->Montage_Stop(0);
+	FirstPersonArms->SetVisibility(false);
+	if (WeaponComponent) WeaponComponent->RefreshWeaponVisual();
 	if (BodyVisual)
 	{
 		BodyVisual->SetRelativeLocation(FVector(0.0f, 0.0f, -50.0f));
@@ -339,6 +419,7 @@ UArenaDuelCharacterMovementComponent* AArenaDuelCharacter::GetArenaDuelMovementC
 void AArenaDuelCharacter::PawnClientRestart()
 {
 	Super::PawnClientRestart();
+	RefreshCharacterVisuals();
 
 	if (!IsLocallyControlled())
 	{

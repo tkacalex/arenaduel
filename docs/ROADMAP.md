@@ -34,6 +34,8 @@ Shadow, Warden, Rift, and non damaging utility and movement abilities.
 
 Shadow and Warden are implemented and human-approved. Phase 7C adds Rift: Q Rift Grapple is predicted root-motion traversal toward stable world geometry (2200 uu range, six-second GAS cooldown); E Phase Gate is a server-validated personal reposition (1400 uu range, 0.2-second cast, fourteen-second cooldown) with paired temporary gate visuals. Neither deals damage or grants invulnerability. Kit switching removes stale specs/cooldowns and actors; respawns and return to selection preserve the archetype without duplicate specs. All three kits are available through public Character Select and host admin. Rift feel, camera feedback, portrait and visual quality still require human two-player acceptance.
 
+Phase 7D adds the local Epic Manny skeletal body, Unreal-derived arm-only first-person mesh, three archetype appearances and four original multi-part weapon models. Separate owner/world visibility and existing weapon replication drive both held representations, with native locomotion/reload animation and cosmetic lying death. Setup is automated by `Tools/Editor/SetupPhase7DVisuals.ps1`; no manual Blueprint wiring is needed. Human two-player review of hands, ADS alignment, animation, clipping and silhouettes remains the acceptance gate. Phase 8 has not started.
+
 ## Phase 8: Round system, selections, and RPG upgrades
 
 First to 5 rounds, round flow, fighter and weapon selection, and match based upgrade choices.

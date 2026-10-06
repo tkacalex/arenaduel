@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "ArenaDuelPlayerState.h"
+#include "../Characters/ArenaDuelCharacter.h"
 #include "AbilitySystemComponent.h"
 #include "../Combat/ArenaDuelAttributeSet.h"
 #include "../Abilities/ArenaDuelGameplayTags.h"
@@ -110,6 +111,7 @@ bool AArenaDuelPlayerState::SetCharacterArchetypeAuthoritatively(EArenaDuelChara
 	}
 	RemoveAllKitAbilitiesAndCooldowns();
 	CharacterArchetype = NewArchetype;
+	OnRep_CharacterArchetype();
 	bCharacterReady = false;
 	GrantCurrentKit();
 	if (APawn* CurrentPawn = GetPawn()) AbilitySystemComponent->InitAbilityActorInfo(this, CurrentPawn);
@@ -117,7 +119,10 @@ bool AArenaDuelPlayerState::SetCharacterArchetypeAuthoritatively(EArenaDuelChara
 	return true;
 }
 
-void AArenaDuelPlayerState::OnRep_CharacterArchetype() {}
+void AArenaDuelPlayerState::OnRep_CharacterArchetype()
+{
+	if (auto* Character = Cast<AArenaDuelCharacter>(GetPawn())) Character->RefreshCharacterVisuals();
+}
 
 FText AArenaDuelPlayerState::GetCharacterArchetypeDisplayName() const
 {

@@ -8,6 +8,8 @@
 #include "../Player/ArenaDuelPlayerController.h"
 #include "ArenaDuelWeaponTarget.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/SceneComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -60,8 +62,24 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 	FirstPersonWeaponMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FirstPersonWeaponMesh"));
 	FirstPersonWeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FirstPersonWeaponMesh->SetCastShadow(false);
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
-	if (CubeMesh.Succeeded()) FirstPersonWeaponMesh->SetStaticMesh(CubeMesh.Object);
+	FirstPersonWeaponMesh->SetOnlyOwnerSee(true);
+	ThirdPersonWeaponMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ThirdPersonWeaponMesh"));
+	ThirdPersonWeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	ThirdPersonWeaponMesh->SetOwnerNoSee(true);
+	for (const TCHAR* Name : {TEXT("ArcRifle"), TEXT("ShadeSMG"), TEXT("RuneDMR"), TEXT("HexShotgun")})
+	{
+		FArenaDuelWeaponVisualDefinition Visual;
+		Visual.Mesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(FString::Printf(TEXT("/Game/ArenaDuel/Weapons/%s/SM_%s.SM_%s"), Name, Name, Name)));
+		// Grip socket's evaluated rifle hold basis. Our original models use +X forward.
+		Visual.HandRotation = FRotator(-15.85794f, 11.63120f, -12.32760f).Quaternion().Inverse().Rotator();
+		WeaponVisualDefinitions.Add(Visual);
+	}
+	WeaponVisualDefinitions[1].HipRotation = FRotator(0, 0, -2);
+	WeaponVisualDefinitions[2].HipLocation = FVector(42, 16, -33);
+	WeaponVisualDefinitions[3].HipLocation = FVector(32, 20, -35);
+	WeaponVisualDefinitions[3].HipRotation = FRotator(0, 0, 2);
+	// Visual alignment only; approved FOV, sensitivity, spread and recoil are unchanged.
+	for (auto& Definition : WeaponDefinitions) Definition.AimViewmodelLocation.Z -= 19.0f;
 }
 
 void UArenaDuelWeaponComponent::BeginPlay()
@@ -69,8 +87,6 @@ void UArenaDuelWeaponComponent::BeginPlay()
 	Super::BeginPlay();
 	if (AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()))
 	{
-		FirstPersonWeaponMesh->AttachToComponent(Character->GetFirstPersonCamera(), FAttachmentTransformRules::KeepRelativeTransform);
-		FirstPersonWeaponMesh->SetVisibility(Character->IsLocallyControlled());
 		if (Character->IsLocallyControlled() && Character->GetFirstPersonCamera())
 		{
 			HipFOV = Character->GetFirstPersonCamera()->FieldOfView;
@@ -422,13 +438,13 @@ void UArenaDuelWeaponComponent::RecoverCosmeticKick()
 		}
 	}
 	LocalWeaponKick = FMath::FInterpTo(LocalWeaponKick, 0.0f, DeltaSeconds, 12.0f);
-	if (FirstPersonWeaponMesh)
+	if (Character && Character->GetFirstPersonViewmodelRoot())
 	{
 		FVector BaseLocation;
 		FRotator BaseRotation;
 		GetCurrentViewmodelBaseTransform(BaseLocation, BaseRotation);
-		FirstPersonWeaponMesh->SetRelativeLocation(BaseLocation + FVector(-5.0f * LocalWeaponKick, 0.0f, 2.0f * LocalWeaponKick));
-		FirstPersonWeaponMesh->SetRelativeRotation(BaseRotation + FRotator(-1.5f * LocalWeaponKick, 0.0f, 0.0f));
+		Character->GetFirstPersonViewmodelRoot()->SetRelativeLocation(BaseLocation + FVector(-5.0f * LocalWeaponKick, 0.0f, 2.0f * LocalWeaponKick));
+		Character->GetFirstPersonViewmodelRoot()->SetRelativeRotation(BaseRotation + FRotator(-1.5f * LocalWeaponKick, 0.0f, 0.0f));
 	}
 	if (!bFireHeld && FMath::IsNearlyZero(LocalWeaponKick, KINDA_SMALL_NUMBER) && FMath::IsNearlyZero(LocalRecoilPitchRemaining, 0.005f) && FMath::IsNearlyZero(LocalRecoilYawRemaining, 0.005f))
 	{
@@ -442,18 +458,40 @@ void UArenaDuelWeaponComponent::RecoverCosmeticKick()
 }
 void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 {
-	if (!FirstPersonWeaponMesh) return;
-	const FVector Scale = EquippedWeaponIndex == 0 ? FVector(0.75f, 0.12f, 0.12f) : EquippedWeaponIndex == 1 ? FVector(0.4f, 0.14f, 0.12f) : EquippedWeaponIndex == 2 ? FVector(1.0f, 0.09f, 0.09f) : FVector(0.55f, 0.22f, 0.16f);
+	auto* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	if (!Character || !WeaponVisualDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
+	const auto& Visual = WeaponVisualDefinitions[EquippedWeaponIndex];
+	UStaticMesh* Mesh = Visual.Mesh.LoadSynchronous();
+	FirstPersonWeaponMesh->AttachToComponent(Character->GetFirstPersonArms(), FAttachmentTransformRules::KeepRelativeTransform, TEXT("HandGrip_R"));
+	ThirdPersonWeaponMesh->AttachToComponent(Character->GetMesh(), FAttachmentTransformRules::KeepRelativeTransform, TEXT("HandGrip_R"));
+	for (auto* WeaponMesh : { FirstPersonWeaponMesh.Get(), ThirdPersonWeaponMesh.Get() })
+	{
+		// These components are owned by the weapon component, not direct actor defaults.
+		// Explicit registration also covers host/client possession arriving after BeginPlay.
+		if (!WeaponMesh->IsRegistered() && GetWorld() && !Character->HasAnyFlags(RF_ClassDefaultObject)) WeaponMesh->RegisterComponent();
+		WeaponMesh->SetStaticMesh(Mesh);
+		WeaponMesh->SetRelativeLocation(Visual.HandLocation);
+		WeaponMesh->SetRelativeRotation(Visual.HandRotation);
+		WeaponMesh->SetRelativeScale3D(Visual.Scale);
+	}
+	FirstPersonWeaponMesh->SetVisibility(Character->IsLocallyControlled() && !Character->IsDead());
+	ThirdPersonWeaponMesh->SetVisibility(true);
 	FVector Location;
 	FRotator Rotation;
 	GetCurrentViewmodelBaseTransform(Location, Rotation);
-	FirstPersonWeaponMesh->SetRelativeLocation(Location); FirstPersonWeaponMesh->SetRelativeRotation(Rotation); FirstPersonWeaponMesh->SetRelativeScale3D(Scale);
+	// ADS and recoil operate on one shared root so hands and weapon cannot separate.
+	if (auto* Root = Character->GetFirstPersonViewmodelRoot())
+	{
+		Root->SetRelativeLocation(Location + FVector(-5 * LocalWeaponKick, 0, 2 * LocalWeaponKick));
+		Root->SetRelativeRotation(Rotation + FRotator(-1.5f * LocalWeaponKick, 0, 0));
+	}
 }
 void UArenaDuelWeaponComponent::GetCurrentViewmodelBaseTransform(FVector& OutLocation, FRotator& OutRotation) const
 {
 	const FArenaDuelWeaponDefinition& Definition = GetCurrentDefinition();
-	const FVector HipLocation = EquippedWeaponIndex == 2 ? FVector(42.0f, 16.0f, -17.0f) : EquippedWeaponIndex == 3 ? FVector(32.0f, 20.0f, -19.0f) : FVector(35.0f, 18.0f, -18.0f);
-	const FRotator HipRotation = EquippedWeaponIndex == 1 ? FRotator(0.0f, 0.0f, -2.0f) : EquippedWeaponIndex == 3 ? FRotator(0.0f, 0.0f, 2.0f) : FRotator::ZeroRotator;
+	const FArenaDuelWeaponVisualDefinition Visual = WeaponVisualDefinitions.IsValidIndex(EquippedWeaponIndex) ? WeaponVisualDefinitions[EquippedWeaponIndex] : FArenaDuelWeaponVisualDefinition();
+	const FVector HipLocation = Visual.HipLocation;
+	const FRotator HipRotation = Visual.HipRotation;
 	OutLocation = bAiming ? Definition.AimViewmodelLocation : HipLocation;
 	OutRotation = bAiming ? Definition.AimViewmodelRotation : HipRotation;
 }
@@ -467,20 +505,23 @@ void UArenaDuelWeaponComponent::UpdateAimVisual()
 	FVector TargetLocation;
 	FRotator TargetRotation;
 	GetCurrentViewmodelBaseTransform(TargetLocation, TargetRotation);
-	if (FirstPersonWeaponMesh)
+	TargetLocation += FVector(-5 * LocalWeaponKick, 0, 2 * LocalWeaponKick);
+	TargetRotation += FRotator(-1.5f * LocalWeaponKick, 0, 0);
+	USceneComponent* Root = Character->GetFirstPersonViewmodelRoot();
+	if (Root)
 	{
-		FirstPersonWeaponMesh->SetRelativeLocation(FMath::VInterpTo(FirstPersonWeaponMesh->GetRelativeLocation(), TargetLocation, 0.02f, 14.0f));
-		FirstPersonWeaponMesh->SetRelativeRotation(FMath::RInterpTo(FirstPersonWeaponMesh->GetRelativeRotation(), TargetRotation, 0.02f, 14.0f));
+		Root->SetRelativeLocation(FMath::VInterpTo(Root->GetRelativeLocation(), TargetLocation, 0.02f, 14.0f));
+		Root->SetRelativeRotation(FMath::RInterpTo(Root->GetRelativeRotation(), TargetRotation, 0.02f, 14.0f));
 	}
 	const bool bFOVSettled = FMath::IsNearlyEqual(NewFOV, TargetFOV, 0.1f);
-	const bool bViewmodelSettled = !FirstPersonWeaponMesh || (FirstPersonWeaponMesh->GetRelativeLocation().Equals(TargetLocation, 0.1f) && FirstPersonWeaponMesh->GetRelativeRotation().Equals(TargetRotation, 0.1f));
+	const bool bViewmodelSettled = !Root || (Root->GetRelativeLocation().Equals(TargetLocation, 0.1f) && Root->GetRelativeRotation().Equals(TargetRotation, 0.1f));
 	if (bFOVSettled && bViewmodelSettled && GetWorld())
 	{
 		Character->GetFirstPersonCamera()->SetFieldOfView(TargetFOV);
-		if (FirstPersonWeaponMesh)
+		if (Root)
 		{
-			FirstPersonWeaponMesh->SetRelativeLocation(TargetLocation);
-			FirstPersonWeaponMesh->SetRelativeRotation(TargetRotation);
+			Root->SetRelativeLocation(TargetLocation);
+			Root->SetRelativeRotation(TargetRotation);
 		}
 		GetWorld()->GetTimerManager().ClearTimer(AimVisualTimerHandle);
 	}

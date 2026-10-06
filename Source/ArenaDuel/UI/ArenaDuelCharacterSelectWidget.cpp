@@ -20,12 +20,12 @@
 
 namespace CharacterSelectStyle
 {
-	const FLinearColor Cyan(0.33f, 0.90f, 1.0f);
-	const FLinearColor Violet(0.82f, 0.40f, 1.0f);
+	const FLinearColor CharacterSelectCyan(0.33f, 0.90f, 1.0f);
+	const FLinearColor CharacterSelectViolet(0.82f, 0.40f, 1.0f);
 	const FLinearColor White(0.96f, 0.97f, 0.99f);
 	const FLinearColor Muted(0.59f, 0.67f, 0.77f);
 	const FLinearColor PanelBackground(0.02f, 0.05f, 0.10f, 0.93f);
-	FLinearColor Accent(int32 SideIndex) { return SideIndex == 0 ? Cyan : Violet; }
+	FLinearColor Accent(int32 SideIndex) { return SideIndex == 0 ? CharacterSelectCyan : CharacterSelectViolet; }
 
 	void Place(UCanvasPanel* Parent, UWidget* Widget, float X, float Y, float Width, float Height)
 	{
@@ -126,8 +126,8 @@ void UArenaDuelCharacterSelectWidget::BuildTree()
 	WidgetTree->RootWidget = Scale;
 	using namespace CharacterSelectStyle;
 	Backing(WidgetTree, ReferenceCanvas, FLinearColor(0.015f, 0.025f, 0.065f, 0.90f), 0, 0, 1920, 1080);
-	Text(WidgetTree, ReferenceCanvas, TEXT("A R E N A"), 39, Cyan, 720, 27, 250, 56, ETextJustify::Right);
-	Text(WidgetTree, ReferenceCanvas, TEXT("D U E L"), 39, Violet, 980, 27, 225, 56);
+	Text(WidgetTree, ReferenceCanvas, TEXT("A R E N A"), 39, CharacterSelectCyan, 720, 27, 250, 56, ETextJustify::Right);
+	Text(WidgetTree, ReferenceCanvas, TEXT("D U E L"), 39, CharacterSelectViolet, 980, 27, 225, 56);
 	Text(WidgetTree, ReferenceCanvas, TEXT("C H A R A C T E R   S E L E C T"), 17, White, 690, 83, 540, 30, ETextJustify::Center);
 	Text(WidgetTree, ReferenceCanvas, TEXT("P R E - M A T C H   L O B B Y"), 12, Muted, 720, 119, 480, 25, ETextJustify::Center);
 	Text(WidgetTree, ReferenceCanvas, TEXT("1V1 ARENA\nDEVELOPMENT DUEL"), 12, Muted, 65, 45, 300, 52);
@@ -137,7 +137,7 @@ void UArenaDuelCharacterSelectWidget::BuildTree()
 	BuildPlayerPanel(1);
 	CenterLabel = Text(WidgetTree, ReferenceCanvas, TEXT("VS"), 64, White, 755, 488, 410, 120, ETextJustify::Center);
 	CenterStatus = Text(WidgetTree, ReferenceCanvas, TEXT("WAITING FOR BOTH PLAYERS"), 14, Muted, 750, 626, 420, 76, ETextJustify::Center);
-	Matchup = Text(WidgetTree, ReferenceCanvas, TEXT("PLAYER 1  >  VS  <  PLAYER 2"), 16, Cyan, 725, 864, 470, 78, ETextJustify::Center);
+	Matchup = Text(WidgetTree, ReferenceCanvas, TEXT("PLAYER 1  >  VS  <  PLAYER 2"), 16, CharacterSelectCyan, 725, 864, 470, 78, ETextJustify::Center);
 	Text(WidgetTree, ReferenceCanvas, TEXT("ESC   BACK / CANCEL READY"), 13, Muted, 85, 1005, 420, 30);
 	Text(WidgetTree, ReferenceCanvas, TEXT("A / D   SWITCH CHARACTER     |     ENTER   READY"), 13, Muted, 520, 1005, 880, 30, ETextJustify::Center);
 	Text(WidgetTree, ReferenceCanvas, TEXT("MOUSE   SELECT"), 13, Muted, 1450, 1005, 390, 30, ETextJustify::Right);
@@ -326,13 +326,13 @@ int32 UArenaDuelCharacterSelectWidget::NativePaint(const FPaintArgs& Args, const
 	for (int32 Index = 0; Index < 7; ++Index)
 	{
 		const float Inset = Index * 27.0f;
-		Lines({{740 + Inset, 860}, {740 + Inset, 300 + Inset}, {960, 180 + Inset}, {1180 - Inset, 300 + Inset}, {1180 - Inset, 860}}, Violet.CopyWithNewOpacity(0.07f + Index * 0.007f));
-		Lines({{730, 940 - Index * 22.0f}, {960, 790 - Index * 7.0f}, {1190, 940 - Index * 22.0f}}, Cyan.CopyWithNewOpacity(0.055f));
+		Lines({{740 + Inset, 860}, {740 + Inset, 300 + Inset}, {960, 180 + Inset}, {1180 - Inset, 300 + Inset}, {1180 - Inset, 860}}, CharacterSelectViolet.CopyWithNewOpacity(0.07f + Index * 0.007f));
+		Lines({{730, 940 - Index * 22.0f}, {960, 790 - Index * 7.0f}, {1190, 940 - Index * 22.0f}}, CharacterSelectCyan.CopyWithNewOpacity(0.055f));
 	}
-	Lines({{715, 48}, {672, 48}, {640, 28}, {60, 28}, {30, 58}, {30, 1008}, {62, 1047}, {735, 1047}}, Cyan.CopyWithNewOpacity(0.45f));
-	Lines({{1205, 48}, {1248, 48}, {1280, 28}, {1860, 28}, {1890, 58}, {1890, 1008}, {1858, 1047}, {1185, 1047}}, Violet.CopyWithNewOpacity(0.45f));
-	Lines({{797, 545}, {826, 526}, {865, 526}}, Violet.CopyWithNewOpacity(0.8f), 2);
-	Lines({{1123, 545}, {1094, 526}, {1055, 526}}, Cyan.CopyWithNewOpacity(0.8f), 2);
+	Lines({{715, 48}, {672, 48}, {640, 28}, {60, 28}, {30, 58}, {30, 1008}, {62, 1047}, {735, 1047}}, CharacterSelectCyan.CopyWithNewOpacity(0.45f));
+	Lines({{1205, 48}, {1248, 48}, {1280, 28}, {1860, 28}, {1890, 58}, {1890, 1008}, {1858, 1047}, {1185, 1047}}, CharacterSelectViolet.CopyWithNewOpacity(0.45f));
+	Lines({{797, 545}, {826, 526}, {865, 526}}, CharacterSelectViolet.CopyWithNewOpacity(0.8f), 2);
+	Lines({{1123, 545}, {1094, 526}, {1055, 526}}, CharacterSelectCyan.CopyWithNewOpacity(0.8f), 2);
 	for (int32 SideIndex = 0; SideIndex < Panels.Num(); ++SideIndex)
 	{
 		const float X = SideIndex == 0 ? 90 : 1200;
@@ -344,18 +344,18 @@ int32 UArenaDuelCharacterSelectWidget::NativePaint(const FPaintArgs& Args, const
 		const float CY = Y + 196;
 		const bool bWarden = Panels[SideIndex].DisplayArchetype == EArenaDuelCharacterArchetype::Warden;
 		const bool bRift = Panels[SideIndex].DisplayArchetype == EArenaDuelCharacterArchetype::Rift;
-		const FLinearColor IdentityColor = bWarden ? Cyan : Violet;
+		const FLinearColor IdentityColor = bWarden ? CharacterSelectCyan : CharacterSelectViolet;
 		if (bRift)
 		{
 			// Lean asymmetric spatial-mage mask, distinct from the assassin hood and plated Warden.
 			Polygon({{CX - 98, CY + 126}, {CX - 72, CY + 28}, {CX - 42, CY - 98}, {CX + 32, CY - 78}, {CX + 54, CY + 18}, {CX + 105, CY + 126}}, FLinearColor(0.06f, 0.035f, 0.13f));
-			Lines({{CX - 98, CY + 126}, {CX - 72, CY + 28}, {CX - 42, CY - 98}, {CX + 32, CY - 78}, {CX + 54, CY + 18}, {CX + 105, CY + 126}}, Violet, 3);
+			Lines({{CX - 98, CY + 126}, {CX - 72, CY + 28}, {CX - 42, CY - 98}, {CX + 32, CY - 78}, {CX + 54, CY + 18}, {CX + 105, CY + 126}}, CharacterSelectViolet, 3);
 			Polygon({{CX - 28, CY - 56}, {CX + 24, CY - 44}, {CX + 35, CY - 7}, {CX + 5, CY + 31}, {CX - 32, CY + 3}}, FLinearColor(0.015f, 0.04f, 0.08f));
-			Lines({{CX - 28, CY - 56}, {CX + 7, CY - 29}, {CX - 7, CY - 5}, {CX + 5, CY + 31}}, Cyan, 3);
-			Lines({{CX + 24, CY - 44}, {CX + 35, CY - 7}, {CX + 5, CY + 31}, {CX - 32, CY + 3}}, Violet, 2);
+			Lines({{CX - 28, CY - 56}, {CX + 7, CY - 29}, {CX - 7, CY - 5}, {CX + 5, CY + 31}}, CharacterSelectCyan, 3);
+			Lines({{CX + 24, CY - 44}, {CX + 35, CY - 7}, {CX + 5, CY + 31}, {CX - 32, CY + 3}}, CharacterSelectViolet, 2);
 			for (int32 I = 0; I < 3; ++I)
-				Lines({{CX - 165 - I * 15, CY + 50}, {CX - 119 - I * 13, CY - 60}, {CX + 101 + I * 15, CY - 65}, {CX + 143 + I * 17, CY + 80}}, (I == 1 ? Cyan : Violet).CopyWithNewOpacity(0.5f), 2);
-			Lines({{CX - 43, CY + 51}, {CX + 21, CY + 72}, {CX - 16, CY + 102}, {CX + 38, CY + 124}}, Cyan, 2);
+				Lines({{CX - 165 - I * 15, CY + 50}, {CX - 119 - I * 13, CY - 60}, {CX + 101 + I * 15, CY - 65}, {CX + 143 + I * 17, CY + 80}}, (I == 1 ? CharacterSelectCyan : CharacterSelectViolet).CopyWithNewOpacity(0.5f), 2);
+			Lines({{CX - 43, CY + 51}, {CX + 21, CY + 72}, {CX - 16, CY + 102}, {CX + 38, CY + 124}}, CharacterSelectCyan, 2);
 		}
 		else
 		{
@@ -374,13 +374,13 @@ int32 UArenaDuelCharacterSelectWidget::NativePaint(const FPaintArgs& Args, const
 		if (bWarden)
 		{
 			Polygon({{CX + 92, CY + 21}, {CX + 188, CY + 4}, {CX + 188, CY + 100}, {CX + 141, CY + 139}, {CX + 92, CY + 105}}, FLinearColor(0.03f, 0.14f, 0.22f));
-			Lines({{CX + 92, CY + 21}, {CX + 188, CY + 4}, {CX + 188, CY + 100}, {CX + 141, CY + 139}, {CX + 92, CY + 105}, {CX + 92, CY + 21}}, Cyan, 4);
-			Lines({{CX + 141, CY + 30}, {CX + 120, CY + 68}, {CX + 146, CY + 55}, {CX + 139, CY + 108}}, Cyan, 3);
+			Lines({{CX + 92, CY + 21}, {CX + 188, CY + 4}, {CX + 188, CY + 100}, {CX + 141, CY + 139}, {CX + 92, CY + 105}, {CX + 92, CY + 21}}, CharacterSelectCyan, 4);
+			Lines({{CX + 141, CY + 30}, {CX + 120, CY + 68}, {CX + 146, CY + 55}, {CX + 139, CY + 108}}, CharacterSelectCyan, 3);
 		}
 		else
 		{
-			Lines({{CX - 205, CY + 67}, {CX - 154, CY + 29}, {CX - 86, CY + 11}, {CX - 59, CY + 24}}, Violet.CopyWithNewOpacity(0.75f), 3);
-			Lines({{CX - 186, CY + 113}, {CX - 147, CY + 70}, {CX - 108, CY + 64}}, Violet, 2);
+			Lines({{CX - 205, CY + 67}, {CX - 154, CY + 29}, {CX - 86, CY + 11}, {CX - 59, CY + 24}}, CharacterSelectViolet.CopyWithNewOpacity(0.75f), 3);
+			Lines({{CX - 186, CY + 113}, {CX - 147, CY + 70}, {CX - 108, CY + 64}}, CharacterSelectViolet, 2);
 		}
 		}
 		// Native original ability glyphs, including hook and paired rift outlines.
@@ -388,8 +388,8 @@ int32 UArenaDuelCharacterSelectWidget::NativePaint(const FPaintArgs& Args, const
 		{
 			const float IX = X + 55 + Ability * 294;
 			const float IY = Y + 571;
-			if (bRift && Ability == 0) Lines({{IX - 18, IY + 18}, {IX + 10, IY - 14}, {IX + 18, IY - 5}, {IX + 9, IY + 3}, {IX + 3, IY - 4}}, Cyan, 2);
-			else if (bRift) { Lines({{IX - 17, IY + 15}, {IX - 20, IY - 11}, {IX - 8, IY - 18}, {IX - 3, IY + 15}}, Violet, 2); Lines({{IX + 3, IY + 15}, {IX + 8, IY - 18}, {IX + 20, IY - 11}, {IX + 17, IY + 15}}, Cyan, 2); }
+			if (bRift && Ability == 0) Lines({{IX - 18, IY + 18}, {IX + 10, IY - 14}, {IX + 18, IY - 5}, {IX + 9, IY + 3}, {IX + 3, IY - 4}}, CharacterSelectCyan, 2);
+			else if (bRift) { Lines({{IX - 17, IY + 15}, {IX - 20, IY - 11}, {IX - 8, IY - 18}, {IX - 3, IY + 15}}, CharacterSelectViolet, 2); Lines({{IX + 3, IY + 15}, {IX + 8, IY - 18}, {IX + 20, IY - 11}, {IX + 17, IY + 15}}, CharacterSelectCyan, 2); }
 			else if (Ability == 0 && bWarden) Lines({{IX - 15, IY - 12}, {IX + 15, IY - 12}, {IX + 12, IY + 8}, {IX, IY + 19}, {IX - 12, IY + 8}, {IX - 15, IY - 12}}, Color, 2);
 			else if (Ability == 0) { Lines({{IX - 19, IY + 10}, {IX + 13, IY - 12}, {IX + 9, IY + 1}}, Color, 2); Lines({{IX - 19, IY + 18}, {IX - 2, IY + 6}}, Color, 2); }
 			else if (bWarden) Lines({{IX - 15, IY + 16}, {IX + 9, IY - 14}, {IX - 3, IY - 10}, {IX + 9, IY - 14}, {IX + 11, IY}}, Color, 2);
@@ -403,12 +403,12 @@ int32 UArenaDuelCharacterSelectWidget::NativePaint(const FPaintArgs& Args, const
 			Lines({{RX, Y + 656}, {RX + 152, Y + 656}, {RX + 152, Y + 701}, {RX, Y + 701}, {RX, Y + 656}}, Color.CopyWithNewOpacity(bSelected ? 0.95f : 0.22f), bSelected ? 2.0f : 1.0f);
 			const float TX = X + 88 + Character * 167;
 			const float TY = Y + 678;
-			const FLinearColor Tint = Character == 1 ? Cyan : Violet;
+			const FLinearColor Tint = Character == 1 ? CharacterSelectCyan : CharacterSelectViolet;
 			if (Character == 2)
 			{
 				Polygon({{TX - 12, TY + 13}, {TX - 8, TY - 18}, {TX + 8, TY - 12}, {TX + 13, TY + 13}}, FLinearColor(0.055f, 0.025f, 0.12f));
-				Lines({{TX - 12, TY + 13}, {TX - 8, TY - 18}, {TX + 8, TY - 12}, {TX + 13, TY + 13}}, Violet, 1.5f);
-				Lines({{TX - 6, TY - 7}, {TX + 4, TY - 2}, {TX - 1, TY + 5}}, Cyan, 2);
+				Lines({{TX - 12, TY + 13}, {TX - 8, TY - 18}, {TX + 8, TY - 12}, {TX + 13, TY + 13}}, CharacterSelectViolet, 1.5f);
+				Lines({{TX - 6, TY - 7}, {TX + 4, TY - 2}, {TX - 1, TY + 5}}, CharacterSelectCyan, 2);
 				continue;
 			}
 			Polygon({{TX - 15, TY + 12}, {TX - 11, TY - 11}, {TX, TY - 19}, {TX + 12, TY - 10}, {TX + 17, TY + 12}}, FLinearColor(0.04f, 0.05f, 0.10f));
