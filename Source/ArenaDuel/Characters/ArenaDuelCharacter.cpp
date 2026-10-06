@@ -147,10 +147,26 @@ void AArenaDuelCharacter::HandleDeath()
 void AArenaDuelCharacter::SetDeadState()
 {
 	if (WeaponComponent) WeaponComponent->CancelCombatActionsOnDeath();
+	ApplyDevelopmentDeathPose();
 	if (GetCharacterMovement())
 	{
 		GetCharacterMovement()->StopMovementImmediately();
 		GetCharacterMovement()->DisableMovement();
+	}
+}
+
+void AArenaDuelCharacter::ApplyDevelopmentDeathPose()
+{
+	// Temporary primitive pose for Phase 6 playtesting. Replace with final character death animation or ragdoll later.
+	if (BodyVisual)
+	{
+		BodyVisual->SetRelativeLocation(FVector(0.0f, 0.0f, -50.0f));
+		BodyVisual->SetRelativeRotation(FRotator(0.0f, 0.0f, 90.0f));
+	}
+	if (HeadVisual)
+	{
+		HeadVisual->SetRelativeLocation(FVector(0.0f, 55.0f, -65.0f));
+		HeadVisual->SetRelativeRotation(FRotator(0.0f, 0.0f, 90.0f));
 	}
 }
 

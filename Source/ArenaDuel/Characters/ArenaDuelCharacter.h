@@ -71,6 +71,7 @@ protected:
 	void Weapon4Started();
 	void InitializeAbilityActorInfo();
 	void HandleDeath();
+	void ApplyDevelopmentDeathPose();
 	bool CanProcessGameplayInput() const { return IsLocallyControlled() && !bDead; }
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
