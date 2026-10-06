@@ -2,6 +2,16 @@
 
 #include "Misc/AutomationTest.h"
 #include "ArenaDuel/Weapons/ArenaDuelWeaponComponent.h"
+#include "ArenaDuel/Weapons/ArenaDuelWeaponTarget.h"
+#include "../Characters/ArenaDuelCharacter.h"
+#include "EnhancedInput/Public/InputMappingContext.h"
+#include "Engine/Level.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerStart.h"
+#include "Components/BoxComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/TextRenderComponent.h"
+#include "UObject/UnrealType.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelPhase5WeaponDefinitionsTest, "ArenaDuel.Phase5.WeaponDefinitions", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
@@ -128,5 +138,73 @@ ARENA_DUEL_PHASE5_CONTRACT_TEST(FArenaDuelPhase5HitClassificationTest, "HitClass
 }
 
 #undef ARENA_DUEL_PHASE5_CONTRACT_TEST
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelPhase5InputAssetsTest, "ArenaDuel.Phase5.InputAssets", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FArenaDuelPhase5InputAssetsTest::RunTest(const FString& Parameters)
+{
+	UInputMappingContext* Context = LoadObject<UInputMappingContext>(nullptr, TEXT("/Game/ArenaDuel/Input/IMC_Gameplay.IMC_Gameplay"));
+	TestNotNull(TEXT("Saved gameplay mapping context loads"), Context);
+	if (!Context) return false;
+	const TMap<FString, FKey> Expected = {{TEXT("IA_Fire"), EKeys::LeftMouseButton}, {TEXT("IA_Reload"), EKeys::R}, {TEXT("IA_Weapon1"), EKeys::One}, {TEXT("IA_Weapon2"), EKeys::Two}, {TEXT("IA_Weapon3"), EKeys::Three}, {TEXT("IA_Weapon4"), EKeys::Four}};
+	for (const TPair<FString, FKey>& Pair : Expected)
+	{
+		bool bFound = false;
+		for (const FEnhancedActionKeyMapping& Mapping : Context->GetMappings())
+		{
+			if (Mapping.Action && Mapping.Action->GetName() == Pair.Key && Mapping.Key == Pair.Value) { bFound = true; break; }
+		}
+		TestTrue(FString::Printf(TEXT("%s maps to %s"), *Pair.Key, *Pair.Value.GetDisplayName().ToString()), bFound);
+	}
+	UClass* CharacterClass = LoadObject<UClass>(nullptr, TEXT("/Game/ArenaDuel/Characters/BP_ArenaDuelCharacter.BP_ArenaDuelCharacter_C"));
+	TestNotNull(TEXT("Saved Character Blueprint class loads"), CharacterClass);
+	if (CharacterClass)
+	{
+		const AArenaDuelCharacter* CDO = Cast<AArenaDuelCharacter>(CharacterClass->GetDefaultObject());
+		TestNotNull(TEXT("Character Blueprint CDO is ArenaDuelCharacter"), CDO);
+		for (const TCHAR* PropertyName : {TEXT("DefaultMappingContext"), TEXT("FireAction"), TEXT("ReloadAction"), TEXT("Weapon1Action"), TEXT("Weapon2Action"), TEXT("Weapon3Action"), TEXT("Weapon4Action")})
+		{
+			FObjectPropertyBase* Property = FindFProperty<FObjectPropertyBase>(CharacterClass, FName(PropertyName));
+			TestNotNull(FString::Printf(TEXT("CDO property %s exists"), PropertyName), Property);
+			TestTrue(FString::Printf(TEXT("CDO property %s is assigned"), PropertyName), Property && Property->GetObjectPropertyValue_InContainer(CDO) != nullptr);
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelPhase5GunRangeTest, "ArenaDuel.Phase5.GunRange", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FArenaDuelPhase5GunRangeTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = LoadObject<UWorld>(nullptr, TEXT("/Game/ArenaDuel/Maps/L_Phase5GunRange.L_Phase5GunRange"));
+	TestNotNull(TEXT("Saved gun range map loads"), World);
+	if (!World || !World->PersistentLevel) return false;
+	TSet<FString> Labels;
+	int32 TargetCount = 0;
+	for (AActor* Actor : World->PersistentLevel->Actors)
+	{
+		if (!Actor) continue;
+		Labels.Add(Actor->GetActorLabel());
+		if (AArenaDuelWeaponTarget* Target = Cast<AArenaDuelWeaponTarget>(Actor))
+		{
+			++TargetCount;
+			TestNotNull(TEXT("Target body collision exists"), Target->BodyHitZone.Get());
+			TestNotNull(TEXT("Target head collision exists"), Target->HeadHitZone.Get());
+			TestNotNull(TEXT("Target body visual exists"), Target->BodyVisual.Get());
+			TestNotNull(TEXT("Target head visual exists"), Target->HeadVisual.Get());
+		}
+	}
+	for (const TCHAR* Label : {TEXT("Phase5_PlayerStart"), TEXT("Phase5_Floor"), TEXT("Phase5_NorthSafetyWall"), TEXT("Phase5_SouthSafetyWall"), TEXT("Phase5_WestSafetyWall"), TEXT("Phase5_EastSafetyWall"), TEXT("Phase5_DirectionalLight"), TEXT("Phase5_SkyLight"), TEXT("Phase5_BulletImpactWall")})
+	{
+		TestTrue(FString::Printf(TEXT("Gun range contains %s"), Label), Labels.Contains(Label));
+	}
+	for (const TCHAR* Distance : {TEXT("5m"), TEXT("10m"), TEXT("20m"), TEXT("30m"), TEXT("50m")})
+	{
+		TestTrue(FString::Printf(TEXT("Target label exists for %s"), Distance), Labels.Contains(FString::Printf(TEXT("Phase5_Target_%s"), Distance)));
+		TestTrue(FString::Printf(TEXT("Distance label exists for %s"), Distance), Labels.Contains(FString::Printf(TEXT("Phase5_Label_%s"), Distance)));
+	}
+	TestEqual(TEXT("Five target actors exist"), TargetCount, 5);
+	return true;
+}
 
 #endif

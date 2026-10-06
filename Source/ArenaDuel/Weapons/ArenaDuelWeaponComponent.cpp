@@ -80,7 +80,7 @@ void UArenaDuelWeaponComponent::GetLifetimeReplicatedProps(TArray<FLifetimePrope
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(UArenaDuelWeaponComponent, EquippedWeaponIndex);
-	DOREPLIFETIME(UArenaDuelWeaponComponent, RuntimeAmmo);
+	DOREPLIFETIME_CONDITION(UArenaDuelWeaponComponent, RuntimeAmmo, COND_OwnerOnly);
 	DOREPLIFETIME(UArenaDuelWeaponComponent, bReloading);
 }
 
@@ -132,7 +132,15 @@ void UArenaDuelWeaponComponent::StopFire()
 	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticFireTimerHandle);
 	if (GetOwnerRole() == ROLE_Authority) StopAuthoritativeFire(); else ServerRequestStopFire();
 }
-void UArenaDuelWeaponComponent::Reload() { if (GetOwnerRole() == ROLE_Authority) ServerRequestReload_Implementation(); else ServerRequestReload(); }
+void UArenaDuelWeaponComponent::Reload()
+{
+	if (AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled())
+	{
+		bFireHeld = false;
+		if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticFireTimerHandle);
+	}
+	if (GetOwnerRole() == ROLE_Authority) ServerRequestReload_Implementation(); else ServerRequestReload();
+}
 void UArenaDuelWeaponComponent::EquipWeapon(int32 Index)
 {
 	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticFireTimerHandle);
@@ -211,11 +219,15 @@ void UArenaDuelWeaponComponent::ApplyLocalRecoil()
 {
 	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character || !Character->IsLocallyControlled()) return;
-	if (APlayerController* Controller = Cast<APlayerController>(Character->GetController())) { Controller->AddPitchInput(-GetCurrentDefinition().RecoilVertical); Controller->AddYawInput(GetCurrentDefinition().RecoilHorizontal * ((LastShotSequence & 1) ? 1.0f : -1.0f)); }
+	if (GetCurrentMagazineAmmo() <= 0 || bReloading || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
+	const float HorizontalKick = GetCurrentDefinition().RecoilHorizontal * ((LastShotSequence & 1) ? 1.0f : -1.0f);
+	LocalRecoilPitchRemaining += GetCurrentDefinition().RecoilVertical;
+	LocalRecoilYawRemaining += HorizontalKick;
+	if (APlayerController* Controller = Cast<APlayerController>(Character->GetController())) { Controller->AddPitchInput(-GetCurrentDefinition().RecoilVertical); Controller->AddYawInput(HorizontalKick); }
 }
 void UArenaDuelWeaponComponent::LocalCosmeticShot()
 {
-	if (!bFireHeld) return;
+	if (!bFireHeld || bReloading || GetCurrentMagazineAmmo() <= 0 || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	LastCosmeticShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
 	LocalWeaponKick = 1.0f;
 	ApplyLocalRecoil();
@@ -223,6 +235,18 @@ void UArenaDuelWeaponComponent::LocalCosmeticShot()
 }
 void UArenaDuelWeaponComponent::RecoverCosmeticKick()
 {
+	if (AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled())
+	{
+		if (APlayerController* Controller = Cast<APlayerController>(Character->GetController()))
+		{
+			const float PitchStep = FMath::Min(LocalRecoilPitchRemaining, 0.025f);
+			const float YawStep = FMath::Clamp(LocalRecoilYawRemaining, -0.01f, 0.01f);
+			Controller->AddPitchInput(PitchStep);
+			Controller->AddYawInput(-YawStep);
+			LocalRecoilPitchRemaining -= PitchStep;
+			LocalRecoilYawRemaining -= YawStep;
+		}
+	}
 	LocalWeaponKick = FMath::FInterpTo(LocalWeaponKick, 0.0f, 0.02f, 12.0f);
 	if (FirstPersonWeaponMesh && LocalWeaponKick > KINDA_SMALL_NUMBER) FirstPersonWeaponMesh->SetRelativeLocation(FVector(35.0f - 5.0f * LocalWeaponKick, 18.0f, -18.0f + 2.0f * LocalWeaponKick));
 	else if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticRecoveryTimerHandle);
