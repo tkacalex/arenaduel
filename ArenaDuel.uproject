@@ -1,17 +1,23 @@
 {
-  "FileVersion": 3,
-  "EngineAssociation": "{E361F5AA-469C-9F0A-2A51-968FE4B06237}",
-  "Category": "",
-  "Description": "",
-  "Modules": [
-    {
-      "Name": "ArenaDuel",
-      "Type": "Runtime",
-      "LoadingPhase": "Default"
-    }
-  ],
-  "TargetPlatforms": [],
-  "AdditionalRootDirectories": [],
-  "AdditionalPluginDirectories": [],
-  "EpicSampleNameHash": ""
+	"FileVersion": 3,
+	"EngineAssociation": "{E361F5AA-469C-9F0A-2A51-968FE4B06237}",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "ArenaDuel",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "Terminal",
+			"Enabled": true
+		},
+		{
+			"Name": "GameplayAbilities",
+			"Enabled": true
+		}
+	]
 }

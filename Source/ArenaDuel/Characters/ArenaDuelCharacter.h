@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "AbilitySystemInterface.h"
 #include "ArenaDuelCharacter.generated.h"
 
 class UCameraComponent;
@@ -11,10 +12,12 @@ class UInputAction;
 class UInputMappingContext;
 class UArenaDuelCharacterMovementComponent;
 class UArenaDuelWeaponComponent;
+class UAbilitySystemComponent;
+class UArenaDuelAttributeSet;
 struct FInputActionValue;
 
 UCLASS()
-class ARENADUEL_API AArenaDuelCharacter : public ACharacter
+class ARENADUEL_API AArenaDuelCharacter : public ACharacter, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 
@@ -22,10 +25,17 @@ public:
 	AArenaDuelCharacter(const FObjectInitializer& ObjectInitializer);
 
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
+	virtual void PossessedBy(AController* NewController) override;
+	virtual void OnRep_PlayerState() override;
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	UArenaDuelCharacterMovementComponent* GetArenaDuelMovementComponent() const;
 	UCameraComponent* GetFirstPersonCamera() const { return FirstPersonCamera; }
 	UArenaDuelWeaponComponent* GetWeaponComponent() const { return WeaponComponent; }
 	bool IsCrouchInputHeld() const { return bCrouchInputHeld; }
+	bool IsDead() const { return bDead; }
+	float GetHealth() const;
+	float GetMaxHealth() const;
+	void ApplyServerDamage(float DamageAmount);
 
 protected:
 	virtual void PawnClientRestart() override;
@@ -49,6 +59,9 @@ protected:
 	void Weapon2Started();
 	void Weapon3Started();
 	void Weapon4Started();
+	void InitializeAbilityActorInfo();
+	void HandleDeath();
+	bool CanProcessGameplayInput() const { return IsLocallyControlled() && !bDead; }
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCameraComponent> FirstPersonCamera;
@@ -99,4 +112,10 @@ protected:
 	TObjectPtr<UArenaDuelWeaponComponent> WeaponComponent;
 
 	bool bCrouchInputHeld = false;
+
+	UPROPERTY(ReplicatedUsing=OnRep_Dead, VisibleInstanceOnly, BlueprintReadOnly, Category="Combat")
+	bool bDead = false;
+
+	UFUNCTION() void OnRep_Dead();
+	void SetDeadState();
 };

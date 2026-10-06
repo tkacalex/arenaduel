@@ -82,6 +82,12 @@ struct ARENADUEL_API FArenaDuelWeaponDefinition
 	float AimSensitivityMultiplier = 0.8f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	float BodyDamage = 0.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	float HeadshotMultiplier = 1.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float AimSpreadMultiplier = 0.65f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
@@ -118,6 +124,7 @@ public:
 	void EquipWeapon(int32 Index);
 	void StartAim();
 	void StopAim();
+	void CancelCombatActionsOnDeath();
 
 	const FArenaDuelWeaponDefinition& GetCurrentDefinition() const;
 	int32 GetWeaponDefinitionCount() const { return WeaponDefinitions.Num(); }

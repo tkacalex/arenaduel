@@ -15,6 +15,11 @@
 #include "InputActionValue.h"
 #include "InputMappingContext.h"
 #include "Engine/LocalPlayer.h"
+#include "../Player/ArenaDuelPlayerState.h"
+#include "../Combat/ArenaDuelAttributeSet.h"
+#include "AbilitySystemComponent.h"
+#include "GameplayEffect.h"
+#include "Net/UnrealNetwork.h"
 
 AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<UArenaDuelCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
@@ -31,6 +36,94 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	GetCharacterMovement()->bOrientRotationToMovement = false;
 	GetCharacterMovement()->bUseControllerDesiredRotation = false;
 	WeaponComponent = CreateDefaultSubobject<UArenaDuelWeaponComponent>(TEXT("WeaponComponent"));
+	bReplicates = true;
+}
+
+void AArenaDuelCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+	InitializeAbilityActorInfo();
+}
+
+void AArenaDuelCharacter::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
+	InitializeAbilityActorInfo();
+}
+
+UAbilitySystemComponent* AArenaDuelCharacter::GetAbilitySystemComponent() const
+{
+	const AArenaDuelPlayerState* State = GetPlayerState<AArenaDuelPlayerState>();
+	return State ? State->GetAbilitySystemComponent() : nullptr;
+}
+
+void AArenaDuelCharacter::InitializeAbilityActorInfo()
+{
+	if (AArenaDuelPlayerState* State = GetPlayerState<AArenaDuelPlayerState>())
+	{
+		if (UAbilitySystemComponent* ASC = State->GetAbilitySystemComponent())
+		{
+			ASC->InitAbilityActorInfo(State, this);
+			if (HasAuthority() && State->GetArenaDuelAttributes())
+			{
+				State->GetArenaDuelAttributes()->SetMaxHealth(100.0f);
+				State->GetArenaDuelAttributes()->SetHealth(100.0f);
+			}
+		}
+	}
+}
+
+float AArenaDuelCharacter::GetHealth() const
+{
+	const AArenaDuelPlayerState* State = GetPlayerState<AArenaDuelPlayerState>();
+	return State && State->GetArenaDuelAttributes() ? State->GetArenaDuelAttributes()->GetHealth() : 100.0f;
+}
+
+float AArenaDuelCharacter::GetMaxHealth() const
+{
+	const AArenaDuelPlayerState* State = GetPlayerState<AArenaDuelPlayerState>();
+	return State && State->GetArenaDuelAttributes() ? State->GetArenaDuelAttributes()->GetMaxHealth() : 100.0f;
+}
+
+void AArenaDuelCharacter::ApplyServerDamage(float DamageAmount)
+{
+	if (!HasAuthority() || bDead || DamageAmount <= 0.0f) return;
+	UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
+	if (!ASC) return;
+	UGameplayEffect* DamageEffect = NewObject<UGameplayEffect>(GetTransientPackage(), TEXT("ArenaDuelDamageEffect"));
+	DamageEffect->DurationPolicy = EGameplayEffectDurationType::Instant;
+	FGameplayModifierInfo Modifier;
+	Modifier.Attribute = UArenaDuelAttributeSet::GetHealthAttribute();
+	Modifier.ModifierOp = EGameplayModOp::Additive;
+	Modifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(-DamageAmount));
+	DamageEffect->Modifiers.Add(Modifier);
+	ASC->ApplyGameplayEffectToSelf(DamageEffect, 1.0f, ASC->MakeEffectContext());
+	if (GetHealth() <= 0.0f) HandleDeath();
+}
+
+void AArenaDuelCharacter::HandleDeath()
+{
+	if (bDead) return;
+	bDead = true;
+	SetDeadState();
+}
+
+void AArenaDuelCharacter::SetDeadState()
+{
+	if (WeaponComponent) WeaponComponent->CancelCombatActionsOnDeath();
+	if (GetCharacterMovement())
+	{
+		GetCharacterMovement()->StopMovementImmediately();
+		GetCharacterMovement()->DisableMovement();
+	}
+}
+
+void AArenaDuelCharacter::OnRep_Dead() { if (bDead) SetDeadState(); }
+
+void AArenaDuelCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(AArenaDuelCharacter, bDead);
 }
 
 UArenaDuelCharacterMovementComponent* AArenaDuelCharacter::GetArenaDuelMovementComponent() const
@@ -170,7 +263,7 @@ void AArenaDuelCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 
 void AArenaDuelCharacter::Move(const FInputActionValue& Value)
 {
-	if (!IsLocallyControlled() || !Controller)
+	if (!CanProcessGameplayInput() || !Controller)
 	{
 		return;
 	}
@@ -185,7 +278,7 @@ void AArenaDuelCharacter::Move(const FInputActionValue& Value)
 
 void AArenaDuelCharacter::Look(const FInputActionValue& Value)
 {
-	if (!IsLocallyControlled())
+	if (!CanProcessGameplayInput())
 	{
 		return;
 	}
@@ -209,7 +302,7 @@ void AArenaDuelCharacter::Look(const FInputActionValue& Value)
 
 void AArenaDuelCharacter::JumpStarted()
 {
-	if (!IsLocallyControlled())
+	if (!CanProcessGameplayInput())
 	{
 		return;
 	}
@@ -252,7 +345,7 @@ void AArenaDuelCharacter::JumpCompleted()
 
 void AArenaDuelCharacter::SprintStarted()
 {
-	if (IsLocallyControlled())
+	if (CanProcessGameplayInput())
 	{
 		if (UArenaDuelCharacterMovementComponent* MovementComponent = GetArenaDuelMovementComponent())
 		{
@@ -271,7 +364,7 @@ void AArenaDuelCharacter::SprintCompleted()
 
 void AArenaDuelCharacter::CrouchStarted()
 {
-	if (IsLocallyControlled())
+	if (CanProcessGameplayInput())
 	{
 		bCrouchInputHeld = true;
 		Crouch();
@@ -280,7 +373,7 @@ void AArenaDuelCharacter::CrouchStarted()
 
 void AArenaDuelCharacter::CrouchCompleted()
 {
-	if (IsLocallyControlled())
+	if (CanProcessGameplayInput())
 	{
 		bCrouchInputHeld = false;
 		if (!GetArenaDuelMovementComponent() || !GetArenaDuelMovementComponent()->IsSliding())
@@ -292,7 +385,7 @@ void AArenaDuelCharacter::CrouchCompleted()
 
 void AArenaDuelCharacter::SlideStarted()
 {
-	if (IsLocallyControlled())
+	if (CanProcessGameplayInput())
 	{
 		if (UArenaDuelCharacterMovementComponent* MovementComponent = GetArenaDuelMovementComponent())
 		{

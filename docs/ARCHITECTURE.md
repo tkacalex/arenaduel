@@ -50,6 +50,10 @@ The current camera is intentionally local and cosmetic. It does not force remote
 
 The first person camera attaches directly to the Character capsule at a 64 centimeter local Z offset. This places the initial eye point above the capsule center without introducing a Spring Arm, camera lag, or replicated cosmetic transform.
 
+## Phase 6 combat foundation
+
+`AArenaDuelPlayerState` owns the replicated `UAbilitySystemComponent` and `UArenaDuelAttributeSet`. Health and MaxHealth are GAS attributes initialized to 100, with replicated clamping. The Character initializes GAS actor info with PlayerState as OwnerActor and Character as AvatarActor. Server weapon traces apply instant GAS health changes to player Characters only. Body and head damage use data on the weapon definition, and shotgun pellets apply independently. A replicated Character death state stops movement, firing, aiming, reload completion, and further gameplay input. Respawning, rounds, abilities, and health regeneration remain out of scope.
+
 ## Enhanced Input lifecycle
 
 `AArenaDuelCharacter` adds its configured Mapping Context from `PawnClientRestart()`, not `BeginPlay()`. Unreal calls this lifecycle on the owning client when a player controlled Pawn is restarted, which covers initial possession and future Pawn replacement. The code checks local control, resolves the LocalPlayer subsystem, and checks `HasMappingContext()` before adding the context. Remote clients and dedicated servers do not register local input mappings.

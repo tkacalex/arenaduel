@@ -47,6 +47,8 @@ void AArenaDuelMovementDebugHUD::DrawHUD()
 	const float Kick = Weapon ? Weapon->GetCrosshairKick() : 0.0f;
 	const float Gap = FMath::Clamp(5.0f + Spread * 3.0f + Kick * 9.0f, 4.0f, 34.0f);
 	const FLinearColor Crosshair = Weapon && Weapon->IsAiming() ? FLinearColor(0.75f, 0.95f, 1.0f, 1.0f) : FLinearColor::White;
+	if (!Character->IsDead())
+	{
 	Canvas->K2_DrawLine(Center + FVector2D(-Gap - 7.0f, 0.0f), Center + FVector2D(-Gap, 0.0f), 1.5f, Crosshair);
 	Canvas->K2_DrawLine(Center + FVector2D(Gap, 0.0f), Center + FVector2D(Gap + 7.0f, 0.0f), 1.5f, Crosshair);
 	Canvas->K2_DrawLine(Center + FVector2D(0.0f, -Gap - 7.0f), Center + FVector2D(0.0f, -Gap), 1.5f, Crosshair);
@@ -58,6 +60,7 @@ void AArenaDuelMovementDebugHUD::DrawHUD()
 		Canvas->K2_DrawLine(Center + FVector2D(14.0f, -14.0f), Center + FVector2D(5.0f, -5.0f), 2.0f, Marker);
 		Canvas->K2_DrawLine(Center + FVector2D(-14.0f, 14.0f), Center + FVector2D(-5.0f, 5.0f), 2.0f, Marker);
 		Canvas->K2_DrawLine(Center + FVector2D(14.0f, 14.0f), Center + FVector2D(5.0f, 5.0f), 2.0f, Marker);
+	}
 	}
 
 	if (Weapon)
@@ -72,6 +75,12 @@ void AArenaDuelMovementDebugHUD::DrawHUD()
 
 	const float StaminaRatio = Movement->GetMaxStamina() > 0.0f ? Movement->GetStamina() / Movement->GetMaxStamina() : 0.0f;
 	const FVector2D StaminaOrigin(40.0f, Canvas->SizeY - 58.0f);
+	const float HealthMax = FMath::Max(Character->GetMaxHealth(), 1.0f);
+	const float HealthRatio = FMath::Clamp(Character->GetHealth() / HealthMax, 0.0f, 1.0f);
+	const FVector2D HealthOrigin(40.0f, Canvas->SizeY - 118.0f);
+	Canvas->K2_DrawLine(HealthOrigin, HealthOrigin + FVector2D(220.0f, 0.0f), 8.0f, FLinearColor(0.08f, 0.1f, 0.12f, 0.8f));
+	Canvas->K2_DrawLine(HealthOrigin, HealthOrigin + FVector2D(220.0f * HealthRatio, 0.0f), 6.0f, FLinearColor(0.9f, 0.25f, 0.3f, 1.0f));
+	DrawCanvasText(Canvas, FString::Printf(TEXT("%03d HP"), FMath::RoundToInt(Character->GetHealth())), HealthOrigin + FVector2D(0.0f, -30.0f), FLinearColor::White, GEngine->GetMediumFont());
 	Canvas->K2_DrawLine(StaminaOrigin, StaminaOrigin + FVector2D(190.0f, 0.0f), 6.0f, FLinearColor(0.08f, 0.1f, 0.12f, 0.8f));
 	Canvas->K2_DrawLine(StaminaOrigin, StaminaOrigin + FVector2D(190.0f * FMath::Clamp(StaminaRatio, 0.0f, 1.0f), 0.0f), 4.0f, FLinearColor(0.3f, 0.8f, 0.95f, 1.0f));
 	DrawCanvasText(Canvas, TEXT("STAMINA"), StaminaOrigin + FVector2D(0.0f, 12.0f), FLinearColor(0.7f, 0.8f, 0.85f, 1.0f), GEngine->GetSmallFont());
@@ -80,6 +89,10 @@ void AArenaDuelMovementDebugHUD::DrawHUD()
 	{
 		const FString Debug = FString::Printf(TEXT("SPEED %03d\nSTATE %s\nSTAMINA %02d / %02d\nSPREAD %.2f\nSEQ %d\nF3 HIDE"), FMath::RoundToInt(Movement->Velocity.Size2D()), *MovementState(Movement), FMath::RoundToInt(Movement->GetStamina()), FMath::RoundToInt(Movement->GetMaxStamina()), Spread, Weapon ? Weapon->GetLastShotSequence() : 0);
 		DrawCanvasText(Canvas, Debug, FVector2D(32.0f, 32.0f), FLinearColor(0.8f, 0.9f, 1.0f, 1.0f), GEngine->GetSmallFont());
+	}
+	if (Character->IsDead())
+	{
+		DrawCanvasText(Canvas, TEXT("DEFEATED"), Center + FVector2D(-75.0f, 54.0f), FLinearColor(1.0f, 0.2f, 0.25f, 1.0f), GEngine->GetMediumFont());
 	}
 #endif
 }

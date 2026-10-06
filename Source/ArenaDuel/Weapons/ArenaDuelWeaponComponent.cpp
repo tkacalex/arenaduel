@@ -22,15 +22,19 @@ namespace
 		Arc.Id = EArenaDuelWeaponId::ArcRifle;
 		Arc.DisplayName = TEXT("Arc Rifle");
 		Arc.AimSensitivityMultiplier = 0.75f;
+		Arc.BodyDamage = 27.0f; Arc.HeadshotMultiplier = 1.5f;
 		FArenaDuelWeaponDefinition SMG = Arc;
 		SMG.Id = EArenaDuelWeaponId::ShadeSMG; SMG.DisplayName = TEXT("Shade SMG"); SMG.MagazineCapacity = 32; SMG.ReserveCapacity = 128; SMG.RoundsPerMinute = 900.0f; SMG.BaseSpreadDegrees = 0.65f; SMG.MovementSpreadDegrees = 1.8f;
 		SMG.AimFOV = 80.0f; SMG.AimSensitivityMultiplier = 0.80f; SMG.AimSpreadMultiplier = 0.75f; SMG.AimViewmodelLocation = FVector(48.0f, 3.0f, -13.0f);
+		SMG.BodyDamage = 20.0f; SMG.HeadshotMultiplier = 1.4f;
 		FArenaDuelWeaponDefinition DMR = Arc;
 		DMR.Id = EArenaDuelWeaponId::RuneDMR; DMR.DisplayName = TEXT("Rune DMR"); DMR.MagazineCapacity = 12; DMR.ReserveCapacity = 48; DMR.RoundsPerMinute = 280.0f; DMR.BaseSpreadDegrees = 0.08f; DMR.MovementSpreadDegrees = 0.55f; DMR.bAutomatic = false;
 		DMR.AimFOV = 68.0f; DMR.AimSensitivityMultiplier = 0.65f; DMR.AimSpreadMultiplier = 0.35f; DMR.AimViewmodelLocation = FVector(58.0f, 1.0f, -11.0f);
+		DMR.BodyDamage = 42.0f; DMR.HeadshotMultiplier = 1.6f;
 		FArenaDuelWeaponDefinition Shotgun = Arc;
 		Shotgun.Id = EArenaDuelWeaponId::HexShotgun; Shotgun.DisplayName = TEXT("Hex Shotgun"); Shotgun.MagazineCapacity = 6; Shotgun.ReserveCapacity = 30; Shotgun.RoundsPerMinute = 75.0f; Shotgun.BaseSpreadDegrees = 5.0f; Shotgun.MovementSpreadDegrees = 2.0f; Shotgun.Pellets = 8; Shotgun.bAutomatic = false;
 		Shotgun.AimFOV = 82.0f; Shotgun.AimSensitivityMultiplier = 0.80f; Shotgun.AimSpreadMultiplier = 0.85f; Shotgun.AimViewmodelLocation = FVector(45.0f, 4.0f, -15.0f);
+		Shotgun.BodyDamage = 11.0f; Shotgun.HeadshotMultiplier = 1.25f;
 		return { Arc, SMG, DMR, Shotgun };
 	}
 
@@ -124,6 +128,7 @@ float UArenaDuelWeaponComponent::GetCurrentSpreadDegrees() const
 
 void UArenaDuelWeaponComponent::StartFire()
 {
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead()) return;
 	if (bFireHeld) return;
 	if (bReloading || GetCurrentMagazineAmmo() <= 0 || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	bFireHeld = true;
@@ -144,18 +149,21 @@ void UArenaDuelWeaponComponent::StopFire()
 }
 void UArenaDuelWeaponComponent::Reload()
 {
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead()) return;
 	CancelLocalAndServerFire();
 	StopAim();
 	if (GetOwnerRole() == ROLE_Authority) ServerRequestReload_Implementation(); else ServerRequestReload();
 }
 void UArenaDuelWeaponComponent::EquipWeapon(int32 Index)
 {
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead()) return;
 	CancelLocalAndServerFire();
 	StopAim();
 	if (GetOwnerRole() == ROLE_Authority) ServerRequestEquip_Implementation(Index); else ServerRequestEquip(Index);
 }
 void UArenaDuelWeaponComponent::StartAim()
 {
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead()) return;
 	if (bAiming) return;
 	bAiming = true;
 	if (GetOwnerRole() == ROLE_Authority) ServerSetAiming_Implementation(true); else ServerSetAiming(true);
@@ -174,6 +182,13 @@ void UArenaDuelWeaponComponent::StopAim()
 		UpdateAimVisual();
 	}
 }
+void UArenaDuelWeaponComponent::CancelCombatActionsOnDeath()
+{
+	CancelLocalAndServerFire();
+	StopAim();
+	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(ReloadTimerHandle);
+	bReloading = false;
+}
 void UArenaDuelWeaponComponent::ServerSetAiming_Implementation(bool bAimingState)
 {
 	bAiming = bAimingState && Cast<AArenaDuelCharacter>(GetOwner()) && Cast<AArenaDuelCharacter>(GetOwner())->GetController() != nullptr;
@@ -182,7 +197,7 @@ void UArenaDuelWeaponComponent::ServerSetFireHeld_Implementation(bool bHeld) { i
 bool UArenaDuelWeaponComponent::CanBeginAuthoritativeFire() const
 {
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
-	return Character && Character->GetController() && GetWorld() && WeaponDefinitions.IsValidIndex(EquippedWeaponIndex) && !bReloading && GetCurrentMagazineAmmo() > 0;
+	return Character && !Character->IsDead() && Character->GetController() && GetWorld() && WeaponDefinitions.IsValidIndex(EquippedWeaponIndex) && !bReloading && GetCurrentMagazineAmmo() > 0;
 }
 void UArenaDuelWeaponComponent::StartAuthoritativeFire()
 {
@@ -220,7 +235,7 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 	const FArenaDuelWeaponDefinition& Definition = GetCurrentDefinition();
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	const AController* Controller = Character ? Character->GetController() : nullptr;
-	if (!State || bReloading || State->MagazineAmmo <= 0 || !GetOwner() || !Character || !Controller || !GetWorld()) return;
+	if (!State || bReloading || Character->IsDead() || State->MagazineAmmo <= 0 || !GetOwner() || !Character || !Controller || !GetWorld()) return;
 	const int32 DefinitionIndex = static_cast<int32>(EquippedWeaponIndex);
 	const double ServerTime = GetWorld()->GetTimeSeconds();
 	if (!NextAllowedFireServerTimes.IsValidIndex(DefinitionIndex)) NextAllowedFireServerTimes.SetNum(WeaponDefinitions.Num());
@@ -240,6 +255,14 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelWeaponTrace), true, Character);
 		if (!GetWorld()->LineTraceSingleByChannel(Hit, Origin, Origin + PelletDirection * Definition.Range, ECC_Visibility, Params)) continue;
 		const EArenaDuelShotResult Result = ClassifyHit(Hit);
+		if ((Result == EArenaDuelShotResult::Body || Result == EArenaDuelShotResult::Head) && Hit.GetActor() != Character)
+		{
+			if (AArenaDuelCharacter* Victim = Cast<AArenaDuelCharacter>(Hit.GetActor()))
+			{
+				const float Damage = Definition.BodyDamage * (Result == EArenaDuelShotResult::Head ? Definition.HeadshotMultiplier : 1.0f);
+				Victim->ApplyServerDamage(Damage);
+			}
+		}
 		ClosestDistance = FMath::Min(ClosestDistance, FVector::Dist(Origin, Hit.Location));
 		LastTarget = Hit.GetActor();
 		if (Result == EArenaDuelShotResult::Head) ++HeadPellets;
@@ -254,6 +277,7 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 void UArenaDuelWeaponComponent::CompleteReload()
 {
 	FArenaDuelWeaponRuntimeState* State = GetMutableCurrentRuntimeState();
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead()) { bReloading = false; return; }
 	if (!State || !bReloading) return;
 	const int32 Loaded = FMath::Min(FMath::Max(0, GetCurrentDefinition().MagazineCapacity - State->MagazineAmmo), State->ReserveAmmo);
 	State->MagazineAmmo += Loaded; State->ReserveAmmo -= Loaded; bReloading = false;
