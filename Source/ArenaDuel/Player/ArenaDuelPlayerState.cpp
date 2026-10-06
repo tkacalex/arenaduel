@@ -7,6 +7,8 @@
 
 AArenaDuelPlayerState::AArenaDuelPlayerState()
 {
+	SetNetUpdateFrequency(100.0f);
+	SetMinNetUpdateFrequency(30.0f);
 	AbilitySystemComponent = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	AbilitySystemComponent->SetIsReplicated(true);
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);

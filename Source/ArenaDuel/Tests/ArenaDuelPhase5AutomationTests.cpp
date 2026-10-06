@@ -194,7 +194,7 @@ bool FArenaDuelPhase5GunRangeTest::RunTest(const FString& Parameters)
 			TestNotNull(TEXT("Target head visual exists"), Target->HeadVisual.Get());
 		}
 	}
-	for (const TCHAR* Label : {TEXT("Phase5_PlayerStart"), TEXT("Phase5_Floor"), TEXT("Phase5_NorthSafetyWall"), TEXT("Phase5_SouthSafetyWall"), TEXT("Phase5_WestSafetyWall"), TEXT("Phase5_EastSafetyWall"), TEXT("Phase5_DirectionalLight"), TEXT("Phase5_SkyLight"), TEXT("Phase5_BulletImpactWall")})
+	for (const TCHAR* Label : {TEXT("Phase5_PlayerStart_A"), TEXT("Phase5_PlayerStart_B"), TEXT("Phase5_Floor"), TEXT("Phase5_NorthSafetyWall"), TEXT("Phase5_SouthSafetyWall"), TEXT("Phase5_WestSafetyWall"), TEXT("Phase5_EastSafetyWall"), TEXT("Phase5_DirectionalLight"), TEXT("Phase5_SkyLight"), TEXT("Phase5_BulletImpactWall")})
 	{
 		TestTrue(FString::Printf(TEXT("Gun range contains %s"), Label), Labels.Contains(Label));
 	}

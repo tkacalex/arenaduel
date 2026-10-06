@@ -8,6 +8,7 @@
 #include "ArenaDuelCharacter.generated.h"
 
 class UCameraComponent;
+class UBoxComponent;
 class UInputAction;
 class UInputMappingContext;
 class UArenaDuelCharacterMovementComponent;
@@ -36,6 +37,10 @@ public:
 	float GetHealth() const;
 	float GetMaxHealth() const;
 	void ApplyServerDamage(float DamageAmount);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
+	TObjectPtr<UBoxComponent> BodyHitZone;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
+	TObjectPtr<UBoxComponent> HeadHitZone;
 
 protected:
 	virtual void PawnClientRestart() override;

@@ -42,6 +42,7 @@ namespace
 	{
 		if (!Hit.GetActor()) return EArenaDuelShotResult::World;
 		if (Hit.BoneName == TEXT("head") || (Hit.Component.IsValid() && Hit.Component->ComponentHasTag(TEXT("HeadHitZone")))) return EArenaDuelShotResult::Head;
+		if (Hit.Component.IsValid() && Hit.Component->ComponentHasTag(TEXT("BodyHitZone"))) return EArenaDuelShotResult::Body;
 		if (Hit.GetActor()->IsA<AArenaDuelWeaponTarget>() || Hit.GetActor()->IsA<APawn>()) return EArenaDuelShotResult::Body;
 		return EArenaDuelShotResult::World;
 	}
@@ -184,14 +185,40 @@ void UArenaDuelWeaponComponent::StopAim()
 }
 void UArenaDuelWeaponComponent::CancelCombatActionsOnDeath()
 {
-	CancelLocalAndServerFire();
-	StopAim();
-	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(ReloadTimerHandle);
-	bReloading = false;
+	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	const bool bAuthority = GetOwnerRole() == ROLE_Authority;
+	const bool bLocalOwner = Character && Character->IsLocallyControlled();
+	if (bAuthority)
+	{
+		StopAuthoritativeFire();
+		bAiming = false;
+		bReloading = false;
+		if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(ReloadTimerHandle);
+	}
+	if (bLocalOwner)
+	{
+		CancelLocalAndServerFire();
+		StopAim();
+		if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticRecoveryTimerHandle);
+	}
+	if (!bAuthority && !bLocalOwner)
+	{
+		bFireHeld = false;
+		bAiming = false;
+		if (GetWorld())
+		{
+			GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticFireTimerHandle);
+			GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticRecoveryTimerHandle);
+			GetWorld()->GetTimerManager().ClearTimer(AimVisualTimerHandle);
+		}
+	}
 }
 void UArenaDuelWeaponComponent::ServerSetAiming_Implementation(bool bAimingState)
 {
-	bAiming = bAimingState && Cast<AArenaDuelCharacter>(GetOwner()) && Cast<AArenaDuelCharacter>(GetOwner())->GetController() != nullptr;
+	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	if (!Character) return;
+	if (!bAimingState) { bAiming = false; return; }
+	if (!Character->IsDead() && Character->GetController()) bAiming = true;
 }
 void UArenaDuelWeaponComponent::ServerSetFireHeld_Implementation(bool bHeld) { if (bHeld) StartAuthoritativeFire(); else StopAuthoritativeFire(); }
 bool UArenaDuelWeaponComponent::CanBeginAuthoritativeFire() const
@@ -216,6 +243,8 @@ void UArenaDuelWeaponComponent::CancelLocalAndServerFire()
 }
 void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 {
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	if (!Character || Character->IsDead()) return;
 	FArenaDuelWeaponRuntimeState* State = GetMutableCurrentRuntimeState();
 	if (!State || bReloading || State->MagazineAmmo >= GetCurrentDefinition().MagazineCapacity || State->ReserveAmmo <= 0) return;
 	StopAuthoritativeFire();
@@ -225,6 +254,8 @@ void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 }
 void UArenaDuelWeaponComponent::ServerRequestEquip_Implementation(int32 Index)
 {
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	if (!Character || Character->IsDead()) return;
 	if (WeaponDefinitions.IsValidIndex(Index) && !bReloading && Index != EquippedWeaponIndex) { StopAuthoritativeFire(); EquippedWeaponIndex = static_cast<uint8>(Index); OnRep_EquippedWeapon(); }
 }
 
@@ -235,7 +266,7 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 	const FArenaDuelWeaponDefinition& Definition = GetCurrentDefinition();
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	const AController* Controller = Character ? Character->GetController() : nullptr;
-	if (!State || bReloading || Character->IsDead() || State->MagazineAmmo <= 0 || !GetOwner() || !Character || !Controller || !GetWorld()) return;
+	if (!State || !GetOwner() || !Character || !Controller || !GetWorld() || Character->IsDead() || bReloading || State->MagazineAmmo <= 0) return;
 	const int32 DefinitionIndex = static_cast<int32>(EquippedWeaponIndex);
 	const double ServerTime = GetWorld()->GetTimeSeconds();
 	if (!NextAllowedFireServerTimes.IsValidIndex(DefinitionIndex)) NextAllowedFireServerTimes.SetNum(WeaponDefinitions.Num());

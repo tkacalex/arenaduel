@@ -17,8 +17,8 @@ void UArenaDuelAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty
 void UArenaDuelAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data)
 {
 	Super::PostGameplayEffectExecute(Data);
-	MaxHealth.SetBaseValue(FMath::Max(1.0f, MaxHealth.GetBaseValue()));
-	Health.SetBaseValue(FMath::Clamp(Health.GetBaseValue(), 0.0f, MaxHealth.GetBaseValue()));
+	SetMaxHealth(FMath::Max(1.0f, GetMaxHealth()));
+	SetHealth(FMath::Clamp(GetHealth(), 0.0f, GetMaxHealth()));
 }
 
 void UArenaDuelAttributeSet::OnRep_Health(const FGameplayAttributeData& OldHealth) { GAMEPLAYATTRIBUTE_REPNOTIFY(UArenaDuelAttributeSet, Health, OldHealth); }

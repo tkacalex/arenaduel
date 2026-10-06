@@ -7,6 +7,7 @@
 #include "../ArenaDuel.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/BoxComponent.h"
 #include "Components/InputComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -36,6 +37,23 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	GetCharacterMovement()->bOrientRotationToMovement = false;
 	GetCharacterMovement()->bUseControllerDesiredRotation = false;
 	WeaponComponent = CreateDefaultSubobject<UArenaDuelWeaponComponent>(TEXT("WeaponComponent"));
+	BodyHitZone = CreateDefaultSubobject<UBoxComponent>(TEXT("BodyHitZone"));
+	BodyHitZone->SetupAttachment(GetCapsuleComponent());
+	BodyHitZone->SetRelativeLocation(FVector(0.0f, 0.0f, 0.0f));
+	BodyHitZone->SetBoxExtent(FVector(38.0f, 38.0f, 52.0f));
+	BodyHitZone->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	BodyHitZone->SetCollisionResponseToAllChannels(ECR_Ignore);
+	BodyHitZone->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	BodyHitZone->ComponentTags.Add(TEXT("BodyHitZone"));
+	HeadHitZone = CreateDefaultSubobject<UBoxComponent>(TEXT("HeadHitZone"));
+	HeadHitZone->SetupAttachment(GetCapsuleComponent());
+	HeadHitZone->SetRelativeLocation(FVector(0.0f, 0.0f, 68.0f));
+	HeadHitZone->SetBoxExtent(FVector(24.0f, 24.0f, 14.0f));
+	HeadHitZone->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	HeadHitZone->SetCollisionResponseToAllChannels(ECR_Ignore);
+	HeadHitZone->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	HeadHitZone->ComponentTags.Add(TEXT("HeadHitZone"));
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
 	bReplicates = true;
 }
 
