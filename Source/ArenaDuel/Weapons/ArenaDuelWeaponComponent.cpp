@@ -114,6 +114,7 @@ float UArenaDuelWeaponComponent::GetCurrentSpreadDegrees() const
 void UArenaDuelWeaponComponent::StartFire()
 {
 	if (bFireHeld) return;
+	if (bReloading || GetCurrentMagazineAmmo() <= 0 || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	bFireHeld = true;
 	if (AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled())
 	{
@@ -124,13 +125,14 @@ void UArenaDuelWeaponComponent::StartFire()
 			GetWorld()->GetTimerManager().SetTimer(LocalCosmeticFireTimerHandle, this, &UArenaDuelWeaponComponent::LocalCosmeticShot, Interval, true, Interval);
 		}
 	}
-	if (GetOwnerRole() == ROLE_Authority) StartAuthoritativeFire(); else ServerRequestStartFire();
+	if (GetOwnerRole() == ROLE_Authority) StartAuthoritativeFire(); else ServerSetFireHeld(true);
 }
 void UArenaDuelWeaponComponent::StopFire()
 {
+	if (!bFireHeld) return;
 	bFireHeld = false;
 	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticFireTimerHandle);
-	if (GetOwnerRole() == ROLE_Authority) StopAuthoritativeFire(); else ServerRequestStopFire();
+	if (GetOwnerRole() == ROLE_Authority) StopAuthoritativeFire(); else ServerSetFireHeld(false);
 }
 void UArenaDuelWeaponComponent::Reload()
 {
@@ -143,14 +145,19 @@ void UArenaDuelWeaponComponent::Reload()
 }
 void UArenaDuelWeaponComponent::EquipWeapon(int32 Index)
 {
+	bFireHeld = false;
 	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticFireTimerHandle);
 	if (GetOwnerRole() == ROLE_Authority) ServerRequestEquip_Implementation(Index); else ServerRequestEquip(Index);
 }
-void UArenaDuelWeaponComponent::ServerRequestStartFire_Implementation() { StartAuthoritativeFire(); }
-void UArenaDuelWeaponComponent::ServerRequestStopFire_Implementation() { StopAuthoritativeFire(); }
+void UArenaDuelWeaponComponent::ServerSetFireHeld_Implementation(bool bHeld) { if (bHeld) StartAuthoritativeFire(); else StopAuthoritativeFire(); }
+bool UArenaDuelWeaponComponent::CanBeginAuthoritativeFire() const
+{
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	return Character && Character->GetController() && GetWorld() && WeaponDefinitions.IsValidIndex(EquippedWeaponIndex) && !bReloading && GetCurrentMagazineAmmo() > 0;
+}
 void UArenaDuelWeaponComponent::StartAuthoritativeFire()
 {
-	if (bServerFireHeld) return;
+	if (bServerFireHeld || !CanBeginAuthoritativeFire()) return;
 	bServerFireHeld = true;
 	FireAuthoritative();
 	if (GetCurrentDefinition().bAutomatic) { const float Interval = 60.0f / FMath::Max(GetCurrentDefinition().RoundsPerMinute, 1.0f); GetWorld()->GetTimerManager().SetTimer(AutomaticFireTimerHandle, this, &UArenaDuelWeaponComponent::FireAuthoritative, Interval, true, Interval); }
@@ -249,13 +256,22 @@ void UArenaDuelWeaponComponent::RecoverCosmeticKick()
 	}
 	LocalWeaponKick = FMath::FInterpTo(LocalWeaponKick, 0.0f, 0.02f, 12.0f);
 	if (FirstPersonWeaponMesh && LocalWeaponKick > KINDA_SMALL_NUMBER) FirstPersonWeaponMesh->SetRelativeLocation(FVector(35.0f - 5.0f * LocalWeaponKick, 18.0f, -18.0f + 2.0f * LocalWeaponKick));
-	else if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticRecoveryTimerHandle);
+	if (FMath::IsNearlyZero(LocalWeaponKick, KINDA_SMALL_NUMBER) && FMath::IsNearlyZero(LocalRecoilPitchRemaining, KINDA_SMALL_NUMBER) && FMath::IsNearlyZero(LocalRecoilYawRemaining, KINDA_SMALL_NUMBER))
+	{
+		LocalWeaponKick = 0.0f;
+		LocalRecoilPitchRemaining = 0.0f;
+		LocalRecoilYawRemaining = 0.0f;
+		RefreshWeaponVisual();
+		if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticRecoveryTimerHandle);
+	}
 }
 void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 {
 	if (!FirstPersonWeaponMesh) return;
 	const FVector Scale = EquippedWeaponIndex == 0 ? FVector(0.75f, 0.12f, 0.12f) : EquippedWeaponIndex == 1 ? FVector(0.4f, 0.14f, 0.12f) : EquippedWeaponIndex == 2 ? FVector(1.0f, 0.09f, 0.09f) : FVector(0.55f, 0.22f, 0.16f);
-	FirstPersonWeaponMesh->SetRelativeLocation(FVector(35.0f, 18.0f, -18.0f)); FirstPersonWeaponMesh->SetRelativeScale3D(Scale);
+	const FVector Location = EquippedWeaponIndex == 2 ? FVector(42.0f, 16.0f, -17.0f) : EquippedWeaponIndex == 3 ? FVector(32.0f, 20.0f, -19.0f) : FVector(35.0f, 18.0f, -18.0f);
+	const FRotator Rotation = EquippedWeaponIndex == 1 ? FRotator(0.0f, 0.0f, -2.0f) : EquippedWeaponIndex == 3 ? FRotator(0.0f, 0.0f, 2.0f) : FRotator::ZeroRotator;
+	FirstPersonWeaponMesh->SetRelativeLocation(Location); FirstPersonWeaponMesh->SetRelativeRotation(Rotation); FirstPersonWeaponMesh->SetRelativeScale3D(Scale);
 }
 void UArenaDuelWeaponComponent::SetLastShot(EArenaDuelShotResult Result, float Distance, AActor* Target)
 {

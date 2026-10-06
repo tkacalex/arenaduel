@@ -121,11 +121,8 @@ public:
 	float GetCrosshairKick() const;
 
 protected:
-	UFUNCTION(Server, Unreliable)
-	void ServerRequestStartFire();
-
-	UFUNCTION(Server, Unreliable)
-	void ServerRequestStopFire();
+	UFUNCTION(Server, Reliable)
+	void ServerSetFireHeld(bool bHeld);
 
 	UFUNCTION(Server, Reliable)
 	void ServerRequestReload();
@@ -136,6 +133,7 @@ protected:
 	void FireAuthoritative();
 	void StartAuthoritativeFire();
 	void StopAuthoritativeFire();
+	bool CanBeginAuthoritativeFire() const;
 	void ApplyLocalRecoil();
 	void LocalCosmeticShot();
 	void RecoverCosmeticKick();
