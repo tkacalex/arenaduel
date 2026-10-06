@@ -81,6 +81,7 @@ protected:
 	bool bLastRoundInProgress = false;
 	bool bLastMatchComplete = false;
 	bool bWardenAbilityPalette = false;
+	bool bRiftAbilityPalette = false;
 	int32 LastHealthBand = INDEX_NONE;
 	FTimerHandle RefreshTimer;
 	FTimerHandle MatchRefreshTimer;

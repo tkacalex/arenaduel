@@ -208,6 +208,7 @@ void UArenaDuelHUDWidget::RefreshData()
 		const float PrimaryCooldown = PlayerState->GetPrimaryAbilityCooldownRemaining();
 		const float SecondaryCooldown = PlayerState->GetSecondaryAbilityCooldownRemaining();
 		bWardenAbilityPalette = PlayerState->GetCharacterArchetype() == EArenaDuelCharacterArchetype::Warden;
+		bRiftAbilityPalette = PlayerState->GetCharacterArchetype() == EArenaDuelCharacterArchetype::Rift;
 		SetAbilitySlotState(0, PlayerState->GetPrimaryAbilityDisplayName(), FText::FromString(TEXT("Q")), PrimaryCooldown, PrimaryCooldown <= KINDA_SMALL_NUMBER);
 		SetAbilitySlotState(1, PlayerState->GetSecondaryAbilityDisplayName(), FText::FromString(TEXT("E")), SecondaryCooldown, SecondaryCooldown <= KINDA_SMALL_NUMBER);
 	}
@@ -324,7 +325,8 @@ void UArenaDuelHUDWidget::SetAbilitySlotState(int32 Index, const FText& Name, co
 		SetText(AbilityCooldowns[Index], FText::FromString(FString::Printf(TEXT("%.1f"), FMath::Max(0.0f, Cooldown))));
 		AbilityCooldowns[Index]->SetVisibility(bCoolingDown ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	}
-	const FLinearColor Accent = Index == 0 ? HUDCyan : bWardenAbilityPalette ? FLinearColor(0.68f, 0.88f, 1.0f, 1.0f) : HUDViolet;
+	const FLinearColor Accent = bRiftAbilityPalette ? (Index == 0 ? HUDViolet : FLinearColor(0.48f, 0.78f, 1.0f))
+		: Index == 0 ? HUDCyan : bWardenAbilityPalette ? FLinearColor(0.68f, 0.88f, 1.0f, 1.0f) : HUDViolet;
 	AbilityNames[Index]->SetColorAndOpacity(bReady ? Accent : Secondary);
 	AbilityKeys[Index]->SetColorAndOpacity(Accent);
 	if (AbilityBackgrounds.IsValidIndex(Index)) AbilityBackgrounds[Index]->SetBrushColor(FLinearColor(0.027f, 0.063f, 0.106f, bReady ? 0.82f : 0.58f));

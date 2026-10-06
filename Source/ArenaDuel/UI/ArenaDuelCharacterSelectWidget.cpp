@@ -86,7 +86,20 @@ const FArenaDuelCharacterPresentation& UArenaDuelCharacterSelectWidget::GetPrese
 	static const FArenaDuelCharacterPresentation Warden {
 		TEXT("WARDEN"), TEXT("DEFENSE / CONTROL"), TEXT("Durable space controller built around cover and explosive repositioning."),
 		TEXT("ARC BARRIER"), TEXT("Deploy durable bullet-blocking cover"), TEXT("BURST LEAP"), TEXT("Forward and upward mobility burst"), {0.6f, 0.6f, 1.0f, 0.6f} };
-	return Archetype == EArenaDuelCharacterArchetype::Warden ? Warden : Shadow;
+	static const FArenaDuelCharacterPresentation Rift {
+		TEXT("RIFT"), TEXT("MOBILITY / REPOSITION"), TEXT("Precision traversal and controlled relocation."),
+		TEXT("RIFT GRAPPLE"), TEXT("Pull toward targeted arena geometry"), TEXT("PHASE GATE"), TEXT("Reposition to a validated destination"), {0.4f, 1.0f, 0.6f, 1.0f} };
+	switch (Archetype)
+	{
+	case EArenaDuelCharacterArchetype::Warden: return Warden;
+	case EArenaDuelCharacterArchetype::Rift: return Rift;
+	default: return Shadow;
+	}
+}
+
+EArenaDuelCharacterArchetype UArenaDuelCharacterSelectWidget::CycleArchetype(EArenaDuelCharacterArchetype Current, int32 Direction)
+{
+	return static_cast<EArenaDuelCharacterArchetype>((static_cast<int32>(Current) + (Direction < 0 ? 2 : 1)) % 3);
 }
 
 bool UArenaDuelCharacterSelectWidget::Initialize()
@@ -171,10 +184,16 @@ void UArenaDuelCharacterSelectWidget::BuildPlayerPanel(int32 SideIndex)
 		if (Index == 0) { PanelWidgets.PrimaryName = Name; PanelWidgets.PrimaryDescription = Description; }
 		else { PanelWidgets.SecondaryName = Name; PanelWidgets.SecondaryDescription = Description; }
 	}
-	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("SHADOW"), Color, 70, 656, 231, 45));
-	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("WARDEN"), Color, 321, 656, 231, 45));
+	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("SHADOW"), Color, 70, 656, 152, 45));
+	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("WARDEN"), Color, 237, 656, 152, 45));
+	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("RIFT"), Color, 404, 656, 152, 45));
+	for (UButton* Roster : PanelWidgets.RosterButtons)
+	{
+		if (UTextBlock* Label = Cast<UTextBlock>(Roster->GetChildAt(0))) Label->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 16));
+	}
 	PanelWidgets.RosterButtons[0]->OnClicked.AddDynamic(this, &ThisClass::SelectShadow);
 	PanelWidgets.RosterButtons[1]->OnClicked.AddDynamic(this, &ThisClass::SelectWarden);
+	PanelWidgets.RosterButtons[2]->OnClicked.AddDynamic(this, &ThisClass::SelectRift);
 	UTextBlock* ReadyText = nullptr;
 	PanelWidgets.ReadyButton = Button(WidgetTree, Root, TEXT("READY"), Color, 28, 721, 574, 48, &ReadyText);
 	PanelWidgets.ReadyText = ReadyText;
@@ -184,7 +203,7 @@ void UArenaDuelCharacterSelectWidget::BuildPlayerPanel(int32 SideIndex)
 bool UArenaDuelCharacterSelectWidget::HasExpectedTree() const
 {
 	return WidgetTree && WidgetTree->RootWidget && ReferenceCanvas && Panels.Num() == 2 && CenterLabel && Matchup
-		&& Panels[0].Root && Panels[1].Root && Panels[0].RosterButtons.Num() == 2 && Panels[1].RosterButtons.Num() == 2
+		&& Panels[0].Root && Panels[1].Root && Panels[0].RosterButtons.Num() == 3 && Panels[1].RosterButtons.Num() == 3
 		&& Panels[0].ReadyButton && Panels[1].ReadyButton;
 }
 
@@ -234,7 +253,7 @@ void UArenaDuelCharacterSelectWidget::RefreshLobby()
 		UpdateText(Panel.ReadyText, bCountdown ? TEXT("LOCKED / MATCH STARTING") : bReady ? (bLocal ? TEXT("READY / CLICK TO CANCEL") : TEXT("READY")) : bLocal ? TEXT("READY") : Player ? TEXT("SELECTING...") : TEXT("WAITING FOR PLAYER..."));
 		Panel.ReadyButton->SetIsEnabled(bLocal && !bCountdown);
 		Panel.Root->SetRenderOpacity(bCountdown ? 0.73f : Player ? 1.0f : 0.60f);
-		for (int32 Index = 0; Index < 2; ++Index)
+		for (int32 Index = 0; Index < Panel.RosterButtons.Num(); ++Index)
 		{
 			Panel.RosterButtons[Index]->SetIsEnabled(bLocal && !bReady && !bCountdown);
 			const bool bSelected = static_cast<int32>(Panel.DisplayArchetype) == Index;
@@ -263,6 +282,7 @@ void UArenaDuelCharacterSelectWidget::Select(EArenaDuelCharacterArchetype Archet
 }
 void UArenaDuelCharacterSelectWidget::SelectShadow() { Select(EArenaDuelCharacterArchetype::Shadow); }
 void UArenaDuelCharacterSelectWidget::SelectWarden() { Select(EArenaDuelCharacterArchetype::Warden); }
+void UArenaDuelCharacterSelectWidget::SelectRift() { Select(EArenaDuelCharacterArchetype::Rift); }
 void UArenaDuelCharacterSelectWidget::ToggleReady()
 {
 	if (AArenaDuelPlayerController* Controller = Cast<AArenaDuelPlayerController>(GetOwningPlayer())) Controller->ToggleCharacterReady();
@@ -276,7 +296,7 @@ FReply UArenaDuelCharacterSelectWidget::NativeOnPreviewKeyDown(const FGeometry& 
 	if (Key == EKeys::Escape) { if (Local && Local->IsCharacterReady() && !Event.IsRepeat()) ToggleReady(); return FReply::Handled(); }
 	if (Key == EKeys::A || Key == EKeys::D || Key == EKeys::Left || Key == EKeys::Right)
 	{
-		if (Local && !Local->IsCharacterReady() && !Event.IsRepeat()) Select(Local->GetCharacterArchetype() == EArenaDuelCharacterArchetype::Shadow ? EArenaDuelCharacterArchetype::Warden : EArenaDuelCharacterArchetype::Shadow);
+		if (Local && !Local->IsCharacterReady() && !Event.IsRepeat()) Select(CycleArchetype(Local->GetCharacterArchetype(), Key == EKeys::A || Key == EKeys::Left ? -1 : 1));
 		return FReply::Handled();
 	}
 	return Super::NativeOnPreviewKeyDown(Geometry, Event);
@@ -323,7 +343,22 @@ int32 UArenaDuelCharacterSelectWidget::NativePaint(const FPaintArgs& Args, const
 		const float CX = X + 310;
 		const float CY = Y + 196;
 		const bool bWarden = Panels[SideIndex].DisplayArchetype == EArenaDuelCharacterArchetype::Warden;
+		const bool bRift = Panels[SideIndex].DisplayArchetype == EArenaDuelCharacterArchetype::Rift;
 		const FLinearColor IdentityColor = bWarden ? Cyan : Violet;
+		if (bRift)
+		{
+			// Lean asymmetric spatial-mage mask, distinct from the assassin hood and plated Warden.
+			Polygon({{CX - 98, CY + 126}, {CX - 72, CY + 28}, {CX - 42, CY - 98}, {CX + 32, CY - 78}, {CX + 54, CY + 18}, {CX + 105, CY + 126}}, FLinearColor(0.06f, 0.035f, 0.13f));
+			Lines({{CX - 98, CY + 126}, {CX - 72, CY + 28}, {CX - 42, CY - 98}, {CX + 32, CY - 78}, {CX + 54, CY + 18}, {CX + 105, CY + 126}}, Violet, 3);
+			Polygon({{CX - 28, CY - 56}, {CX + 24, CY - 44}, {CX + 35, CY - 7}, {CX + 5, CY + 31}, {CX - 32, CY + 3}}, FLinearColor(0.015f, 0.04f, 0.08f));
+			Lines({{CX - 28, CY - 56}, {CX + 7, CY - 29}, {CX - 7, CY - 5}, {CX + 5, CY + 31}}, Cyan, 3);
+			Lines({{CX + 24, CY - 44}, {CX + 35, CY - 7}, {CX + 5, CY + 31}, {CX - 32, CY + 3}}, Violet, 2);
+			for (int32 I = 0; I < 3; ++I)
+				Lines({{CX - 165 - I * 15, CY + 50}, {CX - 119 - I * 13, CY - 60}, {CX + 101 + I * 15, CY - 65}, {CX + 143 + I * 17, CY + 80}}, (I == 1 ? Cyan : Violet).CopyWithNewOpacity(0.5f), 2);
+			Lines({{CX - 43, CY + 51}, {CX + 21, CY + 72}, {CX - 16, CY + 102}, {CX + 38, CY + 124}}, Cyan, 2);
+		}
+		else
+		{
 		Polygon({{CX - 148, CY + 127}, {CX - 112, CY + 54}, {CX - 46, CY + 22}, {CX + 45, CY + 22}, {CX + 122, CY + 57}, {CX + 166, CY + 127}}, FLinearColor(0.04f, 0.065f, 0.11f));
 		Polygon({{CX - 67, CY + 17}, {CX - 66, CY - 50}, {CX - 37, CY - 101}, {CX + 26, CY - 111}, {CX + 64, CY - 60}, {CX + 74, CY + 22}, {CX + 5, CY + 49}}, FLinearColor(0.05f, 0.055f, 0.095f));
 		Polygon({{CX - 55, CY - 50}, {CX - 23, CY - 72}, {CX + 33, CY - 63}, {CX + 50, CY - 40}, {CX + 27, CY + 14}, {CX, CY + 31}, {CX - 30, CY + 10}}, FLinearColor(0.008f, 0.012f, 0.025f));
@@ -347,25 +382,35 @@ int32 UArenaDuelCharacterSelectWidget::NativePaint(const FPaintArgs& Args, const
 			Lines({{CX - 205, CY + 67}, {CX - 154, CY + 29}, {CX - 86, CY + 11}, {CX - 59, CY + 24}}, Violet.CopyWithNewOpacity(0.75f), 3);
 			Lines({{CX - 186, CY + 113}, {CX - 147, CY + 70}, {CX - 108, CY + 64}}, Violet, 2);
 		}
-		// Native original ability glyphs: dash / veil, shield / upward impulse.
+		}
+		// Native original ability glyphs, including hook and paired rift outlines.
 		for (int32 Ability = 0; Ability < 2; ++Ability)
 		{
 			const float IX = X + 55 + Ability * 294;
 			const float IY = Y + 571;
-			if (Ability == 0 && bWarden) Lines({{IX - 15, IY - 12}, {IX + 15, IY - 12}, {IX + 12, IY + 8}, {IX, IY + 19}, {IX - 12, IY + 8}, {IX - 15, IY - 12}}, Color, 2);
+			if (bRift && Ability == 0) Lines({{IX - 18, IY + 18}, {IX + 10, IY - 14}, {IX + 18, IY - 5}, {IX + 9, IY + 3}, {IX + 3, IY - 4}}, Cyan, 2);
+			else if (bRift) { Lines({{IX - 17, IY + 15}, {IX - 20, IY - 11}, {IX - 8, IY - 18}, {IX - 3, IY + 15}}, Violet, 2); Lines({{IX + 3, IY + 15}, {IX + 8, IY - 18}, {IX + 20, IY - 11}, {IX + 17, IY + 15}}, Cyan, 2); }
+			else if (Ability == 0 && bWarden) Lines({{IX - 15, IY - 12}, {IX + 15, IY - 12}, {IX + 12, IY + 8}, {IX, IY + 19}, {IX - 12, IY + 8}, {IX - 15, IY - 12}}, Color, 2);
 			else if (Ability == 0) { Lines({{IX - 19, IY + 10}, {IX + 13, IY - 12}, {IX + 9, IY + 1}}, Color, 2); Lines({{IX - 19, IY + 18}, {IX - 2, IY + 6}}, Color, 2); }
 			else if (bWarden) Lines({{IX - 15, IY + 16}, {IX + 9, IY - 14}, {IX - 3, IY - 10}, {IX + 9, IY - 14}, {IX + 11, IY}}, Color, 2);
 			else for (int32 I = -1; I <= 1; ++I) Lines({{IX + I * 11, IY + 15}, {IX + I * 11 + 3, IY - 15}}, Color, 2);
 		}
-		// The active roster has exactly two small portrait thumbnails, never fake extra fighters.
-		for (int32 Character = 0; Character < 2; ++Character)
+		// Three implemented kits fit the existing strip without widening either panel.
+		for (int32 Character = 0; Character < 3; ++Character)
 		{
-			const float RX = X + 70 + Character * 251;
+			const float RX = X + 70 + Character * 167;
 			const bool bSelected = static_cast<int32>(Panels[SideIndex].DisplayArchetype) == Character;
-			Lines({{RX, Y + 656}, {RX + 231, Y + 656}, {RX + 231, Y + 701}, {RX, Y + 701}, {RX, Y + 656}}, Color.CopyWithNewOpacity(bSelected ? 0.95f : 0.22f), bSelected ? 2.0f : 1.0f);
-			const float TX = X + 94 + Character * 251;
+			Lines({{RX, Y + 656}, {RX + 152, Y + 656}, {RX + 152, Y + 701}, {RX, Y + 701}, {RX, Y + 656}}, Color.CopyWithNewOpacity(bSelected ? 0.95f : 0.22f), bSelected ? 2.0f : 1.0f);
+			const float TX = X + 88 + Character * 167;
 			const float TY = Y + 678;
-			const FLinearColor Tint = Character == 0 ? Violet : Cyan;
+			const FLinearColor Tint = Character == 1 ? Cyan : Violet;
+			if (Character == 2)
+			{
+				Polygon({{TX - 12, TY + 13}, {TX - 8, TY - 18}, {TX + 8, TY - 12}, {TX + 13, TY + 13}}, FLinearColor(0.055f, 0.025f, 0.12f));
+				Lines({{TX - 12, TY + 13}, {TX - 8, TY - 18}, {TX + 8, TY - 12}, {TX + 13, TY + 13}}, Violet, 1.5f);
+				Lines({{TX - 6, TY - 7}, {TX + 4, TY - 2}, {TX - 1, TY + 5}}, Cyan, 2);
+				continue;
+			}
 			Polygon({{TX - 15, TY + 12}, {TX - 11, TY - 11}, {TX, TY - 19}, {TX + 12, TY - 10}, {TX + 17, TY + 12}}, FLinearColor(0.04f, 0.05f, 0.10f));
 			Lines({{TX - 15, TY + 12}, {TX - 11, TY - 11}, {TX, TY - 19}, {TX + 12, TY - 10}, {TX + 17, TY + 12}}, Tint, 1.5f);
 			Lines({{TX - 4, TY - 3}, {TX + 3, TY + 1}, {TX + 5, TY - 6}}, Tint, 2);

@@ -6,6 +6,7 @@
 #include "ArenaDuelGameState.h"
 #include "../Abilities/ArenaDuelVeilWall.h"
 #include "../Abilities/ArenaDuelArcBarrier.h"
+#include "../Abilities/ArenaDuelPhaseGateVisual.h"
 #include "../Player/ArenaDuelPlayerController.h"
 #include "../Player/ArenaDuelPlayerState.h"
 #include "ArenaDuelMovementDebugHUD.h"
@@ -72,6 +73,7 @@ void AArenaDuelGameMode::Logout(AController* Exiting)
 		{
 			Player->SetCharacterReadyAuthoritatively(false);
 			Player->SetDuelSlot(255);
+			AArenaDuelPhaseGateVisual::DestroyOwnedByPlayerState(GetWorld(), Player);
 		}
 	Super::Logout(Exiting);
 	// No ranked forfeit here. A missing opponent safely returns the duel to selection.
@@ -112,7 +114,7 @@ void AArenaDuelGameMode::RequestCharacterReady(APlayerController* Requester, boo
 	const AArenaDuelGameState* State = GetGameState<AArenaDuelGameState>();
 	AArenaDuelPlayerState* Player = Requester ? Requester->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
 	if (!HasAuthority() || !State || State->GetMatchPhase() != EArenaDuelMatchPhase::CharacterSelect || !Player || Player->GetOwner() != Requester || Player->GetDuelSlot() > 1) return;
-	if (Player->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Shadow && Player->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Warden) return;
+	if (!AArenaDuelPlayerState::IsImplementedArchetype(Player->GetCharacterArchetype())) return;
 	Player->SetCharacterReadyAuthoritatively(bReady);
 	CheckBothReady();
 }
@@ -183,6 +185,7 @@ void AArenaDuelGameMode::EndRoundForDevelopment(AArenaDuelPlayerState* WinningPl
 	if (!ArenaGameState || !ArenaGameState->IsRoundInProgress()) return;
 	AArenaDuelVeilWall::DestroyAllForRound(GetWorld());
 	AArenaDuelArcBarrier::DestroyAllForRound(GetWorld());
+	AArenaDuelPhaseGateVisual::DestroyAllForRound(GetWorld());
 	if (WinningPlayerState) WinningPlayerState->AwardRoundWin();
 	const int32 WinnerSlot = WinningPlayerState ? static_cast<int32>(WinningPlayerState->GetDuelSlot()) : INDEX_NONE;
 	ArenaGameState->SetRoundState(ArenaGameState->GetRoundNumber(), false, WinnerSlot);
@@ -303,6 +306,7 @@ void AArenaDuelGameMode::RestartDuelPlayers()
 	if (!HasAuthority() || !GetWorld()) return;
 	AArenaDuelVeilWall::DestroyAllForRound(GetWorld());
 	AArenaDuelArcBarrier::DestroyAllForRound(GetWorld());
+	AArenaDuelPhaseGateVisual::DestroyAllForRound(GetWorld());
 	TArray<APlayerController*> Controllers;
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{

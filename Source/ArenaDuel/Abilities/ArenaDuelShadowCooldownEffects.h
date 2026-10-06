@@ -39,3 +39,19 @@ class ARENADUEL_API UArenaDuelGE_BurstLeapCooldown : public UGameplayEffect
 public:
 	UArenaDuelGE_BurstLeapCooldown(const FObjectInitializer& ObjectInitializer);
 };
+
+UCLASS()
+class ARENADUEL_API UArenaDuelGE_RiftGrappleCooldown : public UGameplayEffect
+{
+	GENERATED_BODY()
+public:
+	UArenaDuelGE_RiftGrappleCooldown(const FObjectInitializer& ObjectInitializer);
+};
+
+UCLASS()
+class ARENADUEL_API UArenaDuelGE_PhaseGateCooldown : public UGameplayEffect
+{
+	GENERATED_BODY()
+public:
+	UArenaDuelGE_PhaseGateCooldown(const FObjectInitializer& ObjectInitializer);
+};

@@ -53,3 +53,23 @@ UArenaDuelGE_BurstLeapCooldown::UArenaDuelGE_BurstLeapCooldown(const FObjectInit
 	GrantedTags.AddTag(TAG_Cooldown_Warden_BurstLeap.GetTag());
 	TargetTags->SetAndApplyTargetTagChanges(GrantedTags);
 }
+
+UArenaDuelGE_RiftGrappleCooldown::UArenaDuelGE_RiftGrappleCooldown(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+	UTargetTagsGameplayEffectComponent* TargetTags = ConfigureCooldown(*this, ObjectInitializer, 6.0f);
+	GEComponents.Add(TargetTags);
+	FInheritedTagContainer GrantedTags;
+	GrantedTags.AddTag(TAG_Cooldown_Rift_RiftGrapple.GetTag());
+	TargetTags->SetAndApplyTargetTagChanges(GrantedTags);
+}
+
+UArenaDuelGE_PhaseGateCooldown::UArenaDuelGE_PhaseGateCooldown(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+	UTargetTagsGameplayEffectComponent* TargetTags = ConfigureCooldown(*this, ObjectInitializer, 14.0f);
+	GEComponents.Add(TargetTags);
+	FInheritedTagContainer GrantedTags;
+	GrantedTags.AddTag(TAG_Cooldown_Rift_PhaseGate.GetTag());
+	TargetTags->SetAndApplyTargetTagChanges(GrantedTags);
+}

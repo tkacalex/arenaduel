@@ -272,6 +272,9 @@ void AArenaDuelPlayerController::ExecuteAdminCommandAuthoritatively(EArenaDuelAd
 	case EArenaDuelAdminCommand::SetArchetypeWarden:
 		if (TargetState) TargetState->SetCharacterArchetypeForDevelopment(EArenaDuelCharacterArchetype::Warden);
 		break;
+	case EArenaDuelAdminCommand::SetArchetypeRift:
+		if (TargetState) TargetState->SetCharacterArchetypeForDevelopment(EArenaDuelCharacterArchetype::Rift);
+		break;
 	default: break;
 	}
 #endif

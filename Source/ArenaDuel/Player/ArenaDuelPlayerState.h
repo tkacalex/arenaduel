@@ -35,6 +35,11 @@ public:
 	bool HasAdminInfiniteAmmo() const { return bAdminInfiniteAmmo; }
 	bool HasAdminInfiniteStamina() const { return bAdminInfiniteStamina; }
 	EArenaDuelCharacterArchetype GetCharacterArchetype() const { return CharacterArchetype; }
+	static bool IsImplementedArchetype(EArenaDuelCharacterArchetype Archetype);
+	TSubclassOf<UGameplayAbility> GetPrimaryAbilityClass() const;
+	TSubclassOf<UGameplayAbility> GetSecondaryAbilityClass() const;
+	FGameplayTag GetPrimaryCooldownTag() const;
+	FGameplayTag GetSecondaryCooldownTag() const;
 	FText GetCharacterArchetypeDisplayName() const;
 	bool SetCharacterArchetypeForDevelopment(EArenaDuelCharacterArchetype NewArchetype);
 	// Authority-only kit replacement shared by public selection and development admin.

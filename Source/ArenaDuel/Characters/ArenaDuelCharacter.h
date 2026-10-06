@@ -45,6 +45,7 @@ public:
 	void AdminKill();
 	void AdminResetPlayer();
 	void PlayShadowStepCameraImpulse();
+	void PlayRiftCameraImpulse();
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
 	TObjectPtr<UBoxComponent> BodyHitZone;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")

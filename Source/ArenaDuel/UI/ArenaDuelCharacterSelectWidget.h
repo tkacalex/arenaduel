@@ -47,6 +47,7 @@ public:
 	virtual bool Initialize() override;
 	bool HasExpectedTree() const;
 	static const FArenaDuelCharacterPresentation& GetPresentation(EArenaDuelCharacterArchetype Archetype);
+	static EArenaDuelCharacterArchetype CycleArchetype(EArenaDuelCharacterArchetype Current, int32 Direction);
 
 protected:
 	virtual void NativeConstruct() override;
@@ -59,6 +60,7 @@ protected:
 	void Select(EArenaDuelCharacterArchetype Archetype);
 	UFUNCTION() void SelectShadow();
 	UFUNCTION() void SelectWarden();
+	UFUNCTION() void SelectRift();
 	UFUNCTION() void ToggleReady();
 	UPROPERTY(Transient) TObjectPtr<UCanvasPanel> ReferenceCanvas;
 	UPROPERTY(Transient) TArray<FArenaDuelSelectionPanel> Panels;

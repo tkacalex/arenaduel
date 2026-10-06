@@ -8,6 +8,9 @@
 #include "../Abilities/ArenaDuelGA_VeilWall.h"
 #include "../Abilities/ArenaDuelGA_ArcBarrier.h"
 #include "../Abilities/ArenaDuelGA_BurstLeap.h"
+#include "../Abilities/ArenaDuelGA_RiftGrapple.h"
+#include "../Abilities/ArenaDuelGA_PhaseGate.h"
+#include "../Abilities/ArenaDuelPhaseGateVisual.h"
 #include "../Abilities/ArenaDuelArcBarrier.h"
 #include "../Abilities/ArenaDuelVeilWall.h"
 #include "GameplayEffect.h"
@@ -40,7 +43,7 @@ void AArenaDuelPlayerState::RemoveAllKitAbilitiesAndCooldowns()
 {
 	if (!AbilitySystemComponent) return;
 	AbilitySystemComponent->CancelAllAbilities();
-	const UClass* KitClasses[] = { UArenaDuelGA_ShadowStep::StaticClass(), UArenaDuelGA_VeilWall::StaticClass(), UArenaDuelGA_ArcBarrier::StaticClass(), UArenaDuelGA_BurstLeap::StaticClass() };
+	const UClass* KitClasses[] = { UArenaDuelGA_ShadowStep::StaticClass(), UArenaDuelGA_VeilWall::StaticClass(), UArenaDuelGA_ArcBarrier::StaticClass(), UArenaDuelGA_BurstLeap::StaticClass(), UArenaDuelGA_RiftGrapple::StaticClass(), UArenaDuelGA_PhaseGate::StaticClass() };
 	TArray<FGameplayAbilitySpecHandle> HandlesToClear;
 	for (const FGameplayAbilitySpec& Spec : AbilitySystemComponent->GetActivatableAbilities())
 	{
@@ -55,24 +58,16 @@ void AArenaDuelPlayerState::RemoveAllKitAbilitiesAndCooldowns()
 	CooldownTags.AddTag(TAG_Cooldown_Shadow_VeilWall.GetTag());
 	CooldownTags.AddTag(TAG_Cooldown_Warden_ArcBarrier.GetTag());
 	CooldownTags.AddTag(TAG_Cooldown_Warden_BurstLeap.GetTag());
+	CooldownTags.AddTag(TAG_Cooldown_Rift_RiftGrapple.GetTag());
+	CooldownTags.AddTag(TAG_Cooldown_Rift_PhaseGate.GetTag());
 	AbilitySystemComponent->RemoveActiveEffectsWithGrantedTags(CooldownTags);
 }
 
 void AArenaDuelPlayerState::GrantCurrentKit()
 {
 	if (!HasAuthority() || !AbilitySystemComponent) return;
-	TSubclassOf<UGameplayAbility> Primary = nullptr;
-	TSubclassOf<UGameplayAbility> Secondary = nullptr;
-	if (CharacterArchetype == EArenaDuelCharacterArchetype::Warden)
-	{
-		Primary = UArenaDuelGA_ArcBarrier::StaticClass();
-		Secondary = UArenaDuelGA_BurstLeap::StaticClass();
-	}
-	else
-	{
-		Primary = UArenaDuelGA_ShadowStep::StaticClass();
-		Secondary = UArenaDuelGA_VeilWall::StaticClass();
-	}
+	const TSubclassOf<UGameplayAbility> Primary = GetPrimaryAbilityClass();
+	const TSubclassOf<UGameplayAbility> Secondary = GetSecondaryAbilityClass();
 	if (Primary && !AbilitySystemComponent->FindAbilitySpecFromClass(Primary)) AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(Primary, 1));
 	if (Secondary && !AbilitySystemComponent->FindAbilitySpecFromClass(Secondary)) AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(Secondary, 1));
 }
@@ -84,6 +79,7 @@ void AArenaDuelPlayerState::ResetAbilitiesForNewRound()
 	{
 		AArenaDuelVeilWall::DestroyOwnedByPlayerState(GetWorld(), this);
 		AArenaDuelArcBarrier::DestroyOwnedByPlayerState(GetWorld(), this);
+		AArenaDuelPhaseGateVisual::DestroyOwnedByPlayerState(GetWorld(), this);
 	}
 	RemoveAllKitAbilitiesAndCooldowns();
 	GrantCurrentKit();
@@ -105,11 +101,12 @@ void AArenaDuelPlayerState::SetCharacterReadyAuthoritatively(bool bReady)
 
 bool AArenaDuelPlayerState::SetCharacterArchetypeAuthoritatively(EArenaDuelCharacterArchetype NewArchetype)
 {
-	if (!HasAuthority() || (NewArchetype != EArenaDuelCharacterArchetype::Shadow && NewArchetype != EArenaDuelCharacterArchetype::Warden) || CharacterArchetype == NewArchetype) return false;
+	if (!HasAuthority() || !IsImplementedArchetype(NewArchetype) || CharacterArchetype == NewArchetype) return false;
 	if (GetWorld())
 	{
 		AArenaDuelVeilWall::DestroyOwnedByPlayerState(GetWorld(), this);
 		AArenaDuelArcBarrier::DestroyOwnedByPlayerState(GetWorld(), this);
+		AArenaDuelPhaseGateVisual::DestroyOwnedByPlayerState(GetWorld(), this);
 	}
 	RemoveAllKitAbilitiesAndCooldowns();
 	CharacterArchetype = NewArchetype;
@@ -128,40 +125,100 @@ FText AArenaDuelPlayerState::GetCharacterArchetypeDisplayName() const
 	{
 	case EArenaDuelCharacterArchetype::Warden: return FText::FromString(TEXT("WARDEN"));
 	case EArenaDuelCharacterArchetype::Rift: return FText::FromString(TEXT("RIFT"));
-	default: return FText::FromString(TEXT("SHADOW"));
+	case EArenaDuelCharacterArchetype::Shadow: return FText::FromString(TEXT("SHADOW"));
+	default: return FText::GetEmpty();
 	}
 }
 
 bool AArenaDuelPlayerState::TryActivatePrimaryAbility()
 {
-	if (!AbilitySystemComponent || CharacterArchetype == EArenaDuelCharacterArchetype::Rift) return false;
-	return AbilitySystemComponent->TryActivateAbilityByClass(CharacterArchetype == EArenaDuelCharacterArchetype::Warden ? UArenaDuelGA_ArcBarrier::StaticClass() : UArenaDuelGA_ShadowStep::StaticClass());
+	return AbilitySystemComponent && GetPrimaryAbilityClass() && AbilitySystemComponent->TryActivateAbilityByClass(GetPrimaryAbilityClass());
 }
 
 bool AArenaDuelPlayerState::TryActivateSecondaryAbility()
 {
-	if (!AbilitySystemComponent || CharacterArchetype == EArenaDuelCharacterArchetype::Rift) return false;
-	return AbilitySystemComponent->TryActivateAbilityByClass(CharacterArchetype == EArenaDuelCharacterArchetype::Warden ? UArenaDuelGA_BurstLeap::StaticClass() : UArenaDuelGA_VeilWall::StaticClass());
+	return AbilitySystemComponent && GetSecondaryAbilityClass() && AbilitySystemComponent->TryActivateAbilityByClass(GetSecondaryAbilityClass());
 }
 
 float AArenaDuelPlayerState::GetPrimaryAbilityCooldownRemaining() const
 {
-	return GetCooldownRemaining(CharacterArchetype == EArenaDuelCharacterArchetype::Warden ? TAG_Cooldown_Warden_ArcBarrier.GetTag() : TAG_Cooldown_Shadow_ShadowStep.GetTag());
+	return GetCooldownRemaining(GetPrimaryCooldownTag());
 }
 
 float AArenaDuelPlayerState::GetSecondaryAbilityCooldownRemaining() const
 {
-	return GetCooldownRemaining(CharacterArchetype == EArenaDuelCharacterArchetype::Warden ? TAG_Cooldown_Warden_BurstLeap.GetTag() : TAG_Cooldown_Shadow_VeilWall.GetTag());
+	return GetCooldownRemaining(GetSecondaryCooldownTag());
 }
 
 FText AArenaDuelPlayerState::GetPrimaryAbilityDisplayName() const
 {
-	return FText::FromString(CharacterArchetype == EArenaDuelCharacterArchetype::Warden ? TEXT("ARC BARRIER") : TEXT("SHADOW STEP"));
+	switch (CharacterArchetype)
+	{
+	case EArenaDuelCharacterArchetype::Shadow: return FText::FromString(TEXT("SHADOW STEP"));
+	case EArenaDuelCharacterArchetype::Warden: return FText::FromString(TEXT("ARC BARRIER"));
+	case EArenaDuelCharacterArchetype::Rift: return FText::FromString(TEXT("RIFT GRAPPLE"));
+	default: return FText::GetEmpty();
+	}
 }
 
 FText AArenaDuelPlayerState::GetSecondaryAbilityDisplayName() const
 {
-	return FText::FromString(CharacterArchetype == EArenaDuelCharacterArchetype::Warden ? TEXT("BURST LEAP") : TEXT("VEIL WALL"));
+	switch (CharacterArchetype)
+	{
+	case EArenaDuelCharacterArchetype::Shadow: return FText::FromString(TEXT("VEIL WALL"));
+	case EArenaDuelCharacterArchetype::Warden: return FText::FromString(TEXT("BURST LEAP"));
+	case EArenaDuelCharacterArchetype::Rift: return FText::FromString(TEXT("PHASE GATE"));
+	default: return FText::GetEmpty();
+	}
+}
+
+bool AArenaDuelPlayerState::IsImplementedArchetype(EArenaDuelCharacterArchetype Archetype)
+{
+	return Archetype == EArenaDuelCharacterArchetype::Shadow || Archetype == EArenaDuelCharacterArchetype::Warden || Archetype == EArenaDuelCharacterArchetype::Rift;
+}
+
+TSubclassOf<UGameplayAbility> AArenaDuelPlayerState::GetPrimaryAbilityClass() const
+{
+	switch (CharacterArchetype)
+	{
+	case EArenaDuelCharacterArchetype::Shadow: return UArenaDuelGA_ShadowStep::StaticClass();
+	case EArenaDuelCharacterArchetype::Warden: return UArenaDuelGA_ArcBarrier::StaticClass();
+	case EArenaDuelCharacterArchetype::Rift: return UArenaDuelGA_RiftGrapple::StaticClass();
+	default: return nullptr;
+	}
+}
+
+TSubclassOf<UGameplayAbility> AArenaDuelPlayerState::GetSecondaryAbilityClass() const
+{
+	switch (CharacterArchetype)
+	{
+	case EArenaDuelCharacterArchetype::Shadow: return UArenaDuelGA_VeilWall::StaticClass();
+	case EArenaDuelCharacterArchetype::Warden: return UArenaDuelGA_BurstLeap::StaticClass();
+	case EArenaDuelCharacterArchetype::Rift: return UArenaDuelGA_PhaseGate::StaticClass();
+	default: return nullptr;
+	}
+}
+
+FGameplayTag AArenaDuelPlayerState::GetPrimaryCooldownTag() const
+{
+	switch (CharacterArchetype)
+	{
+	case EArenaDuelCharacterArchetype::Shadow: return TAG_Cooldown_Shadow_ShadowStep;
+	case EArenaDuelCharacterArchetype::Warden: return TAG_Cooldown_Warden_ArcBarrier;
+	case EArenaDuelCharacterArchetype::Rift: return TAG_Cooldown_Rift_RiftGrapple;
+	default: return FGameplayTag();
+	}
+}
+
+FGameplayTag AArenaDuelPlayerState::GetSecondaryCooldownTag() const
+{
+	switch (CharacterArchetype)
+	{
+	case EArenaDuelCharacterArchetype::Shadow: return TAG_Cooldown_Shadow_VeilWall;
+	case EArenaDuelCharacterArchetype::Warden: return TAG_Cooldown_Warden_BurstLeap;
+	case EArenaDuelCharacterArchetype::Rift: return TAG_Cooldown_Rift_PhaseGate;
+	default: return FGameplayTag();
+	}
 }
 
 float AArenaDuelPlayerState::GetCooldownRemaining(const FGameplayTag& CooldownTag) const

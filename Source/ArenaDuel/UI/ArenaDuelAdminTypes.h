@@ -26,6 +26,7 @@ enum class EArenaDuelAdminCommand : uint8
 	ToggleInfiniteStamina,
 	SetArchetypeShadow,
 	SetArchetypeWarden,
+	SetArchetypeRift,
 	ToggleDebugOverlay,
 	ToggleHitZones,
 	SelectPlayer1,

@@ -38,7 +38,7 @@ public:
 	uint8 GetSelectedDuelSlot() const { return SelectedDuelSlot; }
 	int32 GetAdminSectionCount() const { return Pages.Num(); }
 	bool HasPlayerSelector() const { return TargetButtons.Num() == 2; }
-	bool HasImplementedArchetypeSelector() const { return ArchetypeButtons.Num() == 2; }
+	bool HasImplementedArchetypeSelector() const { return ArchetypeButtons.Num() == 3; }
 
 protected:
 	void BuildWidgetTree();

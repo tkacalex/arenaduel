@@ -285,6 +285,7 @@ void UArenaDuelAdminWidget::BuildWidgetTree()
 	PlayerStateCard->AddChildToVerticalBox(ArchetypeRow)->SetPadding(FMargin(0, 5, 0, 4));
 	ArchetypeButtons.Add(AddButton(ArchetypeRow, FText::FromString(TEXT("SHADOW")), EArenaDuelAdminCommand::SetArchetypeShadow, 0.0f, Active, 190.0f));
 	ArchetypeButtons.Add(AddButton(ArchetypeRow, FText::FromString(TEXT("WARDEN")), EArenaDuelAdminCommand::SetArchetypeWarden, 0.0f, ElevatedColor, 190.0f));
+	ArchetypeButtons.Add(AddButton(ArchetypeRow, FText::FromString(TEXT("RIFT")), EArenaDuelAdminCommand::SetArchetypeRift, 0.0f, ElevatedColor, 190.0f));
 	AddHelperText(PlayerStateCard, FText::FromString(TEXT("Reset Player is available while alive. Dead players recover through Restart Round.")));
 
 	UVerticalBox* WeaponsPage = CreatePage(TEXT("WEAPONS"), TEXT("Equip weapons and control ammunition for the selected player."));
@@ -619,6 +620,7 @@ void UArenaDuelAdminWidget::RefreshAdminState()
 			SetStatusColor(TargetStatusValues[7], TargetState->HasAdminInfiniteStamina() ? Violet : MutedText);
 			if (ArchetypeButtons.IsValidIndex(0)) ArchetypeButtons[0]->SetVisualColor(TargetState->GetCharacterArchetype() == EArenaDuelCharacterArchetype::Shadow ? Active : ElevatedColor);
 			if (ArchetypeButtons.IsValidIndex(1)) ArchetypeButtons[1]->SetVisualColor(TargetState->GetCharacterArchetype() == EArenaDuelCharacterArchetype::Warden ? Active : ElevatedColor);
+			if (ArchetypeButtons.IsValidIndex(2)) ArchetypeButtons[2]->SetVisualColor(TargetState->GetCharacterArchetype() == EArenaDuelCharacterArchetype::Rift ? Active : ElevatedColor);
 			if (GodModeButton)
 			{
 				GodModeButton->SetLabel(FText::FromString(TargetState->HasAdminGodMode() ? TEXT("GOD MODE: ON") : TEXT("GOD MODE: OFF")));

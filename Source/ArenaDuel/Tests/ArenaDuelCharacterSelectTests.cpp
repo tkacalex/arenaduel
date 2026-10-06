@@ -28,6 +28,10 @@ bool FArenaDuelCharacterSelectTreeTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Slate builds the native tree"), Widget->TakeWidget()->GetChildren()->Num() > 0);
 	TestEqual(TEXT("Shadow ability description reflects launch, not teleport"), UArenaDuelCharacterSelectWidget::GetPresentation(EArenaDuelCharacterArchetype::Shadow).PrimaryName, FString(TEXT("SHADOW STEP")));
 	TestEqual(TEXT("Warden uses real implemented ability names"), UArenaDuelCharacterSelectWidget::GetPresentation(EArenaDuelCharacterArchetype::Warden).PrimaryName, FString(TEXT("ARC BARRIER")));
+	TestEqual(TEXT("Rift presentation uses the implemented kit"), UArenaDuelCharacterSelectWidget::GetPresentation(EArenaDuelCharacterArchetype::Rift).PrimaryName, FString(TEXT("RIFT GRAPPLE")));
+	using Archetype = EArenaDuelCharacterArchetype;
+	TestTrue(TEXT("Forward cycle visits all three then wraps"), Widget->CycleArchetype(Archetype::Shadow, 1) == Archetype::Warden && Widget->CycleArchetype(Archetype::Warden, 1) == Archetype::Rift && Widget->CycleArchetype(Archetype::Rift, 1) == Archetype::Shadow);
+	TestTrue(TEXT("Reverse cycle visits all three then wraps"), Widget->CycleArchetype(Archetype::Shadow, -1) == Archetype::Rift && Widget->CycleArchetype(Archetype::Rift, -1) == Archetype::Warden && Widget->CycleArchetype(Archetype::Warden, -1) == Archetype::Shadow);
 	return true;
 }
 
@@ -75,7 +79,7 @@ NETWORK_TEST_CLASS(FArenaDuelCharacterSelectNetworkTest, "ArenaDuel.CharacterSel
 		{
 			return Controller(State.World, 0) && Controller(State.World, 1) && Controller(State.World, 0)->GetPawn() && Controller(State.World, 1)->GetPawn();
 		}, FTimespan::FromSeconds(10))
-		.ThenServer(TEXT("Self-owned selection, Rift rejection, single-player ready lock, gameplay denial"), [this](FArenaDuelSelectNetworkState& State)
+		.ThenServer(TEXT("Self-owned selection, invalid enum rejection, single-player ready lock, gameplay denial"), [this](FArenaDuelSelectNetworkState& State)
 		{
 			AArenaDuelGameState* GS = State.World->GetGameState<AArenaDuelGameState>();
 			AArenaDuelPlayerController* Host = Controller(State.World, 0);
@@ -83,8 +87,8 @@ NETWORK_TEST_CLASS(FArenaDuelCharacterSelectNetworkTest, "ArenaDuel.CharacterSel
 			AArenaDuelPlayerState* P2 = Player(State.World, 1);
 			if (GS->GetMatchPhase() != EArenaDuelMatchPhase::CharacterSelect || GS->IsRoundInProgress()) TestRunner->AddError(TEXT("Initial phase is not locked CharacterSelect"));
 			if (P1->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Shadow || P2->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Shadow) TestRunner->AddError(TEXT("Default selection changed"));
-			Host->ServerRequestCharacterSelection(EArenaDuelCharacterArchetype::Rift);
-			if (P1->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Shadow) TestRunner->AddError(TEXT("Rift was allowed"));
+			Host->ServerRequestCharacterSelection(static_cast<EArenaDuelCharacterArchetype>(255));
+			if (P1->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Shadow) TestRunner->AddError(TEXT("Invalid enum was allowed"));
 			Host->ServerRequestCharacterSelection(EArenaDuelCharacterArchetype::Warden);
 			if (P1->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Warden || P2->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Shadow) TestRunner->AddError(TEXT("Public selection altered the wrong player"));
 			AArenaDuelCharacter* Pawn = Cast<AArenaDuelCharacter>(Host->GetPawn());

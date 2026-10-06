@@ -193,6 +193,14 @@ void AArenaDuelCharacter::PlayShadowStepCameraImpulse()
 	UpdateShadowStepCameraImpulse();
 }
 
+void AArenaDuelCharacter::PlayRiftCameraImpulse()
+{
+	// Cosmetic roll only: reuse the bounded impulse without touching ADS FOV or recoil.
+	if (FirstPersonCamera && GetWorld() && GetWorldTimerManager().IsTimerActive(ShadowStepCameraTimer))
+		FirstPersonCamera->SetRelativeRotation(ShadowStepCameraBaseRotation);
+	PlayShadowStepCameraImpulse();
+}
+
 void AArenaDuelCharacter::UpdateShadowStepCameraImpulse()
 {
 	if (!FirstPersonCamera || !GetWorld()) return;
@@ -251,6 +259,8 @@ void AArenaDuelCharacter::SetRoundInputLocked(bool bLocked)
 		return;
 	}
 	if (WeaponComponent) WeaponComponent->CancelCombatActions();
+	// End root-motion and wind-up tasks before disabling movement during a round break.
+	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponent()) ASC->CancelAllAbilities();
 	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
 	{
 		Movement->StopMovementImmediately();
