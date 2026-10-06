@@ -32,6 +32,8 @@ Current playtest support also includes a minimal server-authoritative round rest
 
 Shadow, Warden, Rift, and non damaging utility and movement abilities.
 
+Phase 7A implementation: Shadow Step (Q) and Veil Wall (E) are native GAS abilities granted once on the persistent PlayerState ASC. Their authoritative cooldowns are 5 and 12 seconds; Veil Wall is a three-second replicated visual-only occluder. Human two-player tuning/feel validation remains. Warden, Rift, damage abilities, selection, and broader character-kit work have not started.
+
 ## Phase 8: Round system, selections, and RPG upgrades
 
 First to 5 rounds, round flow, fighter and weapon selection, and match based upgrade choices.

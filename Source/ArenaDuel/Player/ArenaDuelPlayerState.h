@@ -5,10 +5,12 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerState.h"
 #include "AbilitySystemInterface.h"
+#include "GameplayTagContainer.h"
 #include "ArenaDuelPlayerState.generated.h"
 
 class UAbilitySystemComponent;
 class UArenaDuelAttributeSet;
+class UGameplayAbility;
 
 UCLASS()
 class ARENADUEL_API AArenaDuelPlayerState : public APlayerState, public IAbilitySystemInterface
@@ -24,6 +26,10 @@ public:
 	bool HasAdminGodMode() const { return bAdminGodMode; }
 	bool HasAdminInfiniteAmmo() const { return bAdminInfiniteAmmo; }
 	bool HasAdminInfiniteStamina() const { return bAdminInfiniteStamina; }
+	void GrantShadowAbilities();
+	void ResetShadowAbilitiesForNewRound();
+	float GetShadowStepCooldownRemaining() const;
+	float GetVeilWallCooldownRemaining() const;
 	void SetDuelSlot(uint8 NewDuelSlot);
 	void AwardRoundWin();
 	void SetRoundWinsForDevelopment(int32 NewRoundWins);
@@ -33,6 +39,9 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
+	virtual void BeginPlay() override;
+	float GetCooldownRemaining(const FGameplayTag& CooldownTag) const;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Replicated, Category="Abilities")
 	TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
 

@@ -3,6 +3,10 @@
 #include "ArenaDuelPlayerState.h"
 #include "AbilitySystemComponent.h"
 #include "../Combat/ArenaDuelAttributeSet.h"
+#include "../Abilities/ArenaDuelGameplayTags.h"
+#include "../Abilities/ArenaDuelGA_ShadowStep.h"
+#include "../Abilities/ArenaDuelGA_VeilWall.h"
+#include "GameplayEffect.h"
 #include "Net/UnrealNetwork.h"
 
 AArenaDuelPlayerState::AArenaDuelPlayerState()
@@ -13,6 +17,60 @@ AArenaDuelPlayerState::AArenaDuelPlayerState()
 	AbilitySystemComponent->SetIsReplicated(true);
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
 	AttributeSet = CreateDefaultSubobject<UArenaDuelAttributeSet>(TEXT("AttributeSet"));
+}
+
+void AArenaDuelPlayerState::BeginPlay()
+{
+	Super::BeginPlay();
+	GrantShadowAbilities();
+}
+
+void AArenaDuelPlayerState::GrantShadowAbilities()
+{
+	if (!HasAuthority() || !AbilitySystemComponent) return;
+	const TArray<TSubclassOf<UGameplayAbility>> ShadowAbilities = {
+		UArenaDuelGA_ShadowStep::StaticClass(),
+		UArenaDuelGA_VeilWall::StaticClass()
+	};
+	for (const TSubclassOf<UGameplayAbility>& AbilityClass : ShadowAbilities)
+	{
+		if (AbilityClass && !AbilitySystemComponent->FindAbilitySpecFromClass(AbilityClass))
+		{
+			AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(AbilityClass, 1));
+		}
+	}
+}
+
+void AArenaDuelPlayerState::ResetShadowAbilitiesForNewRound()
+{
+	if (!HasAuthority() || !AbilitySystemComponent) return;
+	GrantShadowAbilities();
+	AbilitySystemComponent->CancelAllAbilities();
+	FGameplayTagContainer CooldownTags;
+	CooldownTags.AddTag(TAG_Cooldown_Shadow_ShadowStep.GetTag());
+	CooldownTags.AddTag(TAG_Cooldown_Shadow_VeilWall.GetTag());
+	AbilitySystemComponent->RemoveActiveEffectsWithGrantedTags(CooldownTags);
+}
+
+float AArenaDuelPlayerState::GetCooldownRemaining(const FGameplayTag& CooldownTag) const
+{
+	if (!AbilitySystemComponent || !CooldownTag.IsValid()) return 0.0f;
+	FGameplayTagContainer CooldownQueryTags;
+	CooldownQueryTags.AddTag(CooldownTag);
+	const TArray<float> RemainingTimes = AbilitySystemComponent->GetActiveEffectsTimeRemaining(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(CooldownQueryTags));
+	float Remaining = 0.0f;
+	for (const float Time : RemainingTimes) Remaining = FMath::Max(Remaining, Time);
+	return Remaining;
+}
+
+float AArenaDuelPlayerState::GetShadowStepCooldownRemaining() const
+{
+	return GetCooldownRemaining(TAG_Cooldown_Shadow_ShadowStep.GetTag());
+}
+
+float AArenaDuelPlayerState::GetVeilWallCooldownRemaining() const
+{
+	return GetCooldownRemaining(TAG_Cooldown_Shadow_VeilWall.GetTag());
 }
 
 UAbilitySystemComponent* AArenaDuelPlayerState::GetAbilitySystemComponent() const { return AbilitySystemComponent; }

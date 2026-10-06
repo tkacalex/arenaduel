@@ -179,6 +179,13 @@ void UArenaDuelHUDWidget::RefreshData()
 	APlayerController* Controller = GetOwningPlayer();
 	AArenaDuelCharacter* Character = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
 	if (!Character) return;
+	if (const AArenaDuelPlayerState* PlayerState = Character->GetPlayerState<AArenaDuelPlayerState>())
+	{
+		const float ShadowStepCooldown = PlayerState->GetShadowStepCooldownRemaining();
+		const float VeilWallCooldown = PlayerState->GetVeilWallCooldownRemaining();
+		SetAbilitySlotState(0, FText::FromString(TEXT("SHADOW STEP")), FText::FromString(TEXT("Q")), ShadowStepCooldown, ShadowStepCooldown <= KINDA_SMALL_NUMBER);
+		SetAbilitySlotState(1, FText::FromString(TEXT("VEIL WALL")), FText::FromString(TEXT("E")), VeilWallCooldown, VeilWallCooldown <= KINDA_SMALL_NUMBER);
+	}
 	const float MaxHealth = FMath::Max(Character->GetMaxHealth(), 1.0f);
 	SetText(HealthValue, FText::AsNumber(FMath::Max(0, FMath::RoundToInt(Character->GetHealth()))));
 	const float HealthPercent = FMath::Clamp(Character->GetHealth() / MaxHealth, 0.0f, 1.0f);

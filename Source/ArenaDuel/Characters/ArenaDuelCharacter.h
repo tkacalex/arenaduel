@@ -44,6 +44,7 @@ public:
 	void AdminSetHealth(float NewHealth);
 	void AdminKill();
 	void AdminResetPlayer();
+	void PlayShadowStepCameraImpulse();
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
 	TObjectPtr<UBoxComponent> BodyHitZone;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
@@ -75,11 +76,14 @@ protected:
 	void Weapon2Started();
 	void Weapon3Started();
 	void Weapon4Started();
+	void ShadowStepStarted();
+	void VeilWallStarted();
 	void InitializeAbilityActorInfo();
 	void HandleDeath();
 	void ApplyDevelopmentDeathPose();
 	void StartLocalDeathCamera();
 	void UpdateLocalDeathCamera();
+	void UpdateShadowStepCameraImpulse();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCameraComponent> FirstPersonCamera;
@@ -138,6 +142,9 @@ protected:
 	void SetDeadState();
 
 	FTimerHandle LocalDeathCameraTimer;
+	FTimerHandle ShadowStepCameraTimer;
+	FRotator ShadowStepCameraBaseRotation = FRotator::ZeroRotator;
+	float ShadowStepCameraStartTime = 0.0f;
 	FVector LocalDeathCameraStartLocation = FVector::ZeroVector;
 	FRotator LocalDeathCameraStartRotation = FRotator::ZeroRotator;
 	float LocalDeathCameraStartTime = 0.0f;

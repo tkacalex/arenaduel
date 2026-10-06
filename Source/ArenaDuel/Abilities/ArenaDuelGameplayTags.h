@@ -1,0 +1,10 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
+#pragma once
+
+#include "NativeGameplayTags.h"
+
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Ability_Shadow_ShadowStep);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Ability_Shadow_VeilWall);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Cooldown_Shadow_ShadowStep);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Cooldown_Shadow_VeilWall);

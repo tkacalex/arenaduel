@@ -60,6 +60,12 @@ The local `AArenaDuelMovementDebugHUD` creates one native `UArenaDuelHUDWidget`;
 
 When an authoritative Character dies, GameMode ends the round, locks movement and combat for both players, increments the surviving player's replicated win count, and restarts both player controllers after three seconds using normal PlayerStarts. Client input checks replicated round state and the server independently rejects weapon actions during the break. The loop stops at five wins. This is a practical development flow only: it has no round timer, selection, intermission UI, disconnect rules, or full match completion presentation.
 
+## Phase 7A Shadow ability foundation
+
+`AArenaDuelPlayerState` remains the owner of the replicated GAS ASC. It grants one native `UArenaDuelGA_ShadowStep` and one `UArenaDuelGA_VeilWall` spec on authority, guarded by class lookup so the specs persist without duplication when the Character is replaced. Each newly possessed Character refreshes the ASC ActorInfo with PlayerState as OwnerActor and the current Character as AvatarActor. Both abilities use native gameplay tags and duration GameplayEffects for their 5 second and 12 second cooldowns.
+
+Q activates predicted, collision-respecting CharacterMovement launch locomotion in the current planar input/acceleration direction, falling back to control-forward when no movement input is present. E asks the server to create a fixed-distance, three-second replicated visual wall. The wall has no collision, so it is not a player barrier and cannot intercept the existing hitscan traces. Both abilities reject missing GAS/avatar state, dead Characters, inactive rounds, and locally open admin menus. Death cancels running abilities. Round end destroys temporary Veil Walls, and the authoritative next-round pawn reset cancels abilities and removes only Shadow cooldown effects without clearing the persistent specs or player round wins. The gameplay HUD queries the actual ASC cooldown effects for Q and E.
+
 ## Development admin control
 
 `AArenaDuelPlayerController` owns the F1 development menu so it survives pawn replacement. Its native `UArenaDuelAdminWidget` tree is built in C++, exists only while open, and refreshes readouts at 5 Hz. Opening it uses Game and UI input mode, shows the cursor, blocks local character/weapon input, and never pauses the multiplayer world. Closing restores the prior move/look ignore state and Game input mode. F1 and Escape close the menu.
