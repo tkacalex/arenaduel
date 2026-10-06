@@ -65,5 +65,10 @@ protected:
 	UPROPERTY() TArray<TObjectPtr<UBorder>> AbilityBackgrounds;
 	UPROPERTY() TArray<TObjectPtr<UTextBlock>> LeftRoundIndicators;
 	UPROPERTY() TArray<TObjectPtr<UTextBlock>> RightRoundIndicators;
+	int32 LastLeftWins = INDEX_NONE;
+	int32 LastRightWins = INDEX_NONE;
+	int32 LastRoundNumber = INDEX_NONE;
+	bool bLastRoundInProgress = false;
+	int32 LastHealthBand = INDEX_NONE;
 	FTimerHandle RefreshTimer;
 };

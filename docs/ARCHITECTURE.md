@@ -28,11 +28,11 @@ The initial project should use only engine supplied dependencies. Future milesto
 
 ### AArenaDuelGameMode
 
-`AArenaDuelGameMode` derives from `AGameMode` and owns authoritative framework class relationships. It exists only on the server. It currently configures the ArenaDuel GameState, PlayerController, PlayerState, and Character classes. Match flow, rounds, scoring, and win conditions are intentionally absent.
+`AArenaDuelGameMode` derives from `AGameMode` and owns authoritative framework class relationships. It exists only on the server. It configures the ArenaDuel GameState, PlayerController, PlayerState, and Character classes. For current two-player playtests it also awards a round win on death and restarts both players after a short delay, ending the loop when a player reaches five wins. This is a development round loop, not the full Phase 8 match system.
 
 ### AArenaDuelGameState
 
-`AArenaDuelGameState` derives from `AGameState` and establishes the replicated match state type. It exists on the server and as a replicated state object on clients. It currently contains no custom variables.
+`AArenaDuelGameState` derives from `AGameState` and carries replicated development-round number, active state, and last round winner slot. It exists on the server and as a replicated state object on clients.
 
 ### AArenaDuelPlayerController
 
@@ -40,7 +40,7 @@ The initial project should use only engine supplied dependencies. Future milesto
 
 ### AArenaDuelPlayerState
 
-`AArenaDuelPlayerState` derives from `APlayerState` and establishes the replicated per player state type. It exists on the server and is relevant to clients. Persistent player specific match data may be added later. Combat attributes and GAS ownership are not decided here.
+`AArenaDuelPlayerState` derives from `APlayerState` and carries replicated GAS attributes plus the temporary duel slot and round wins. It exists on the server and is relevant to clients. Selection and match-upgrade data remain future work.
 
 ### AArenaDuelCharacter
 
@@ -52,7 +52,13 @@ The first person camera attaches directly to the Character capsule at a 64 centi
 
 ## Phase 6 combat foundation
 
-`AArenaDuelPlayerState` owns the replicated `UAbilitySystemComponent` and `UArenaDuelAttributeSet`. Health and MaxHealth are GAS attributes initialized to 100, with replicated clamping. The Character initializes GAS actor info with PlayerState as OwnerActor and Character as AvatarActor. Server weapon traces apply instant GAS health changes to player Characters only. Body and head damage use data on the weapon definition, and shotgun pellets apply independently. A replicated Character death state stops movement, firing, aiming, reload completion, and further gameplay input. Respawning, rounds, abilities, and health regeneration remain out of scope.
+`AArenaDuelPlayerState` owns the replicated `UAbilitySystemComponent` and `UArenaDuelAttributeSet`. Health and MaxHealth are GAS attributes initialized to 100, with replicated clamping. The Character initializes GAS actor info with PlayerState as OwnerActor and Character as AvatarActor. Server weapon traces apply instant GAS health changes to player Characters only. Body and head damage use data on the weapon definition, and shotgun pellets apply independently. A replicated Character death state stops movement, firing, aiming, reload completion, and further gameplay input. The current development round loop destroys and replaces both pawns after a round, which reinitializes health and combat state while retaining PlayerState round wins. Full match rules and health regeneration remain out of scope.
+
+## Competitive HUD and development rounds
+
+The local `AArenaDuelMovementDebugHUD` creates one native `UArenaDuelHUDWidget`; the widget displays live GAS health, movement stamina, weapon state, replicated player names, round wins, and round number/state. Health/ammo/death are not duplicated in Canvas. Canvas remains responsible for the crosshair, hitmarkers, and opt-in F3 movement diagnostics. The outer frame and decorative side arcs have been removed. Temporary UI state refreshes at 10 Hz and setters avoid rewriting unchanged text or bar values.
+
+When an authoritative Character dies, GameMode ends the round, increments the surviving player's replicated win count, and restarts both player controllers after three seconds using normal PlayerStarts. The loop stops at five wins. This is a practical development flow only: it has no round timer, selection, intermission UI, disconnect rules, or full match completion presentation.
 
 ## Enhanced Input lifecycle
 

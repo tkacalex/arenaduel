@@ -63,31 +63,6 @@ void AArenaDuelMovementDebugHUD::DrawHUD()
 	const float Kick = Weapon ? Weapon->GetCrosshairKick() : 0.0f;
 	const float Gap = FMath::Clamp(5.0f + Spread * 3.0f + Kick * 9.0f, 4.0f, 34.0f);
 	const FLinearColor Crosshair = Weapon && Weapon->IsAiming() ? FLinearColor(0.75f, 0.95f, 1.0f, 1.0f) : FLinearColor::White;
-	const float SX = Canvas->SizeX / 1920.0f;
-	const float SY = Canvas->SizeY / 1080.0f;
-	const float FrameX = 24.0f * SX;
-	const float FrameY = 24.0f * SY;
-	const FLinearColor FrameColor(0.47f, 0.91f, 1.0f, 0.22f);
-	Canvas->K2_DrawLine(FVector2D(FrameX, FrameY), FVector2D(Canvas->SizeX - FrameX, FrameY), 1.0f, FrameColor);
-	Canvas->K2_DrawLine(FVector2D(FrameX, Canvas->SizeY - FrameY), FVector2D(Canvas->SizeX - FrameX, Canvas->SizeY - FrameY), 1.0f, FrameColor);
-	Canvas->K2_DrawLine(FVector2D(FrameX, FrameY), FVector2D(FrameX, FrameY + 52.0f * SY), 1.0f, FrameColor);
-	Canvas->K2_DrawLine(FVector2D(Canvas->SizeX - FrameX, FrameY), FVector2D(Canvas->SizeX - FrameX, FrameY + 52.0f * SY), 1.0f, FrameColor);
-	Canvas->K2_DrawLine(FVector2D(FrameX, Canvas->SizeY - FrameY), FVector2D(FrameX, Canvas->SizeY - FrameY - 52.0f * SY), 1.0f, FrameColor);
-	Canvas->K2_DrawLine(FVector2D(Canvas->SizeX - FrameX, Canvas->SizeY - FrameY), FVector2D(Canvas->SizeX - FrameX, Canvas->SizeY - FrameY - 52.0f * SY), 1.0f, FrameColor);
-	const float ArcRadius = 250.0f * FMath::Min(SX, SY);
-	const FVector2D LeftArcCenter(Canvas->SizeX * 0.03f, Canvas->SizeY * 0.51f);
-	const FVector2D RightArcCenter(Canvas->SizeX * 0.97f, Canvas->SizeY * 0.51f);
-	for (int32 Segment = 0; Segment < 18; ++Segment)
-	{
-		const float LeftA0 = FMath::DegreesToRadians(-58.0f + Segment * 3.0f);
-		const float LeftA1 = FMath::DegreesToRadians(-55.0f + Segment * 3.0f);
-		Canvas->K2_DrawLine(LeftArcCenter + FVector2D(FMath::Cos(LeftA0), FMath::Sin(LeftA0)) * ArcRadius, LeftArcCenter + FVector2D(FMath::Cos(LeftA1), FMath::Sin(LeftA1)) * ArcRadius, 2.0f, FLinearColor(0.73f, 0.44f, 1.0f, 0.28f));
-		const float RightA0 = FMath::DegreesToRadians(126.0f + Segment * 3.0f);
-		const float RightA1 = FMath::DegreesToRadians(129.0f + Segment * 3.0f);
-		Canvas->K2_DrawLine(RightArcCenter + FVector2D(FMath::Cos(RightA0), FMath::Sin(RightA0)) * ArcRadius, RightArcCenter + FVector2D(FMath::Cos(RightA1), FMath::Sin(RightA1)) * ArcRadius, 2.0f, FLinearColor(0.47f, 0.91f, 1.0f, 0.28f));
-	}
-	Canvas->K2_DrawLine(FVector2D(Canvas->SizeX * 0.5f - 18.0f, Canvas->SizeY - 30.0f), FVector2D(Canvas->SizeX * 0.5f, Canvas->SizeY - 20.0f), 1.0f, FrameColor);
-	Canvas->K2_DrawLine(FVector2D(Canvas->SizeX * 0.5f, Canvas->SizeY - 20.0f), FVector2D(Canvas->SizeX * 0.5f + 18.0f, Canvas->SizeY - 30.0f), 1.0f, FrameColor);
 	if (Character && Movement && !Character->IsDead())
 	{
 	Canvas->K2_DrawLine(Center + FVector2D(-Gap - 7.0f, 0.0f), Center + FVector2D(-Gap, 0.0f), 1.5f, Crosshair);

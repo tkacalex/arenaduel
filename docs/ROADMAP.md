@@ -26,6 +26,8 @@ Weapon handling, aiming, firing, reloads, hit validation, and the initial weapon
 
 Gameplay Ability System integration, combat attributes, health, damage, death, and related server authority.
 
+Current playtest support also includes a minimal server-authoritative round restart loop after death and a compact competitive HUD showing round wins. This does not mark Phase 8 complete and is not the final match system.
+
 ## Phase 7: Characters and abilities
 
 Shadow, Warden, Rift, and non damaging utility and movement abilities.

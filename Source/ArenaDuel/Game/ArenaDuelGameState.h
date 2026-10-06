@@ -10,4 +10,21 @@ UCLASS()
 class ARENADUEL_API AArenaDuelGameState : public AGameState
 {
 	GENERATED_BODY()
+
+public:
+	int32 GetRoundNumber() const { return RoundNumber; }
+	bool IsRoundInProgress() const { return bRoundInProgress; }
+	int32 GetLastRoundWinnerSlot() const { return LastRoundWinnerSlot; }
+	void SetRoundState(int32 NewRoundNumber, bool bNewRoundInProgress, int32 NewLastRoundWinnerSlot);
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+protected:
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
+	int32 RoundNumber = 1;
+
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
+	bool bRoundInProgress = true;
+
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
+	int32 LastRoundWinnerSlot = INDEX_NONE;
 };

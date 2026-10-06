@@ -18,6 +18,7 @@
 #include "InputMappingContext.h"
 #include "Engine/LocalPlayer.h"
 #include "../Player/ArenaDuelPlayerState.h"
+#include "../Game/ArenaDuelGameMode.h"
 #include "../Combat/ArenaDuelAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayEffect.h"
@@ -142,6 +143,13 @@ void AArenaDuelCharacter::HandleDeath()
 	if (bDead) return;
 	bDead = true;
 	SetDeadState();
+	if (HasAuthority() && GetWorld())
+	{
+		if (AArenaDuelGameMode* ArenaGameMode = GetWorld()->GetAuthGameMode<AArenaDuelGameMode>())
+		{
+			ArenaGameMode->HandlePlayerDeath(this);
+		}
+	}
 }
 
 void AArenaDuelCharacter::SetDeadState()

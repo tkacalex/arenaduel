@@ -17,8 +17,28 @@ AArenaDuelPlayerState::AArenaDuelPlayerState()
 
 UAbilitySystemComponent* AArenaDuelPlayerState::GetAbilitySystemComponent() const { return AbilitySystemComponent; }
 
+void AArenaDuelPlayerState::SetDuelSlot(uint8 NewDuelSlot)
+{
+	if (HasAuthority())
+	{
+		DuelSlot = FMath::Min<uint8>(NewDuelSlot, 1);
+		ForceNetUpdate();
+	}
+}
+
+void AArenaDuelPlayerState::AwardRoundWin()
+{
+	if (HasAuthority() && RoundWins < 5)
+	{
+		++RoundWins;
+		ForceNetUpdate();
+	}
+}
+
 void AArenaDuelPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AArenaDuelPlayerState, AbilitySystemComponent);
+	DOREPLIFETIME(AArenaDuelPlayerState, DuelSlot);
+	DOREPLIFETIME(AArenaDuelPlayerState, RoundWins);
 }
