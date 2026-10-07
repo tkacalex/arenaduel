@@ -22,7 +22,9 @@ struct FArenaDuelWeaponVisualDefinition
 	UPROPERTY() FRotator HipRotation = FRotator::ZeroRotator;
 	UPROPERTY() FVector HandLocation = FVector::ZeroVector;
 	UPROPERTY() FRotator HandRotation = FRotator::ZeroRotator;
+	UPROPERTY() FRotator ThirdPersonHandRotation = FRotator::ZeroRotator;
 	UPROPERTY() FVector Scale = FVector(1);
+	UPROPERTY() FVector FirstPersonScale = FVector(1);
 	UPROPERTY() FVector WorldScale = FVector(0.75f);
 };
 

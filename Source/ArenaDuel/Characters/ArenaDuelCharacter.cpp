@@ -44,22 +44,43 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	FirstPersonArms = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonArms"));
 	FirstPersonArms->SetupAttachment(FirstPersonViewmodelRoot);
 	FirstPersonArms->SetOnlyOwnerSee(true);
+	FirstPersonArms->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::FirstPerson;
 	FirstPersonArms->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FirstPersonArms->SetCastShadow(false);
-	FirstPersonArms->SetRelativeLocation(FVector(10.0f, -7.0f, -108.0f));
+	// Use the complete Epic Manny mesh for the first-person representation. The old
+	// skin-weight extracted mesh produced malformed shoulder/torso blobs.
+	FirstPersonArms->SetRelativeLocation(FVector(0.0f, 0.0f, -132.0f));
 	FirstPersonArms->SetRelativeRotation(FRotator::ZeroRotator);
-	FirstPersonArms->SetRelativeScale3D(FVector(0.82f));
+	FirstPersonArms->SetRelativeScale3D(FVector(1.0f));
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> Manny(TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"));
 	GetMesh()->SetSkeletalMesh(Manny.Object);
 	GetMesh()->SetRelativeLocation(FVector(0, 0, -GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()));
-	GetMesh()->SetRelativeRotation(FRotator::ZeroRotator);
+	GetMesh()->SetRelativeRotation(GetThirdPersonMeshBaseRotation());
+	LivingMeshRelativeLocation = GetMesh()->GetRelativeLocation();
+	LivingMeshRelativeRotation = GetMesh()->GetRelativeRotation();
 	GetMesh()->SetOwnerNoSee(true);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GetMesh()->SetAnimInstanceClass(UArenaDuelVisualAnimInstance::StaticClass());
 	// The editor setup command can derive the arms on a fresh checkout before they exist.
-	USkeletalMesh* ArmsAsset = LoadObject<USkeletalMesh>(nullptr, TEXT("/Game/ArenaDuel/Characters/Common/SKM_ArenaDuelArms"), nullptr, LOAD_NoWarn);
-	FirstPersonArms->SetSkeletalMesh(ArmsAsset ? ArmsAsset : Manny.Object.Get());
+	FirstPersonArms->SetSkeletalMesh(Manny.Object);
 	FirstPersonArms->SetAnimInstanceClass(UArenaDuelVisualAnimInstance::StaticClass());
+	FirstPersonArms->HideBoneByName(TEXT("head"), PBO_None);
+	FirstPersonArms->HideBoneByName(TEXT("neck_01"), PBO_None);
+	FirstPersonArms->HideBoneByName(TEXT("neck_02"), PBO_None);
+	FirstPersonArms->HideBoneByName(TEXT("spine_04"), PBO_None);
+	FirstPersonArms->HideBoneByName(TEXT("spine_05"), PBO_None);
+	FirstPersonArms->HideBoneByName(TEXT("clavicle_l"), PBO_None);
+	FirstPersonArms->HideBoneByName(TEXT("clavicle_r"), PBO_None);
+	FirstPersonArms->HideBoneByName(TEXT("thigh_l"), PBO_None);
+	FirstPersonArms->HideBoneByName(TEXT("thigh_r"), PBO_None);
+	FirstPersonArms->HideBoneByName(TEXT("calf_l"), PBO_None);
+	FirstPersonArms->HideBoneByName(TEXT("calf_r"), PBO_None);
+	FirstPersonArms->HideBoneByName(TEXT("foot_l"), PBO_None);
+	FirstPersonArms->HideBoneByName(TEXT("foot_r"), PBO_None);
+	FirstPersonCamera->bEnableFirstPersonFieldOfView = true;
+	FirstPersonCamera->bEnableFirstPersonScale = true;
+	FirstPersonCamera->FirstPersonFieldOfView = 94.0f;
+	FirstPersonCamera->FirstPersonScale = 0.82f;
 	for (const TCHAR* Path : { TEXT("/Game/ArenaDuel/Characters/Common/M_ShadowArmor"), TEXT("/Game/ArenaDuel/Characters/Common/M_WardenArmor"), TEXT("/Game/ArenaDuel/Characters/Common/M_RiftArmor") })
 		ArchetypeArmorMaterials.Add(LoadObject<UMaterialInterface>(nullptr, Path));
 	CyanVisualMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneCyan"));
@@ -134,6 +155,7 @@ void AArenaDuelCharacter::RefreshCharacterVisuals()
 	BodyVisual->SetHiddenInGame(true);
 	HeadVisual->SetHiddenInGame(true);
 	GetMesh()->SetOwnerNoSee(true);
+	GetMesh()->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::WorldSpaceRepresentation;
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FirstPersonArms->SetVisibility(IsLocallyControlled() && !bDead);
 	// Derived arm-only geometry retains the Epic skeleton, animation and grip socket.
@@ -151,6 +173,13 @@ void AArenaDuelCharacter::RefreshCharacterVisuals()
 	}
 	if (WeaponComponent) WeaponComponent->RefreshWeaponVisual();
 	if (bDead) ApplyDevelopmentDeathPose();
+}
+
+FRotator AArenaDuelCharacter::GetThirdPersonMeshBaseRotation() const
+{
+	// Manny's authored body basis is aligned with the gameplay actor in UE 5.8.
+	// Keep this named helper so death and future presentation changes share one basis.
+	return FRotator::ZeroRotator;
 }
 
 void AArenaDuelCharacter::PossessedBy(AController* NewController)
@@ -393,15 +422,22 @@ void AArenaDuelCharacter::ApplyDevelopmentDeathPose()
 {
 	// Temporary deterministic cosmetic fall until a final death animation/ragdoll is authored.
 	// Pause the single-node locomotion sequence first, otherwise it continues to pose the corpse.
+	if (bDeathPresentationLatched)
+	{
+		GetMesh()->bPauseAnims = true;
+		FirstPersonArms->SetVisibility(false);
+		return;
+	}
 	if (UArenaDuelVisualAnimInstance* Anim = Cast<UArenaDuelVisualAnimInstance>(GetMesh()->GetAnimInstance())) Anim->SetPlaying(false);
 	GetMesh()->bPauseAnims = true;
+	bDeathPresentationLatched = true;
 	FirstPersonArms->SetVisibility(false);
 	if (WeaponComponent) WeaponComponent->RefreshWeaponVisual();
 	const float Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
 	if (!GetWorld() || !GetWorldTimerManager().IsTimerActive(DeathPoseTimer))
 	{
 		DeathPoseStartTime = Now;
-		DeathPoseStartRotation = GetMesh()->GetRelativeRotation();
+		DeathPoseStartRotation = LivingMeshRelativeRotation;
 		GetWorldTimerManager().SetTimer(DeathPoseTimer, this, &AArenaDuelCharacter::UpdateDevelopmentDeathPose, 0.02f, true);
 	}
 	UpdateDevelopmentDeathPose();
@@ -423,9 +459,9 @@ void AArenaDuelCharacter::UpdateDevelopmentDeathPose()
 	constexpr float Duration = 0.48f;
 	const float Alpha = FMath::Clamp((GetWorld()->GetTimeSeconds() - DeathPoseStartTime) / Duration, 0.0f, 1.0f);
 	const float Smooth = FMath::SmoothStep(0.0f, 1.0f, Alpha);
-	const FRotator TargetRotation(0.0f, 0.0f, 90.0f);
+	const FRotator TargetRotation = LivingMeshRelativeRotation + FRotator(0.0f, 0.0f, 90.0f);
 	GetMesh()->SetRelativeRotation(FMath::Lerp(DeathPoseStartRotation, TargetRotation, Smooth));
-	GetMesh()->SetRelativeLocation(FMath::Lerp(FVector(0,0,-GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()), FVector(0,0,-GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()+20), Smooth));
+	GetMesh()->SetRelativeLocation(FMath::Lerp(LivingMeshRelativeLocation, LivingMeshRelativeLocation + FVector(0,0,20), Smooth));
 	if (Alpha >= 1.0f) GetWorldTimerManager().ClearTimer(DeathPoseTimer);
 }
 

@@ -16,8 +16,8 @@
 
 namespace
 {
-	const FLinearColor Cyan(0.22f, 0.82f, 0.98f);
-	const FLinearColor Violet(0.65f, 0.38f, 0.95f);
+	const FLinearColor MenuCyan(0.22f, 0.82f, 0.98f);
+	const FLinearColor MenuViolet(0.65f, 0.38f, 0.95f);
 	const FLinearColor TextColor(0.91f, 0.95f, 0.99f);
 	UCanvasPanelSlot* Put(UCanvasPanel* Parent, UWidget* Child, float X, float Y, float W, float H)
 	{
@@ -66,20 +66,20 @@ void UArenaDuelPlayerMenuWidget::BuildTree()
 	PausePage=WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(),TEXT("PausePage")); PutCentered(RootCanvas,PausePage,620,560);
 	SettingsPage=WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(),TEXT("SettingsPage")); PutCentered(RootCanvas,SettingsPage,1000,780);
 	for (UCanvasPanel* Page : {PausePage.Get(),SettingsPage.Get()}) { UBorder* Panel=WidgetTree->ConstructWidget<UBorder>(); Panel->SetBrushColor(FLinearColor(0.015f,0.035f,0.075f,0.97f)); Panel->SetVisibility(ESlateVisibility::HitTestInvisible); Put(Page,Panel,0,0,Page==PausePage?620:1000,Page==PausePage?560:780); }
-	Label(WidgetTree,PausePage,TEXT("ARENADUEL"),55,46,510,55,34,Cyan);
-	Label(WidgetTree,PausePage,TEXT("PAUSED LOCALLY  |  THE MATCH CONTINUES"),55,104,510,32,14,Violet);
-	UButton* Resume=ActionButton(WidgetTree,PausePage,TEXT("RESUME"),105,220,410,62,Cyan); Resume->OnClicked.AddDynamic(this,&ThisClass::OnResumeClicked);
-	UButton* OpenSettings=ActionButton(WidgetTree,PausePage,TEXT("SETTINGS"),105,304,410,62,Violet); OpenSettings->OnClicked.AddDynamic(this,&ThisClass::OnSettingsClicked);
+	Label(WidgetTree,PausePage,TEXT("ARENADUEL"),55,46,510,55,34,MenuCyan);
+	Label(WidgetTree,PausePage,TEXT("PAUSED LOCALLY  |  THE MATCH CONTINUES"),55,104,510,32,14,MenuViolet);
+	UButton* Resume=ActionButton(WidgetTree,PausePage,TEXT("RESUME"),105,220,410,62,MenuCyan); Resume->OnClicked.AddDynamic(this,&ThisClass::OnResumeClicked);
+	UButton* OpenSettings=ActionButton(WidgetTree,PausePage,TEXT("SETTINGS"),105,304,410,62,MenuViolet); OpenSettings->OnClicked.AddDynamic(this,&ThisClass::OnSettingsClicked);
 	Label(WidgetTree,PausePage,TEXT("ESC  RESUME"),105,475,410,30,14,FLinearColor(0.54f,0.64f,0.76f));
-	Label(WidgetTree,SettingsPage,TEXT("PLAYER SETTINGS"),38,20,640,48,30,Cyan);
-	Label(WidgetTree,SettingsPage,TEXT("LOCAL SETTINGS  /  APPLY TO THIS DEVICE"),40,68,720,25,13,Violet);
+	Label(WidgetTree,SettingsPage,TEXT("PLAYER SETTINGS"),38,20,640,48,30,MenuCyan);
+	Label(WidgetTree,SettingsPage,TEXT("LOCAL SETTINGS  /  APPLY TO THIS DEVICE"),40,68,720,25,13,MenuViolet);
 	const TCHAR* Names[]={TEXT("MOUSE SENSITIVITY"),TEXT("ADS SENSITIVITY"),TEXT("FIELD OF VIEW"),TEXT("MASTER VOLUME")};
 	TObjectPtr<USlider>* Sliders[]={&SensitivitySlider,&ADSSlider,&FOVSlider,&VolumeSlider};
 	TObjectPtr<UTextBlock>* Labels[]={&SensitivityLabel,&ADSLabel,&FOVLabel,&VolumeLabel};
 	for(int32 I=0;I<4;++I)
 	{
 		const float Y=132+I*88; Label(WidgetTree,SettingsPage,Names[I],45,Y,300,30,16,TextColor);
-		*Labels[I]=Label(WidgetTree,SettingsPage,TEXT(""),800,Y,140,30,16,Cyan);
+		*Labels[I]=Label(WidgetTree,SettingsPage,TEXT(""),800,Y,140,30,16,MenuCyan);
 		*Sliders[I]=WidgetTree->ConstructWidget<USlider>(); (*Sliders[I])->SetStepSize(0.001f); Put(SettingsPage,*Sliders[I],365,Y+3,400,30);
 	}
 	const TCHAR* ChoiceNames[]={TEXT("WINDOW MODE"),TEXT("RESOLUTION"),TEXT("VSYNC"),TEXT("FRAME RATE LIMIT")};
@@ -93,8 +93,8 @@ void UArenaDuelPlayerMenuWidget::BuildTree()
 	VSyncBox->AddOption(TEXT("Off")); VSyncBox->AddOption(TEXT("On"));
 	for(int32 Cap:{60,120,144,165,240}) FPSBox->AddOption(FString::FromInt(Cap)); FPSBox->AddOption(TEXT("Unlimited"));
 	TArray<FScreenResolutionRHI> ScreenModes; if(RHIGetAvailableResolutions(ScreenModes,false)) for(const auto& R:ScreenModes) { FIntPoint P(R.Width,R.Height); if(!AvailableResolutions.Contains(P)) { AvailableResolutions.Add(P); ResolutionBox->AddOption(FString::Printf(TEXT("%d x %d"),P.X,P.Y)); } }
-	UButton* ApplyButton=ActionButton(WidgetTree,SettingsPage,TEXT("APPLY"),535,724,160,42,Cyan); ApplyButton->OnClicked.AddDynamic(this,&ThisClass::OnApplyClicked);
-	UButton* BackButton=ActionButton(WidgetTree,SettingsPage,TEXT("BACK"),715,724,130,42,Violet); BackButton->OnClicked.AddDynamic(this,&ThisClass::OnBackClicked);
+	UButton* ApplyButton=ActionButton(WidgetTree,SettingsPage,TEXT("APPLY"),535,724,160,42,MenuCyan); ApplyButton->OnClicked.AddDynamic(this,&ThisClass::OnApplyClicked);
+	UButton* BackButton=ActionButton(WidgetTree,SettingsPage,TEXT("BACK"),715,724,130,42,MenuViolet); BackButton->OnClicked.AddDynamic(this,&ThisClass::OnBackClicked);
 	UButton* ResetButton=ActionButton(WidgetTree,SettingsPage,TEXT("RESET DEFAULTS"),55,724,210,42,FLinearColor(0.7f,0.75f,0.82f)); ResetButton->OnClicked.AddDynamic(this,&ThisClass::OnResetClicked);
 	SensitivitySlider->OnValueChanged.AddDynamic(this,&ThisClass::OnSensitivityChanged); ADSSlider->OnValueChanged.AddDynamic(this,&ThisClass::OnADSChanged); FOVSlider->OnValueChanged.AddDynamic(this,&ThisClass::OnFOVChanged); VolumeSlider->OnValueChanged.AddDynamic(this,&ThisClass::OnVolumeChanged);
 	WindowModeBox->OnSelectionChanged.AddDynamic(this,&ThisClass::OnWindowModeChanged); ResolutionBox->OnSelectionChanged.AddDynamic(this,&ThisClass::OnResolutionChanged); VSyncBox->OnSelectionChanged.AddDynamic(this,&ThisClass::OnVSyncChanged); FPSBox->OnSelectionChanged.AddDynamic(this,&ThisClass::OnFPSChanged);

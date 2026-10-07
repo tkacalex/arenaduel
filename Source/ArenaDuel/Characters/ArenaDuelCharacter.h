@@ -93,6 +93,7 @@ protected:
 	void UpdateLocalDeathCamera();
 	void UpdateShadowStepCameraImpulse();
 	void UpdateDevelopmentDeathPose();
+	FRotator GetThirdPersonMeshBaseRotation() const;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCameraComponent> FirstPersonCamera;
@@ -169,4 +170,7 @@ protected:
 	FVector LocalDeathCameraStartLocation = FVector::ZeroVector;
 	FRotator LocalDeathCameraStartRotation = FRotator::ZeroRotator;
 	float LocalDeathCameraStartTime = 0.0f;
+	bool bDeathPresentationLatched = false;
+	FVector LivingMeshRelativeLocation = FVector::ZeroVector;
+	FRotator LivingMeshRelativeRotation = FRotator::ZeroRotator;
 };

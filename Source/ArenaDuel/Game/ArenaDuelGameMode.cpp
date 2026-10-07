@@ -13,8 +13,10 @@
 #include "AbilitySystemComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerStart.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 
 AArenaDuelGameMode::AArenaDuelGameMode()
 {
@@ -65,6 +67,22 @@ void AArenaDuelGameMode::RestartPlayer(AController* NewPlayer)
 	{
 		if (AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(NewPlayer->GetPawn())) Character->SetRoundInputLocked(true);
 	}
+}
+
+AActor* AArenaDuelGameMode::FindPlayerStart_Implementation(AController* Player, const FString& IncomingName)
+{
+	const AArenaDuelPlayerState* DuelPlayer = Player ? Player->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
+	const FName WantedTag = DuelPlayer && DuelPlayer->GetDuelSlot() < 2
+		? (DuelPlayer->GetDuelSlot() == 0 ? FName(TEXT("ArenaCore_P1")) : FName(TEXT("ArenaCore_P2")))
+		: NAME_None;
+	if (WantedTag != NAME_None && GetWorld())
+	{
+		for (TActorIterator<APlayerStart> It(GetWorld()); It; ++It)
+		{
+			if (It->PlayerStartTag == WantedTag) return *It;
+		}
+	}
+	return Super::FindPlayerStart_Implementation(Player, IncomingName);
 }
 
 void AArenaDuelGameMode::Logout(AController* Exiting)

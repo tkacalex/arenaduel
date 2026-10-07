@@ -23,6 +23,7 @@ public:
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 	virtual void Logout(AController* Exiting) override;
 	virtual void RestartPlayer(AController* NewPlayer) override;
+	virtual AActor* FindPlayerStart_Implementation(AController* Player, const FString& IncomingName = TEXT("")) override;
 	void RequestCharacterSelection(APlayerController* Requester, EArenaDuelCharacterArchetype Archetype);
 	void RequestCharacterReady(APlayerController* Requester, bool bReady);
 	void HandlePlayerDeath(AArenaDuelCharacter* DeadCharacter);

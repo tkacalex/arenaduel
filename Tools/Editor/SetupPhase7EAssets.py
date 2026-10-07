@@ -49,7 +49,7 @@ def spawn_lights():
         # shadowless movable fills so the development arena is readable.
         component.set_mobility(unreal.ComponentMobility.MOVABLE)
         component.set_cast_shadows(False)
-        component.set_editor_property('intensity', 9000.0 if index < 4 else 7000.0)
+        component.set_editor_property('intensity', 1800.0 if index < 4 else 1400.0)
         component.set_editor_property('attenuation_radius', 3200.0 if index < 4 else 4200.0)
         component.set_editor_property('light_color', unreal.Color(190, 205, 255, 255))
         component.set_editor_property('use_inverse_squared_falloff', True)
@@ -79,8 +79,9 @@ def build():
     spawn_cube('ArenaCore_CenterMark_X', (0, 0, 2), (300, 8, 3), accent)
     spawn_cube('ArenaCore_CenterMark_Y', (0, 0, 2), (8, 300, 3), accent)
     for x, yaw, name in [(-2400, 0, 'P1'), (2400, 180, 'P2')]:
-        start = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.PlayerStart, unreal.Vector(x, 0, 100), unreal.Rotator(0, yaw, 0))
+        start = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.PlayerStart, unreal.Vector(x, 0, 100), unreal.Rotator(pitch=0, yaw=yaw, roll=0))
         start.set_actor_label('ArenaCore_PlayerStart_' + name)
+        start.set_editor_property('player_start_tag', 'ArenaCore_' + name)
     spawn_lights()
     world = unreal.EditorLevelLibrary.get_editor_world()
     if not unreal.EditorLoadingAndSavingUtils.save_map(world, MAP):

@@ -67,15 +67,20 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 	FirstPersonWeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FirstPersonWeaponMesh->SetCastShadow(false);
 	FirstPersonWeaponMesh->SetOnlyOwnerSee(true);
+	FirstPersonWeaponMesh->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::FirstPerson;
 	ThirdPersonWeaponMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ThirdPersonWeaponMesh"));
 	ThirdPersonWeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	ThirdPersonWeaponMesh->SetOwnerNoSee(true);
+	ThirdPersonWeaponMesh->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::WorldSpaceRepresentation;
 	for (const TCHAR* Name : {TEXT("ArcRifle"), TEXT("ShadeSMG"), TEXT("RuneDMR"), TEXT("HexShotgun")})
 	{
 		FArenaDuelWeaponVisualDefinition Visual;
 		Visual.Mesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(FString::Printf(TEXT("/Game/ArenaDuel/Weapons/%s/SM_%s.SM_%s"), Name, Name, Name)));
-		// Grip socket's evaluated rifle hold basis. Our original models use +X forward.
+		// HandGrip_R is a child socket basis. Its inverse is the local transform
+		// that aligns the generated +X muzzle axis with the camera/character basis.
+		// Keep FP and TP values explicit so they can be tuned independently.
 		Visual.HandRotation = FRotator(-15.85794f, 11.63120f, -12.32760f).Quaternion().Inverse().Rotator();
+		Visual.ThirdPersonHandRotation = Visual.HandRotation;
 		WeaponVisualDefinitions.Add(Visual);
 	}
 	WeaponVisualDefinitions[0].HipLocation=FVector(28,16,-40);
@@ -88,6 +93,7 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 	WeaponVisualDefinitions[1].Scale=FVector(0.46f);
 	WeaponVisualDefinitions[2].Scale=FVector(0.43f);
 	WeaponVisualDefinitions[3].Scale=FVector(0.45f);
+	for (FArenaDuelWeaponVisualDefinition& Visual : WeaponVisualDefinitions) Visual.FirstPersonScale = Visual.Scale;
 	// Visual alignment only; approved FOV, sensitivity, spread and recoil are unchanged.
 	for (auto& Definition : WeaponDefinitions) Definition.AimViewmodelLocation.Z -= 19.0f;
 }
@@ -481,8 +487,9 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 		if (!WeaponMesh->IsRegistered() && GetWorld() && !Character->HasAnyFlags(RF_ClassDefaultObject)) WeaponMesh->RegisterComponent();
 		WeaponMesh->SetStaticMesh(Mesh);
 		WeaponMesh->SetRelativeLocation(Visual.HandLocation);
-		WeaponMesh->SetRelativeRotation(Visual.HandRotation);
-		WeaponMesh->SetRelativeScale3D(Visual.Scale);
+		const bool bFirstPerson = WeaponMesh == FirstPersonWeaponMesh.Get();
+		WeaponMesh->SetRelativeRotation(bFirstPerson ? Visual.HandRotation : Visual.ThirdPersonHandRotation);
+		WeaponMesh->SetRelativeScale3D(bFirstPerson ? Visual.FirstPersonScale : Visual.WorldScale);
 		if (WeaponBodyMaterial) for (int32 I=0;I<WeaponMesh->GetNumMaterials();++I) WeaponMesh->SetMaterial(I,WeaponBodyMaterial);
 	}
 	const AArenaDuelPlayerState* Player=Character->GetPlayerState<AArenaDuelPlayerState>();
@@ -492,7 +499,7 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 		if(FirstPersonWeaponMesh->GetNumMaterials()>1)FirstPersonWeaponMesh->SetMaterial(1,Accent);
 		if(ThirdPersonWeaponMesh->GetNumMaterials()>1)ThirdPersonWeaponMesh->SetMaterial(1,Accent);
 	}
-	FirstPersonWeaponMesh->SetRelativeScale3D(Visual.Scale);
+	FirstPersonWeaponMesh->SetRelativeScale3D(Visual.FirstPersonScale);
 	ThirdPersonWeaponMesh->SetRelativeScale3D(Visual.WorldScale);
 	FirstPersonWeaponMesh->SetVisibility(Character->IsLocallyControlled() && !Character->IsDead());
 	ThirdPersonWeaponMesh->SetVisibility(true);

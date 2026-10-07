@@ -6,6 +6,8 @@
 #include "Components/Button.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
+#include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
 #include "Components/ScaleBox.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
@@ -189,9 +191,28 @@ void UArenaDuelCharacterSelectWidget::BuildPlayerPanel(int32 SideIndex)
 	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("SHADOW"), Color, 70, 656, 152, 45));
 	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("WARDEN"), Color, 237, 656, 152, 45));
 	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("RIFT"), Color, 404, 656, 152, 45));
-	for (UButton* Roster : PanelWidgets.RosterButtons)
+	for (int32 RosterIndex = 0; RosterIndex < PanelWidgets.RosterButtons.Num(); ++RosterIndex)
 	{
-		if (UTextBlock* Label = Cast<UTextBlock>(Roster->GetChildAt(0))) Label->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 16));
+		UButton* Roster = PanelWidgets.RosterButtons[RosterIndex];
+		Roster->ClearChildren();
+		UHorizontalBox* Layout = WidgetTree->ConstructWidget<UHorizontalBox>();
+		UTextBlock* Icon = WidgetTree->ConstructWidget<UTextBlock>();
+		Icon->SetText(FText::FromString(TEXT("◇")));
+		Icon->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 18));
+		Icon->SetColorAndOpacity(Color);
+		Icon->SetJustification(ETextJustify::Center);
+		UHorizontalBoxSlot* IconSlot = Layout->AddChildToHorizontalBox(Icon);
+		IconSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+		IconSlot->SetPadding(FMargin(8.0f, 0.0f, 2.0f, 0.0f));
+		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>();
+		Label->SetText(FText::FromString(RosterIndex == 0 ? TEXT("SHADOW") : RosterIndex == 1 ? TEXT("WARDEN") : TEXT("RIFT")));
+		Label->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 16));
+		Label->SetColorAndOpacity(Color);
+		Label->SetJustification(ETextJustify::Left);
+		UHorizontalBoxSlot* LabelSlot = Layout->AddChildToHorizontalBox(Label);
+		LabelSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+		LabelSlot->SetPadding(FMargin(2.0f, 0.0f, 6.0f, 0.0f));
+		Roster->AddChild(Layout);
 	}
 	PanelWidgets.RosterButtons[0]->OnClicked.AddDynamic(this, &ThisClass::SelectShadow);
 	PanelWidgets.RosterButtons[1]->OnClicked.AddDynamic(this, &ThisClass::SelectWarden);
@@ -403,7 +424,8 @@ int32 UArenaDuelCharacterSelectWidget::NativePaint(const FPaintArgs& Args, const
 			else for (int32 I = -1; I <= 1; ++I) Lines({{IX + I * 11, IY + 15}, {IX + I * 11 + 3, IY - 15}}, Color, 2);
 		}
 		// Three implemented kits fit the existing strip without widening either panel.
-		for (int32 Character = 0; Character < 3; ++Character)
+		// Roster icons are now real widget children with reserved layout space.
+		for (int32 Character = 0; Character < 0; ++Character)
 		{
 			const float RX = X + 70 + Character * 167;
 			const bool bSelected = static_cast<int32>(Panels[SideIndex].DisplayArchetype) == Character;

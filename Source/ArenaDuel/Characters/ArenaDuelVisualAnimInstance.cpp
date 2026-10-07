@@ -66,9 +66,11 @@ UArenaDuelVisualAnimInstance::UArenaDuelVisualAnimInstance()
 
 void UArenaDuelVisualAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 {
-	Super::NativeUpdateAnimation(DeltaSeconds);
 	const auto* Character = Cast<AArenaDuelCharacter>(GetOwningActor());
+	// Death is a latched presentation state. Do not let the normal single-node
+	// selection restart locomotion on a corpse between timer updates.
 	if (!Character || Character->IsDead()) { SetPlaying(false); return; }
+	Super::NativeUpdateAnimation(DeltaSeconds);
 	const bool bFirstPerson = GetSkelMeshComponent() == Character->GetFirstPersonArms();
 	const float Speed = Character->GetVelocity().Size2D();
 	UAnimSequence* Desired = Idle;

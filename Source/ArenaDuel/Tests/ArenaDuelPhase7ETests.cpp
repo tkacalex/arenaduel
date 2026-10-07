@@ -46,10 +46,17 @@ bool FArenaDuelArenaCoreStructureTest::RunTest(const FString& Parameters)
 	TestNotNull(TEXT("L_ArenaCore loads"),World);
 	if(!World)return false;
 	int32 StartCount=0,WallCount=0,FloorCount=0,CeilingCount=0,LightCount=0;
+	APlayerStart* P1Start=nullptr;
+	APlayerStart* P2Start=nullptr;
 	for(TActorIterator<AActor> It(World);It;++It)
 	{
 		const FString Label=It->GetActorLabel();
-		if(It->IsA<APlayerStart>())++StartCount;
+		if(const APlayerStart* Start=Cast<APlayerStart>(*It))
+		{
+			++StartCount;
+			if(Start->PlayerStartTag==FName(TEXT("ArenaCore_P1"))) P1Start=const_cast<APlayerStart*>(Start);
+			if(Start->PlayerStartTag==FName(TEXT("ArenaCore_P2"))) P2Start=const_cast<APlayerStart*>(Start);
+		}
 		if(const APointLight* Light=Cast<APointLight>(*It))
 		{
 			++LightCount;
@@ -75,6 +82,15 @@ bool FArenaDuelArenaCoreStructureTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Floor exists"),FloorCount,1);
 	TestEqual(TEXT("Ceiling closes the shell"),CeilingCount,1);
 	TestEqual(TEXT("Five lightweight development fill lights"),LightCount,5);
+	TestNotNull(TEXT("ArenaCore P1 start is explicitly tagged"),P1Start);
+	TestNotNull(TEXT("ArenaCore P2 start is explicitly tagged"),P2Start);
+	if(P1Start && P2Start)
+	{
+		const FVector Center=FVector::ZeroVector;
+		TestTrue(TEXT("P1 faces arena center"),FVector::DotProduct(P1Start->GetActorForwardVector(),(Center-P1Start->GetActorLocation()).GetSafeNormal())>0.95f);
+		TestTrue(TEXT("P2 faces arena center"),FVector::DotProduct(P2Start->GetActorForwardVector(),(Center-P2Start->GetActorLocation()).GetSafeNormal())>0.95f);
+		TestTrue(TEXT("P1 and P2 face each other"),FVector::DotProduct(P1Start->GetActorForwardVector(),-P2Start->GetActorForwardVector())>0.95f);
+	}
 	return true;
 }
 
