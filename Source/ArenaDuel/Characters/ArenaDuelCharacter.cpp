@@ -509,10 +509,15 @@ void AArenaDuelCharacter::ApplyDevelopmentDeathPose()
 	bDeathPresentationLatched = true;
 	GetMesh()->bPauseAnims = false;
 	if (WeaponComponent) WeaponComponent->RefreshWeaponVisual();
+	// Proxies may die mid network smoothing; hold the corpse on its living mesh offset from then on.
+	UpdateDevelopmentDeathPose();
+	if (GetWorld()) GetWorldTimerManager().SetTimer(DeathPoseTimer, this, &AArenaDuelCharacter::UpdateDevelopmentDeathPose, 0.05f, true);
 }
 
 void AArenaDuelCharacter::UpdateDevelopmentDeathPose()
 {
+	if (!GetMesh()) return;
+	GetMesh()->SetRelativeLocationAndRotation(LivingMeshRelativeLocation, LivingMeshRelativeRotation);
 }
 void AArenaDuelCharacter::OnRep_Dead() { if (bDead) SetDeadState(); }
 
