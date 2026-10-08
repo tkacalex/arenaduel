@@ -33,6 +33,24 @@
 #include "Net/UnrealNetwork.h"
 #include "UObject/ConstructorHelpers.h"
 
+namespace
+{
+	// The animation pins the head joint to the component origin, so this offset is simply where
+	// that joint sits relative to the eye: a little behind and below the camera. Full scale and
+	// Manny's +Y forward turned onto the camera's +X. Also applied at BeginPlay because the saved
+	// Blueprint still carries the transform and mesh of the old forearm-only viewmodel.
+	void ConfigureFirstPersonBody(USkeletalMeshComponent* Body, USkeletalMesh* Mesh)
+	{
+		if (!Body) return;
+		if (Mesh && Body->GetSkeletalMeshAsset() != Mesh) Body->SetSkeletalMesh(Mesh);
+		Body->SetRelativeLocation(FVector(-9.0f, 0.0f, -10.0f));
+		Body->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
+		Body->SetRelativeScale3D(FVector::OneVector);
+		// The pinned pose sits a body height below the reference bounds, so widen them against culling.
+		Body->SetBoundsScale(4.0f);
+	}
+}
+
 AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<UArenaDuelCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
@@ -48,12 +66,7 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	FirstPersonArms->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::FirstPerson;
 	FirstPersonArms->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FirstPersonArms->SetCastShadow(false);
-	// Use forearms and hands only, with the elbow cut kept outside the viewmodel frame.
-	FirstPersonArms->SetRelativeLocation(FVector(20.0f, 0.0f, -90.0f));
-	// Match Manny's measured +Y body basis to the camera's +X forward axis.
-	FirstPersonArms->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
-	// Keep both gloved hands and the forearms prominent in the first-person view.
-	FirstPersonArms->SetRelativeScale3D(FVector(0.70f));
+	ConfigureFirstPersonBody(FirstPersonArms, nullptr);
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> Manny(TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"));
 	GetMesh()->SetSkeletalMesh(Manny.Object);
 	GetMesh()->SetRelativeLocation(FVector(0, 0, -GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()));
@@ -63,8 +76,8 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	GetMesh()->SetOwnerNoSee(true);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GetMesh()->SetAnimInstanceClass(UArenaDuelVisualAnimInstance::StaticClass());
-	static ConstructorHelpers::FObjectFinder<USkeletalMesh> Arms(TEXT("/Game/ArenaDuel/Characters/Common/SKM_ArenaDuelFPSArms"));
-	if (Arms.Succeeded()) FirstPersonArms->SetSkeletalMesh(Arms.Object);
+	// The local view is the same full humanoid body, so arms, shoulders and torso are closed geometry.
+	FirstPersonArms->SetSkeletalMesh(Manny.Object);
 	FirstPersonArms->SetAnimInstanceClass(UArenaDuelVisualAnimInstance::StaticClass());
 	FirstPersonCamera->bEnableFirstPersonFieldOfView = true;
 	FirstPersonCamera->bEnableFirstPersonScale = true;
@@ -141,6 +154,7 @@ void AArenaDuelCharacter::BeginPlay()
 	{
 		CameraBaseRelativeLocation = FirstPersonCamera->GetRelativeLocation();
 	}
+	ConfigureFirstPersonBody(FirstPersonArms, GetMesh()->GetSkeletalMeshAsset());
 	RefreshCharacterVisuals();
 	// A duel has two pawns, so each must replicate shots and death to the other from any position.
 	if (HasAuthority()) bAlwaysRelevant = true;
@@ -484,54 +498,18 @@ void AArenaDuelCharacter::UpdateLocalDeathCamera()
 
 void AArenaDuelCharacter::ApplyDevelopmentDeathPose()
 {
-	// Temporary deterministic cosmetic fall until a final death animation/ragdoll is authored.
-	// Pause the single-node locomotion sequence first, otherwise it continues to pose the corpse.
-	if (bDeathPresentationLatched)
-	{
-		GetMesh()->bPauseAnims = true;
-		const FRotator FallenRotation = LivingMeshRelativeRotation + FRotator(0.0f, 0.0f, 90.0f);
-		GetMesh()->SetRelativeRotation(FallenRotation);
-		GetMesh()->SetRelativeLocation(LivingMeshRelativeLocation + FVector(0.0f, 0.0f, 20.0f));
-		FirstPersonArms->SetVisibility(false);
-		return;
-	}
-	if (UArenaDuelVisualAnimInstance* Anim = Cast<UArenaDuelVisualAnimInstance>(GetMesh()->GetAnimInstance())) Anim->SetPlaying(false);
-	GetMesh()->bPauseAnims = true;
-	bDeathPresentationLatched = true;
+	// The anim instance plays the authored death clip on the world body and holds its last frame.
+	// The mesh keeps its living offset, so movement corrections can no longer stand a corpse up.
 	FirstPersonArms->SetVisibility(false);
+	if (bDeathPresentationLatched) return;
+	bDeathPresentationLatched = true;
+	GetMesh()->bPauseAnims = false;
 	if (WeaponComponent) WeaponComponent->RefreshWeaponVisual();
-	const float Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
-	if (!GetWorld() || !GetWorldTimerManager().IsTimerActive(DeathPoseTimer))
-	{
-		DeathPoseStartTime = Now;
-		DeathPoseStartRotation = LivingMeshRelativeRotation;
-		GetWorldTimerManager().SetTimer(DeathPoseTimer, this, &AArenaDuelCharacter::UpdateDevelopmentDeathPose, 0.02f, true);
-	}
-	UpdateDevelopmentDeathPose();
-	if (BodyVisual)
-	{
-		BodyVisual->SetRelativeLocation(FVector(0.0f, 0.0f, -50.0f));
-		BodyVisual->SetRelativeRotation(FRotator(0.0f, 0.0f, 90.0f));
-	}
-	if (HeadVisual)
-	{
-		HeadVisual->SetRelativeLocation(FVector(0.0f, 55.0f, -65.0f));
-		HeadVisual->SetRelativeRotation(FRotator(0.0f, 0.0f, 90.0f));
-	}
 }
 
 void AArenaDuelCharacter::UpdateDevelopmentDeathPose()
 {
-	if (!GetMesh() || !GetWorld()) return;
-	constexpr float Duration = 0.48f;
-	const float Alpha = FMath::Clamp((GetWorld()->GetTimeSeconds() - DeathPoseStartTime) / Duration, 0.0f, 1.0f);
-	const float Smooth = FMath::SmoothStep(0.0f, 1.0f, Alpha);
-	const FRotator TargetRotation = LivingMeshRelativeRotation + FRotator(0.0f, 0.0f, 90.0f);
-	GetMesh()->SetRelativeRotation(FMath::Lerp(DeathPoseStartRotation, TargetRotation, Smooth));
-	GetMesh()->SetRelativeLocation(FMath::Lerp(LivingMeshRelativeLocation, LivingMeshRelativeLocation + FVector(0,0,20), Smooth));
-	// The timer keeps running after the fall so a late movement correction cannot stand the corpse up.
 }
-
 void AArenaDuelCharacter::OnRep_Dead() { if (bDead) SetDeadState(); }
 
 void AArenaDuelCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

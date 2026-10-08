@@ -3,7 +3,7 @@
 #include "../Weapons/ArenaDuelWeaponComponent.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimSingleNodeInstanceProxy.h"
-#include "Camera/CameraComponent.h"
+#include "TwoBoneIK.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -19,10 +19,8 @@ namespace
 		float SlideBlend = 0;
 		float LeftHandIKBlend = 0;
 		FVector LeftGripInRightHand = FVector::ZeroVector;
-		FVector LeftElbowToHand = FVector::ZeroVector;
-		FVector RightElbowToHand = FVector::ZeroVector;
 		bool bHasLeftGrip = false;
-		bool bFirstPersonArms = false;
+		bool bFirstPersonBody = false;
 		virtual void PreUpdate(UAnimInstance* Instance, float DeltaSeconds) override
 		{
 			FAnimSingleNodeInstanceProxy::PreUpdate(Instance, DeltaSeconds);
@@ -46,18 +44,7 @@ namespace
 					bHasLeftGrip = !LeftGripInRightHand.ContainsNaN();
 				}
 			}
-			// The viewmodel only has forearms and hands, so their open elbow ends must stay below
-			// the frame. Both forearms are aimed along fixed camera-space directions (X forward,
-			// Y right, Z up) that put each elbow lower, wider and nearer the eye than its hand.
-			bFirstPersonArms = false;
-			if (Character && Arms && Instance->GetSkelMeshComponent() == Arms && Character->GetFirstPersonCamera())
-			{
-				const FTransform& View = Character->GetFirstPersonCamera()->GetComponentTransform();
-				const FTransform& ArmsWorld = Arms->GetComponentTransform();
-				LeftElbowToHand = ArmsWorld.InverseTransformVectorNoScale(View.TransformVectorNoScale(FVector(0.38f, 0.32f, 0.87f).GetSafeNormal()));
-				RightElbowToHand = ArmsWorld.InverseTransformVectorNoScale(View.TransformVectorNoScale(FVector(0.38f, -0.28f, 0.88f).GetSafeNormal()));
-				bFirstPersonArms = !LeftElbowToHand.ContainsNaN() && !RightElbowToHand.ContainsNaN();
-			}
+			bFirstPersonBody = Character && Arms && Instance->GetSkelMeshComponent() == Arms;
 			const float TargetBlend = bHasLeftGrip && Weapon && !Weapon->IsReloading() ? 1.0f : 0.0f;
 			LeftHandIKBlend = TargetBlend + (LeftHandIKBlend - TargetBlend) * Decay;
 		}
@@ -89,9 +76,10 @@ namespace
 					}
 				}
 			}
-			// The right hand drives the gun and keeps its animated transform. The support hand
-			// target is stored in that hand's space so both hands use the same evaluated frame.
-			if (bFirstPersonArms)
+			// True first person: the local player sees their own full body. The head joint is
+			// pinned to the component origin so the eye never bobs with the clip, and the head
+			// and legs are collapsed because the camera sits inside them.
+			if (bFirstPersonBody)
 			{
 				const FBoneContainer& Bones = Output.Pose.GetBoneContainer();
 				const FReferenceSkeleton& RefSkeleton = Bones.GetReferenceSkeleton();
@@ -100,50 +88,49 @@ namespace
 					const int32 SkeletonIndex = RefSkeleton.FindBoneIndex(Name);
 					return SkeletonIndex == INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(SkeletonIndex));
 				};
-				const FCompactPoseBoneIndex LeftLowerIndex = Compact(TEXT("lowerarm_l"));
-				const FCompactPoseBoneIndex LeftHandIndex = Compact(TEXT("hand_l"));
-				const FCompactPoseBoneIndex RightLowerIndex = Compact(TEXT("lowerarm_r"));
-				const FCompactPoseBoneIndex RightHandIndex = Compact(TEXT("hand_r"));
-				if (LeftLowerIndex.GetInt() != INDEX_NONE && LeftHandIndex.GetInt() != INDEX_NONE && RightLowerIndex.GetInt() != INDEX_NONE && RightHandIndex.GetInt() != INDEX_NONE)
+				const FCompactPoseBoneIndex HeadIndex = Compact(TEXT("head"));
+				const FCompactPoseBoneIndex UpperIndex = Compact(TEXT("upperarm_l"));
+				const FCompactPoseBoneIndex LowerIndex = Compact(TEXT("lowerarm_l"));
+				const FCompactPoseBoneIndex HandIndex = Compact(TEXT("hand_l"));
+				const FCompactPoseBoneIndex RightIndex = Compact(TEXT("hand_r"));
+				FVector HeadLocation = FVector::ZeroVector;
+				if (HeadIndex.GetInt() != INDEX_NONE)
 				{
 					FCSPose<FCompactPose> ComponentPose;
 					ComponentPose.InitPose(Output.Pose);
-					const FTransform RightHand = ComponentPose.GetComponentSpaceTransform(RightHandIndex);
-					FTransform LeftLower = ComponentPose.GetComponentSpaceTransform(LeftLowerIndex);
-					FTransform LeftHand = ComponentPose.GetComponentSpaceTransform(LeftHandIndex);
-					FTransform RightLower = ComponentPose.GetComponentSpaceTransform(RightLowerIndex);
-					const FVector AnimatedLeftHand = LeftHand.GetLocation();
-					const FVector LeftTarget = bHasLeftGrip ? FMath::Lerp(AnimatedLeftHand, RightHand.TransformPosition(LeftGripInRightHand), LeftHandIKBlend) : AnimatedLeftHand;
-					// Swings a forearm about its hand so it points along ElbowToHand.
-					auto Redirect = [](FTransform& Lower, FTransform* Hand, const FVector& AnimatedHand, const FVector& HandTarget, const FVector& ElbowToHand)
+					HeadLocation = ComponentPose.GetComponentSpaceTransform(HeadIndex).GetLocation();
+					// The right hand drives the gun. The support target is stored in that
+					// hand's space so both hands use the same evaluated frame without lag.
+					if (bHasLeftGrip && LeftHandIKBlend > KINDA_SMALL_NUMBER && UpperIndex.GetInt() != INDEX_NONE && LowerIndex.GetInt() != INDEX_NONE && HandIndex.GetInt() != INDEX_NONE && RightIndex.GetInt() != INDEX_NONE)
 					{
-						const FVector Forearm = AnimatedHand - Lower.GetLocation();
-						const double Length = Forearm.Size();
-						if (Length < UE_KINDA_SMALL_NUMBER) return;
-						const FQuat Delta = FQuat::FindBetweenNormals(Forearm / Length, ElbowToHand);
-						Lower.SetRotation(Delta * Lower.GetRotation());
-						// The viewmodel arms are scaled down, so the forearm is lengthened along its own
-						// axis to reach past the bottom of the frame in both hip fire and ADS.
-						constexpr double Stretch = 1.6;
-						const FVector BoneAxis = Lower.GetRotation().UnrotateVector(ElbowToHand).GetAbs();
-						Lower.SetScale3D(FVector::OneVector + BoneAxis * (Stretch - 1.0));
-						Lower.SetLocation(HandTarget - ElbowToHand * Length * Stretch);
-						if (Hand)
+						const FVector Effector = ComponentPose.GetComponentSpaceTransform(RightIndex).TransformPosition(LeftGripInRightHand);
+						FTransform Upper = ComponentPose.GetComponentSpaceTransform(UpperIndex);
+						FTransform Lower = ComponentPose.GetComponentSpaceTransform(LowerIndex);
+						FTransform Hand = ComponentPose.GetComponentSpaceTransform(HandIndex);
+						const FTransform OriginalUpper = Upper, OriginalLower = Lower, OriginalHand = Hand;
+						const FVector JointTarget = Lower.GetLocation() + (Lower.GetLocation() - Upper.GetLocation()).GetSafeNormal() * 30.0f;
+						if (!Effector.ContainsNaN() && !JointTarget.ContainsNaN())
 						{
-							Hand->SetRotation(Delta * Hand->GetRotation());
-							Hand->SetLocation(HandTarget);
+							AnimationCore::SolveTwoBoneIK(Upper, Lower, Hand, JointTarget, Effector, false, 1.0, 1.0);
+							if (!Upper.ContainsNaN() && !Lower.ContainsNaN() && !Hand.ContainsNaN())
+							{
+								FTransform BlendedUpper, BlendedLower, BlendedHand;
+								BlendedUpper.Blend(OriginalUpper, Upper, LeftHandIKBlend);
+								BlendedLower.Blend(OriginalLower, Lower, LeftHandIKBlend);
+								BlendedHand.Blend(OriginalHand, Hand, LeftHandIKBlend);
+								ComponentPose.SetComponentSpaceTransform(UpperIndex, BlendedUpper);
+								ComponentPose.SetComponentSpaceTransform(LowerIndex, BlendedLower);
+								ComponentPose.SetComponentSpaceTransform(HandIndex, BlendedHand);
+							}
 						}
-					};
-					Redirect(LeftLower, &LeftHand, AnimatedLeftHand, LeftTarget, LeftElbowToHand);
-					Redirect(RightLower, nullptr, RightHand.GetLocation(), RightHand.GetLocation(), RightElbowToHand);
-					if (!LeftLower.ContainsNaN() && !LeftHand.ContainsNaN() && !RightLower.ContainsNaN())
-					{
-						ComponentPose.SetComponentSpaceTransform(LeftLowerIndex, LeftLower);
-						ComponentPose.SetComponentSpaceTransform(LeftHandIndex, LeftHand);
-						ComponentPose.SetComponentSpaceTransform(RightLowerIndex, RightLower);
-						ComponentPose.SetComponentSpaceTransform(RightHandIndex, RightHand);
-						FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(MoveTemp(ComponentPose), Output.Pose);
 					}
+					FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(MoveTemp(ComponentPose), Output.Pose);
+				}
+				if (!HeadLocation.ContainsNaN()) Output.Pose[FCompactPoseBoneIndex(0)].AddToTranslation(-HeadLocation);
+				for (const TCHAR* Name : {TEXT("neck_01"), TEXT("thigh_l"), TEXT("thigh_r")})
+				{
+					const FCompactPoseBoneIndex Index = Compact(Name);
+					if (Index.GetInt() != INDEX_NONE) Output.Pose[Index].SetScale3D(FVector::ZeroVector);
 				}
 			}
 			return bResult;
@@ -163,16 +150,27 @@ UArenaDuelVisualAnimInstance::UArenaDuelVisualAnimInstance()
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> RunAsset(TEXT("/Game/Characters/Mannequins/Anims/Rifle/Jog/MF_Rifle_Jog_Fwd"));
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> FallAsset(TEXT("/Game/Characters/Mannequins/Anims/Rifle/Jump/MM_Rifle_Jump_Fall_Loop"));
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> ReloadAsset(TEXT("/Game/Characters/Mannequins/Anims/Rifle/MM_Rifle_Reload"));
-	Idle = IdleAsset.Object; Walk = WalkAsset.Object; Run = RunAsset.Object; Fall = FallAsset.Object; Reload = ReloadAsset.Object;
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> DeathAsset(TEXT("/Game/Characters/Mannequins/Anims/Death/MM_Death_Front_01"));
+	Idle = IdleAsset.Object; Walk = WalkAsset.Object; Run = RunAsset.Object; Fall = FallAsset.Object; Reload = ReloadAsset.Object; Death = DeathAsset.Object;
 	SetRootMotionMode(ERootMotionMode::IgnoreRootMotion);
 }
 
 void UArenaDuelVisualAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 {
 	const auto* Character = Cast<AArenaDuelCharacter>(GetOwningActor());
-	// Death is a latched presentation state. Do not let the normal single-node
-	// selection restart locomotion on a corpse between timer updates.
-	if (!Character || Character->IsDead()) { SetPlaying(false); return; }
+	if (!Character) { SetPlaying(false); return; }
+	// Death is latched: the world body plays one authored fall and holds its last frame.
+	// Normal clip selection must never restart locomotion on a corpse.
+	if (Character->IsDead())
+	{
+		if (Death && GetSkelMeshComponent() == Character->GetMesh())
+		{
+			if (GetCurrentAsset() != Death) { SetAnimationAsset(Death, false); SetPlayRate(1.0f); SetPlaying(true); }
+			Super::NativeUpdateAnimation(DeltaSeconds);
+		}
+		else SetPlaying(false);
+		return;
+	}
 	Super::NativeUpdateAnimation(DeltaSeconds);
 	const bool bFirstPerson = GetSkelMeshComponent() == Character->GetFirstPersonArms();
 	const float Speed = Character->GetVelocity().Size2D();

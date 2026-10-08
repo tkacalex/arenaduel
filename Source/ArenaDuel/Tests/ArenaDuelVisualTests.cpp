@@ -22,6 +22,12 @@
 
 namespace VisualSmoke
 {
+	// The corpse plays the authored death clip on the unpaused world body.
+	bool PlaysDeath(const AArenaDuelCharacter* Character)
+	{
+		const auto* Anim = Character ? Cast<UAnimSingleNodeInstance>(Character->GetMesh()->GetAnimInstance()) : nullptr;
+		return Anim && Anim->GetCurrentAsset() && Anim->GetCurrentAsset()->GetName().StartsWith(TEXT("MM_Death")) && !Character->GetMesh()->bPauseAnims;
+	}
 	bool Flag(const UPrimitiveComponent* Component, const TCHAR* Name)
 	{
 		const auto* Property = FindFProperty<FBoolProperty>(UPrimitiveComponent::StaticClass(), Name);
@@ -77,7 +83,7 @@ bool FArenaDuelVisualContract::RunTest(const FString& Parameters)
 	const auto* BlueprintDefaults = BlueprintClass ? BlueprintClass->GetDefaultObject<AArenaDuelCharacter>() : nullptr;
 	TestTrue(TEXT("Saved Blueprint inherits body and first-person mesh"), BlueprintDefaults && BlueprintDefaults->GetMesh()->GetSkeletalMeshAsset() && BlueprintDefaults->GetFirstPersonArms()->GetSkeletalMeshAsset());
 	TestNotNull(TEXT("Compatible skeletal first-person mesh"), Character->GetFirstPersonArms()->GetSkeletalMeshAsset());
-	TestTrue(TEXT("First person uses the dedicated forearm and hand mesh"), Character->GetFirstPersonArms()->GetSkeletalMeshAsset() && Character->GetFirstPersonArms()->GetSkeletalMeshAsset()->GetName() == TEXT("SKM_ArenaDuelFPSArms"));
+	TestTrue(TEXT("First person uses the full humanoid body"), Character->GetFirstPersonArms()->GetSkeletalMeshAsset() && Character->GetFirstPersonArms()->GetSkeletalMeshAsset() == Character->GetMesh()->GetSkeletalMeshAsset());
 	TestTrue(TEXT("Primitives no longer render"), Character->BodyVisual->bHiddenInGame && Character->HeadVisual->bHiddenInGame);
 	TestTrue(TEXT("Body/arms visibility separated"), VisualSmoke::Flag(Character->GetMesh(), TEXT("bOwnerNoSee")) && VisualSmoke::Flag(Character->GetFirstPersonArms(), TEXT("bOnlyOwnerSee")));
 	TestEqual(TEXT("Body hit extent unchanged"), Character->BodyHitZone->GetUnscaledBoxExtent(), FVector(38,38,70));
@@ -201,18 +207,18 @@ NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 		.ThenClient(TEXT("Leave ADS"),0,[](auto& S){ Pawn(S.World,true)->GetWeaponComponent()->StopAim(); })
 		.UntilClient(TEXT("User-selected hip FOV restored"),0,[](auto& S){const auto* C=Pawn(S.World,true);const auto* Controller=VisualSmoke::PC(S.World);return C&&Controller&&FMath::IsNearlyEqual(C->GetFirstPersonCamera()->FieldOfView,Controller->GetLocalSettings().FOV,0.1f);},FTimespan::FromSeconds(4))
 		.ThenServer(TEXT("Death keeps skeletal presentation cosmetic"),[](auto& S){ S.DeathObservedAt=-1.0f; S.bDeathTransformCaptured=false; Pawn(S.World,false)->AdminKill(); })
-		.UntilClient(TEXT("Death hides own arms and preserves world lying pose"),0,[](auto& S){
+		.UntilClient(TEXT("Death hides own arms and plays the world death clip"),0,[](auto& S){
 			const auto* C=Pawn(S.World,true);
 			if(C && C->IsDead() && S.DeathObservedAt<0.0f)
 				S.DeathObservedAt=S.World->GetTimeSeconds();
-			const bool bFallen=C && C->IsDead() && FMath::IsNearlyEqual(FMath::Abs(C->GetMesh()->GetRelativeRotation().Roll),90.0f,0.1f);
+			const bool bFallen=C && C->IsDead() && VisualSmoke::PlaysDeath(C);
 			if(bFallen && !S.bDeathTransformCaptured) { S.DeathMeshRelativeTransform=C->GetMesh()->GetRelativeTransform(); S.bDeathTransformCaptured=true; }
 			return C && C->IsDead() && !C->GetFirstPersonArms()->IsVisible() && !C->GetWeaponComponent()->GetFirstPersonWeaponMesh()->IsVisible()
-				&& C->GetMesh()->bPauseAnims && bFallen && C->GetMesh()->GetCollisionEnabled()==ECollisionEnabled::NoCollision;
+				&& VisualSmoke::PlaysDeath(C) && bFallen && C->GetMesh()->GetCollisionEnabled()==ECollisionEnabled::NoCollision;
 		},FTimespan::FromSeconds(2))
 		.UntilClient(TEXT("Client corpse remains dead and pose-latched for 2.8 seconds"),0,[](auto& S){
 			const auto* C=Pawn(S.World,true);
-			return C && C->IsDead() && C->GetMesh()->bPauseAnims && S.DeathObservedAt>=0.0f && S.bDeathTransformCaptured
+			return C && C->IsDead() && VisualSmoke::PlaysDeath(C) && S.DeathObservedAt>=0.0f && S.bDeathTransformCaptured
 				&& S.World->GetTimeSeconds()-S.DeathObservedAt>=2.8f
 				&& C->GetMesh()->GetRelativeTransform().Equals(S.DeathMeshRelativeTransform,0.1f);
 		},FTimespan::FromSeconds(3.0))
@@ -222,13 +228,13 @@ NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 			const auto* C=Pawn(S.World,false);
 			if(C && C->IsDead() && S.DeathObservedAt<0.0f)
 				S.DeathObservedAt=S.World->GetTimeSeconds();
-			const bool bFallen=C && C->IsDead() && FMath::IsNearlyEqual(FMath::Abs(C->GetMesh()->GetRelativeRotation().Roll),90.0f,0.1f);
+			const bool bFallen=C && C->IsDead() && VisualSmoke::PlaysDeath(C);
 			if(bFallen && !S.bDeathTransformCaptured) { S.DeathMeshRelativeTransform=C->GetMesh()->GetRelativeTransform(); S.bDeathTransformCaptured=true; }
-			return C && C->IsDead() && C->GetMesh()->bPauseAnims && bFallen;
+			return C && C->IsDead() && VisualSmoke::PlaysDeath(C) && bFallen;
 		},FTimespan::FromSeconds(2))
 		.UntilClient(TEXT("Remote host corpse remains pose-latched for 2.8 seconds"),0,[](auto& S){
 			const auto* C=Pawn(S.World,false);
-			return C && C->IsDead() && C->GetMesh()->bPauseAnims && S.DeathObservedAt>=0.0f && S.bDeathTransformCaptured
+			return C && C->IsDead() && VisualSmoke::PlaysDeath(C) && S.DeathObservedAt>=0.0f && S.bDeathTransformCaptured
 				&& S.World->GetTimeSeconds()-S.DeathObservedAt>=2.8f
 				&& C->GetMesh()->GetRelativeTransform().Equals(S.DeathMeshRelativeTransform,0.1f);
 		},FTimespan::FromSeconds(3.0))

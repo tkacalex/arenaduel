@@ -250,6 +250,7 @@ protected:
 	UPROPERTY() TObjectPtr<UMaterialInterface> WeaponBodyMaterial;
 	UPROPERTY() TObjectPtr<UMaterialInterface> WeaponAccentCyan;
 	UPROPERTY() TObjectPtr<UMaterialInterface> WeaponAccentViolet;
+	UPROPERTY() TObjectPtr<class USoundBase> FireSound;
 
 	FTimerHandle ReloadTimerHandle;
 

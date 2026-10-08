@@ -22,4 +22,5 @@ private:
 	UPROPERTY() TObjectPtr<UAnimSequence> Run;
 	UPROPERTY() TObjectPtr<UAnimSequence> Fall;
 	UPROPERTY() TObjectPtr<UAnimSequence> Reload;
+	UPROPERTY() TObjectPtr<UAnimSequence> Death;
 };
