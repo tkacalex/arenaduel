@@ -3,7 +3,7 @@
 #include "../Weapons/ArenaDuelWeaponComponent.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimSingleNodeInstanceProxy.h"
-#include "TwoBoneIK.h"
+#include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -19,7 +19,10 @@ namespace
 		float SlideBlend = 0;
 		float LeftHandIKBlend = 0;
 		FVector LeftGripInRightHand = FVector::ZeroVector;
+		FVector LeftElbowToHand = FVector::ZeroVector;
+		FVector RightElbowToHand = FVector::ZeroVector;
 		bool bHasLeftGrip = false;
+		bool bFirstPersonArms = false;
 		virtual void PreUpdate(UAnimInstance* Instance, float DeltaSeconds) override
 		{
 			FAnimSingleNodeInstanceProxy::PreUpdate(Instance, DeltaSeconds);
@@ -42,6 +45,18 @@ namespace
 					LeftGripInRightHand = Arms->GetBoneTransform(RightHandIndex).InverseTransformPosition(GripWorld);
 					bHasLeftGrip = !LeftGripInRightHand.ContainsNaN();
 				}
+			}
+			// The viewmodel only has forearms and hands, so their open elbow ends must stay below
+			// the frame. Both forearms are aimed along fixed camera-space directions (X forward,
+			// Y right, Z up) that put each elbow lower, wider and nearer the eye than its hand.
+			bFirstPersonArms = false;
+			if (Character && Arms && Instance->GetSkelMeshComponent() == Arms && Character->GetFirstPersonCamera())
+			{
+				const FTransform& View = Character->GetFirstPersonCamera()->GetComponentTransform();
+				const FTransform& ArmsWorld = Arms->GetComponentTransform();
+				LeftElbowToHand = ArmsWorld.InverseTransformVectorNoScale(View.TransformVectorNoScale(FVector(0.38f, 0.32f, 0.87f).GetSafeNormal()));
+				RightElbowToHand = ArmsWorld.InverseTransformVectorNoScale(View.TransformVectorNoScale(FVector(0.38f, -0.28f, 0.88f).GetSafeNormal()));
+				bFirstPersonArms = !LeftElbowToHand.ContainsNaN() && !RightElbowToHand.ContainsNaN();
 			}
 			const float TargetBlend = bHasLeftGrip && Weapon && !Weapon->IsReloading() ? 1.0f : 0.0f;
 			LeftHandIKBlend = TargetBlend + (LeftHandIKBlend - TargetBlend) * Decay;
@@ -74,49 +89,55 @@ namespace
 					}
 				}
 			}
-			// The right hand drives the gun. The support target is stored in that
-			// hand's space so both hands use the same evaluated frame without lag.
-			if (bHasLeftGrip && LeftHandIKBlend > KINDA_SMALL_NUMBER)
+			// The right hand drives the gun and keeps its animated transform. The support hand
+			// target is stored in that hand's space so both hands use the same evaluated frame.
+			if (bFirstPersonArms)
 			{
 				const FBoneContainer& Bones = Output.Pose.GetBoneContainer();
 				const FReferenceSkeleton& RefSkeleton = Bones.GetReferenceSkeleton();
-				const int32 UpperSkeleton = RefSkeleton.FindBoneIndex(TEXT("upperarm_l"));
-				const int32 LowerSkeleton = RefSkeleton.FindBoneIndex(TEXT("lowerarm_l"));
-				const int32 HandSkeleton = RefSkeleton.FindBoneIndex(TEXT("hand_l"));
-				const int32 RightSkeleton = RefSkeleton.FindBoneIndex(TEXT("hand_r"));
-				if (UpperSkeleton != INDEX_NONE && LowerSkeleton != INDEX_NONE && HandSkeleton != INDEX_NONE && RightSkeleton != INDEX_NONE)
+				auto Compact = [&](const TCHAR* Name)
 				{
-				const FCompactPoseBoneIndex UpperIndex = Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(UpperSkeleton));
-				const FCompactPoseBoneIndex LowerIndex = Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(LowerSkeleton));
-				const FCompactPoseBoneIndex HandIndex = Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(HandSkeleton));
-				const FCompactPoseBoneIndex RightIndex = Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(RightSkeleton));
-					if (UpperIndex.GetInt() != INDEX_NONE && LowerIndex.GetInt() != INDEX_NONE && HandIndex.GetInt() != INDEX_NONE && RightIndex.GetInt() != INDEX_NONE)
+					const int32 SkeletonIndex = RefSkeleton.FindBoneIndex(Name);
+					return SkeletonIndex == INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(SkeletonIndex));
+				};
+				const FCompactPoseBoneIndex LeftLowerIndex = Compact(TEXT("lowerarm_l"));
+				const FCompactPoseBoneIndex LeftHandIndex = Compact(TEXT("hand_l"));
+				const FCompactPoseBoneIndex RightLowerIndex = Compact(TEXT("lowerarm_r"));
+				const FCompactPoseBoneIndex RightHandIndex = Compact(TEXT("hand_r"));
+				if (LeftLowerIndex.GetInt() != INDEX_NONE && LeftHandIndex.GetInt() != INDEX_NONE && RightLowerIndex.GetInt() != INDEX_NONE && RightHandIndex.GetInt() != INDEX_NONE)
+				{
+					FCSPose<FCompactPose> ComponentPose;
+					ComponentPose.InitPose(Output.Pose);
+					const FTransform RightHand = ComponentPose.GetComponentSpaceTransform(RightHandIndex);
+					FTransform LeftLower = ComponentPose.GetComponentSpaceTransform(LeftLowerIndex);
+					FTransform LeftHand = ComponentPose.GetComponentSpaceTransform(LeftHandIndex);
+					FTransform RightLower = ComponentPose.GetComponentSpaceTransform(RightLowerIndex);
+					const FVector AnimatedLeftHand = LeftHand.GetLocation();
+					const FVector LeftTarget = bHasLeftGrip ? FMath::Lerp(AnimatedLeftHand, RightHand.TransformPosition(LeftGripInRightHand), LeftHandIKBlend) : AnimatedLeftHand;
+					// Swings a forearm about its hand so it keeps its length and points along ElbowToHand.
+					auto Redirect = [](FTransform& Lower, FTransform* Hand, const FVector& AnimatedHand, const FVector& HandTarget, const FVector& ElbowToHand)
 					{
-						FCSPose<FCompactPose> ComponentPose;
-						ComponentPose.InitPose(Output.Pose);
-						const FVector Effector = ComponentPose.GetComponentSpaceTransform(RightIndex).TransformPosition(LeftGripInRightHand);
-						FTransform Upper = ComponentPose.GetComponentSpaceTransform(UpperIndex);
-						FTransform Lower = ComponentPose.GetComponentSpaceTransform(LowerIndex);
-						FTransform Hand = ComponentPose.GetComponentSpaceTransform(HandIndex);
-						const FTransform OriginalUpper = Upper;
-						const FTransform OriginalLower = Lower;
-						const FTransform OriginalHand = Hand;
-						const FVector JointTarget = Lower.GetLocation() + (Lower.GetLocation() - Upper.GetLocation()).GetSafeNormal() * 30.0f;
-						if (!Effector.ContainsNaN() && !JointTarget.ContainsNaN())
+						const FVector Forearm = AnimatedHand - Lower.GetLocation();
+						const double Length = Forearm.Size();
+						if (Length < UE_KINDA_SMALL_NUMBER) return;
+						const FQuat Delta = FQuat::FindBetweenNormals(Forearm / Length, ElbowToHand);
+						Lower.SetRotation(Delta * Lower.GetRotation());
+						Lower.SetLocation(HandTarget - ElbowToHand * Length);
+						if (Hand)
 						{
-							AnimationCore::SolveTwoBoneIK(Upper, Lower, Hand, JointTarget, Effector, false, 1.0, 1.0);
-							if (!Upper.ContainsNaN() && !Lower.ContainsNaN() && !Hand.ContainsNaN())
-							{
-								FTransform BlendedUpper, BlendedLower, BlendedHand;
-								BlendedUpper.Blend(OriginalUpper, Upper, LeftHandIKBlend);
-								BlendedLower.Blend(OriginalLower, Lower, LeftHandIKBlend);
-								BlendedHand.Blend(OriginalHand, Hand, LeftHandIKBlend);
-								ComponentPose.SetComponentSpaceTransform(UpperIndex, BlendedUpper);
-								ComponentPose.SetComponentSpaceTransform(LowerIndex, BlendedLower);
-								ComponentPose.SetComponentSpaceTransform(HandIndex, BlendedHand);
-								FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(MoveTemp(ComponentPose), Output.Pose);
-							}
+							Hand->SetRotation(Delta * Hand->GetRotation());
+							Hand->SetLocation(HandTarget);
 						}
+					};
+					Redirect(LeftLower, &LeftHand, AnimatedLeftHand, LeftTarget, LeftElbowToHand);
+					Redirect(RightLower, nullptr, RightHand.GetLocation(), RightHand.GetLocation(), RightElbowToHand);
+					if (!LeftLower.ContainsNaN() && !LeftHand.ContainsNaN() && !RightLower.ContainsNaN())
+					{
+						ComponentPose.SetComponentSpaceTransform(LeftLowerIndex, LeftLower);
+						ComponentPose.SetComponentSpaceTransform(LeftHandIndex, LeftHand);
+						ComponentPose.SetComponentSpaceTransform(RightLowerIndex, RightLower);
+						ComponentPose.SetComponentSpaceTransform(RightHandIndex, RightHand);
+						FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(MoveTemp(ComponentPose), Output.Pose);
 					}
 				}
 			}

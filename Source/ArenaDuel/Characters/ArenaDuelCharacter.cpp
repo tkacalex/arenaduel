@@ -131,6 +131,7 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	HeadVisual->SetHiddenInGame(true);
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
 	bReplicates = true;
+	bAlwaysRelevant = true;
 }
 
 void AArenaDuelCharacter::BeginPlay()
@@ -141,6 +142,8 @@ void AArenaDuelCharacter::BeginPlay()
 		CameraBaseRelativeLocation = FirstPersonCamera->GetRelativeLocation();
 	}
 	RefreshCharacterVisuals();
+	// A duel has two pawns, so each must replicate shots and death to the other from any position.
+	if (HasAuthority()) bAlwaysRelevant = true;
 }
 
 void AArenaDuelCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
@@ -401,6 +404,10 @@ void AArenaDuelCharacter::SetDeadState()
 	{
 		GetCharacterMovement()->StopMovementImmediately();
 		GetCharacterMovement()->DisableMovement();
+		// Network smoothing rewrites the mesh offset on proxies and on the listen server, which
+		// stood corpses back up. The pawn is destroyed on respawn, so movement can stay off.
+		GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+		GetCharacterMovement()->SetComponentTickEnabled(false);
 	}
 }
 
@@ -522,7 +529,7 @@ void AArenaDuelCharacter::UpdateDevelopmentDeathPose()
 	const FRotator TargetRotation = LivingMeshRelativeRotation + FRotator(0.0f, 0.0f, 90.0f);
 	GetMesh()->SetRelativeRotation(FMath::Lerp(DeathPoseStartRotation, TargetRotation, Smooth));
 	GetMesh()->SetRelativeLocation(FMath::Lerp(LivingMeshRelativeLocation, LivingMeshRelativeLocation + FVector(0,0,20), Smooth));
-	if (Alpha >= 1.0f) GetWorldTimerManager().ClearTimer(DeathPoseTimer);
+	// The timer keeps running after the fall so a late movement correction cannot stand the corpse up.
 }
 
 void AArenaDuelCharacter::OnRep_Dead() { if (bDead) SetDeadState(); }

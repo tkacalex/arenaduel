@@ -9,6 +9,7 @@
 #include "../Player/ArenaDuelPlayerController.h"
 #include "ArenaDuelWeaponTarget.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/PointLightComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/SceneComponent.h"
 #include "Camera/CameraComponent.h"
@@ -397,6 +398,7 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 	const FVector Direction = Controller->GetControlRotation().Vector();
 	FRandomStream Random(++LastShotSequence);
 	int32 BodyPellets = 0, HeadPellets = 0, WorldPellets = 0;
+	TArray<FVector_NetQuantize> TraceEnds;
 	float ClosestDistance = Definition.Range;
 	AActor* LastTarget = nullptr;
 	for (int32 Pellet = 0; Pellet < FMath::Max(1, Definition.Pellets); ++Pellet)
@@ -404,7 +406,9 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 		const FVector PelletDirection = Random.VRandCone(Direction, FMath::DegreesToRadians(GetCurrentSpreadDegrees()));
 		FHitResult Hit;
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelWeaponTrace), true, Character);
-		if (!GetWorld()->LineTraceSingleByChannel(Hit, Origin, Origin + PelletDirection * Definition.Range, ECC_Visibility, Params)) continue;
+		const bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, Origin, Origin + PelletDirection * Definition.Range, ECC_Visibility, Params);
+		TraceEnds.Add(bHit ? Hit.ImpactPoint : Origin + PelletDirection * Definition.Range);
+		if (!bHit) continue;
 		if (AArenaDuelArcBarrier* Barrier = Cast<AArenaDuelArcBarrier>(Hit.GetActor()))
 		{
 			Barrier->ApplyBarrierDamage(Definition.BodyDamage);
@@ -432,6 +436,51 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 	LastHeadPellets = HeadPellets;
 	const EArenaDuelShotResult Aggregate = HeadPellets > 0 ? EArenaDuelShotResult::Head : BodyPellets > 0 ? EArenaDuelShotResult::Body : WorldPellets > 0 ? EArenaDuelShotResult::World : EArenaDuelShotResult::Miss;
 	SetLastShot(Aggregate, ClosestDistance, LastTarget);
+	MulticastShotFired(TraceEnds);
+}
+void UArenaDuelWeaponComponent::MulticastShotFired_Implementation(const TArray<FVector_NetQuantize>& TraceEnds)
+{
+	UWorld* World = GetWorld();
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	if (!World || !Character || World->GetNetMode() == NM_DedicatedServer) return;
+	// The shooter sees the viewmodel gun, everyone else the world gun. Weapon meshes point +X at the muzzle.
+	const UStaticMeshComponent* Gun = Character->IsLocallyControlled() ? FirstPersonWeaponMesh : ThirdPersonWeaponMesh;
+	FVector Muzzle = Character->GetPawnViewLocation();
+	if (Gun && Gun->GetStaticMesh())
+	{
+		const FBoxSphereBounds Bounds = Gun->GetStaticMesh()->GetBounds();
+		Muzzle = Gun->GetComponentTransform().TransformPosition(Bounds.Origin + FVector(Bounds.BoxExtent.X, 0.0f, 0.0f));
+	}
+	const AArenaDuelPlayerState* PlayerState = Character->GetPlayerState<AArenaDuelPlayerState>();
+	UMaterialInterface* Material = PlayerState && PlayerState->GetDuelSlot() == 1 ? WeaponAccentViolet.Get() : WeaponAccentCyan.Get();
+	auto ExpireAfter = [World](USceneComponent* Component, float Seconds)
+	{
+		FTimerHandle Handle;
+		World->GetTimerManager().SetTimer(Handle, FTimerDelegate::CreateWeakLambda(Component, [Component]() { Component->DestroyComponent(); }), Seconds, false);
+	};
+	UStaticMesh* Cylinder = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+	for (const FVector_NetQuantize& End : TraceEnds)
+	{
+		const FVector Delta = FVector(End) - Muzzle;
+		const double Length = Delta.Size();
+		if (!Cylinder || Length < 40.0) continue;
+		UStaticMeshComponent* Tracer = NewObject<UStaticMeshComponent>(GetOwner());
+		Tracer->SetStaticMesh(Cylinder);
+		if (Material) Tracer->SetMaterial(0, Material);
+		Tracer->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Tracer->SetCastShadow(false);
+		Tracer->SetWorldTransform(FTransform(FRotationMatrix::MakeFromZ(Delta).ToQuat(), Muzzle + Delta * 0.5, FVector(0.012, 0.012, Length / 100.0)));
+		Tracer->RegisterComponentWithWorld(World);
+		ExpireAfter(Tracer, 0.07f);
+	}
+	UPointLightComponent* Flash = NewObject<UPointLightComponent>(GetOwner());
+	Flash->SetWorldLocation(Muzzle);
+	Flash->SetIntensity(9000.0f);
+	Flash->SetAttenuationRadius(420.0f);
+	Flash->SetLightColor(FLinearColor(1.0f, 0.82f, 0.55f));
+	Flash->SetCastShadows(false);
+	Flash->RegisterComponentWithWorld(World);
+	ExpireAfter(Flash, 0.05f);
 }
 void UArenaDuelWeaponComponent::CompleteReload()
 {

@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "TimerManager.h"
+#include "Engine/NetSerialization.h"
 #include "ArenaDuelWeaponComponent.generated.h"
 
 class UInputAction;
@@ -299,6 +300,10 @@ protected:
 
 	UFUNCTION()
 	void OnRep_EquippedWeapon();
+
+	// Cosmetic only: lets every machine draw the muzzle flash and tracers of a server-validated shot.
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastShotFired(const TArray<FVector_NetQuantize>& TraceEnds);
 
 	UFUNCTION(Client, Unreliable)
 	void ClientShotConfirmation(int32 Sequence, EArenaDuelShotResult Result, float Distance, int32 PelletsHit, int32 HeadPellets);
