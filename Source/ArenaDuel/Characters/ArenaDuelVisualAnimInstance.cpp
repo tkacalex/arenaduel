@@ -114,7 +114,7 @@ namespace
 					FTransform RightLower = ComponentPose.GetComponentSpaceTransform(RightLowerIndex);
 					const FVector AnimatedLeftHand = LeftHand.GetLocation();
 					const FVector LeftTarget = bHasLeftGrip ? FMath::Lerp(AnimatedLeftHand, RightHand.TransformPosition(LeftGripInRightHand), LeftHandIKBlend) : AnimatedLeftHand;
-					// Swings a forearm about its hand so it keeps its length and points along ElbowToHand.
+					// Swings a forearm about its hand so it points along ElbowToHand.
 					auto Redirect = [](FTransform& Lower, FTransform* Hand, const FVector& AnimatedHand, const FVector& HandTarget, const FVector& ElbowToHand)
 					{
 						const FVector Forearm = AnimatedHand - Lower.GetLocation();
@@ -122,7 +122,12 @@ namespace
 						if (Length < UE_KINDA_SMALL_NUMBER) return;
 						const FQuat Delta = FQuat::FindBetweenNormals(Forearm / Length, ElbowToHand);
 						Lower.SetRotation(Delta * Lower.GetRotation());
-						Lower.SetLocation(HandTarget - ElbowToHand * Length);
+						// The viewmodel arms are scaled down, so the forearm is lengthened along its own
+						// axis to reach past the bottom of the frame in both hip fire and ADS.
+						constexpr double Stretch = 1.6;
+						const FVector BoneAxis = Lower.GetRotation().UnrotateVector(ElbowToHand).GetAbs();
+						Lower.SetScale3D(FVector::OneVector + BoneAxis * (Stretch - 1.0));
+						Lower.SetLocation(HandTarget - ElbowToHand * Length * Stretch);
 						if (Hand)
 						{
 							Hand->SetRotation(Delta * Hand->GetRotation());
