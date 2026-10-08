@@ -107,12 +107,12 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 		Visual.ThirdPersonGripRotation = FRotator(0.0f, 78.4f, 0.0f);
 		WeaponVisualDefinitions.Add(Visual);
 	}
-	// Offsets of the whole first-person body from its eye-locked rest pose: lowered and to the right for hip fire.
-	WeaponVisualDefinitions[0].HipViewmodelLocation=FVector(2,3,-6);
-	WeaponVisualDefinitions[1].HipViewmodelLocation=FVector(2,3.5,-6);
+	// Offsets of the whole first-person body from its aimed rest pose: forward, lowered and to the right for hip fire.
+	WeaponVisualDefinitions[0].HipViewmodelLocation=FVector(6,6.7,-2);
+	WeaponVisualDefinitions[1].HipViewmodelLocation=FVector(6,7,-2);
 	WeaponVisualDefinitions[1].HipViewmodelRotation = FRotator(0, 0, -2);
-	WeaponVisualDefinitions[2].HipViewmodelLocation = FVector(3,3,-6);
-	WeaponVisualDefinitions[3].HipViewmodelLocation = FVector(2,4,-6.5);
+	WeaponVisualDefinitions[2].HipViewmodelLocation = FVector(7,6.5,-2);
+	WeaponVisualDefinitions[3].HipViewmodelLocation = FVector(6,7.5,-2.5);
 	WeaponVisualDefinitions[3].HipViewmodelRotation = FRotator(0, 0, 2);
 	WeaponVisualDefinitions[0].FirstPersonScale=FVector(0.40f);
 	WeaponVisualDefinitions[1].FirstPersonScale=FVector(0.38f);

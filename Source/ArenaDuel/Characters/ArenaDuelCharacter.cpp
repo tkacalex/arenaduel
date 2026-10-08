@@ -35,15 +35,16 @@
 
 namespace
 {
-	// The animation pins the head joint to the component origin, so this offset is simply where
-	// that joint sits relative to the eye: a little behind and below the camera. Full scale and
-	// Manny's +Y forward turned onto the camera's +X. Also applied at BeginPlay because the saved
-	// Blueprint still carries the transform and mesh of the old forearm-only viewmodel.
+	// The animation pins the head joint to the component origin, so this offset is where that
+	// joint sits relative to the eye when aiming: it lines the rifle's sight up with the screen
+	// centre and keeps the torso behind the camera. Hip fire adds the per-weapon viewmodel offset.
+	// Full scale, with Manny's +Y forward turned onto the camera's +X. Also applied at BeginPlay
+	// so a Blueprint saved against the old forearm-only viewmodel cannot bring its transform back.
 	void ConfigureFirstPersonBody(USkeletalMeshComponent* Body, USkeletalMesh* Mesh)
 	{
 		if (!Body) return;
 		if (Mesh && Body->GetSkeletalMeshAsset() != Mesh) Body->SetSkeletalMesh(Mesh);
-		Body->SetRelativeLocation(FVector(-9.0f, 0.0f, -10.0f));
+		Body->SetRelativeLocation(FVector(4.0f, -2.2f, -3.5f));
 		Body->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
 		Body->SetRelativeScale3D(FVector::OneVector);
 		// The pinned pose sits a body height below the reference bounds, so widen them against culling.
@@ -81,8 +82,9 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	FirstPersonArms->SetAnimInstanceClass(UArenaDuelVisualAnimInstance::StaticClass());
 	FirstPersonCamera->bEnableFirstPersonFieldOfView = true;
 	FirstPersonCamera->bEnableFirstPersonScale = true;
-	FirstPersonCamera->FirstPersonFieldOfView = 94.0f;
-	FirstPersonCamera->FirstPersonScale = 0.82f;
+	// A narrow viewmodel lens keeps the full-scale arms and rifle from stretching at the screen edge.
+	FirstPersonCamera->FirstPersonFieldOfView = 55.0f;
+	FirstPersonCamera->FirstPersonScale = 1.0f;
 	for (const TCHAR* Path : { TEXT("/Game/ArenaDuel/Characters/Common/M_ShadowArmor"), TEXT("/Game/ArenaDuel/Characters/Common/M_WardenArmor"), TEXT("/Game/ArenaDuel/Characters/Common/M_RiftArmor") })
 		ArchetypeArmorMaterials.Add(LoadObject<UMaterialInterface>(nullptr, Path));
 	CyanVisualMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneCyan"));
@@ -155,6 +157,8 @@ void AArenaDuelCharacter::BeginPlay()
 		CameraBaseRelativeLocation = FirstPersonCamera->GetRelativeLocation();
 	}
 	ConfigureFirstPersonBody(FirstPersonArms, GetMesh()->GetSkeletalMeshAsset());
+	FirstPersonCamera->FirstPersonFieldOfView = 55.0f;
+	FirstPersonCamera->FirstPersonScale = 1.0f;
 	RefreshCharacterVisuals();
 	// A duel has two pawns, so each must replicate shots and death to the other from any position.
 	if (HasAuthority()) bAlwaysRelevant = true;

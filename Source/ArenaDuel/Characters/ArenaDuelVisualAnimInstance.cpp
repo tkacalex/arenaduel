@@ -108,7 +108,8 @@ namespace
 						FTransform Lower = ComponentPose.GetComponentSpaceTransform(LowerIndex);
 						FTransform Hand = ComponentPose.GetComponentSpaceTransform(HandIndex);
 						const FTransform OriginalUpper = Upper, OriginalLower = Lower, OriginalHand = Hand;
-						const FVector JointTarget = Lower.GetLocation() + (Lower.GetLocation() - Upper.GetLocation()).GetSafeNormal() * 30.0f;
+						// Component space: +X is the character's left, -Z is down. The support elbow hangs low and outward.
+						const FVector JointTarget = Lower.GetLocation() + FVector(25.0, -10.0, -40.0);
 						if (!Effector.ContainsNaN() && !JointTarget.ContainsNaN())
 						{
 							AnimationCore::SolveTwoBoneIK(Upper, Lower, Hand, JointTarget, Effector, false, 1.0, 1.0);
