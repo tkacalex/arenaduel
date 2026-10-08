@@ -5,6 +5,8 @@ Read `AGENTS.md` first. Its rules (automation priority, Unreal engineering rules
 ## Working style
 
 - Automate everything that tools can do. The user wants to do as little manually as possible: build, test, inspect and edit through tools instead of handing out click instructions.
+- Rule number one: no manual help from the user unless a concrete blocker makes it unavoidable. Drive the editor through the `unreal-mcp` server and prefer Live Coding whenever it is possible and sensible.
+- Once a change works and is verified, commit it and push it to GitHub (`origin/main`) without waiting to be asked.
 - Communicate with the user in German.
 - Report unverified builds as `BUILD NOT YET VERIFIED` and never claim an editor action that was not performed.
 
