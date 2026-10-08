@@ -2,66 +2,96 @@
 
 #include "Misc/AutomationTest.h"
 #include "Engine/SkeletalMesh.h"
+#include "Engine/Blueprint.h"
 #include "MeshDescription.h"
 #include "SkeletalMeshAttributes.h"
 #include "UObject/SavePackage.h"
 #include "Misc/PackageName.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "HAL/FileManager.h"
+#include "../Characters/ArenaDuelCharacter.h"
 
-// Explicit editor setup command, never a runtime path or part of regression test discovery.
+namespace
+{
+	bool SaveAssetPackage(UObject* Asset)
+	{
+		if (!Asset) return false;
+		UPackage* Package = Asset->GetOutermost();
+		Package->MarkPackageDirty();
+		const FString Filename = FPackageName::LongPackageNameToFilename(Package->GetName(), FPackageName::GetAssetPackageExtension());
+		FSavePackageArgs Args;
+		Args.TopLevelFlags = RF_Public | RF_Standalone;
+		return UPackage::SavePackage(Package, Asset, *Filename, Args);
+	}
+
+	bool AssignArmsMeshToCharacterDefaults(USkeletalMesh* Arms)
+	{
+		if (!Arms) return false;
+		AArenaDuelCharacter* NativeDefaults = GetMutableDefault<AArenaDuelCharacter>();
+		NativeDefaults->GetFirstPersonArms()->SetSkeletalMesh(Arms);
+		UBlueprint* CharacterBlueprint = LoadObject<UBlueprint>(nullptr, TEXT("/Game/ArenaDuel/Characters/BP_ArenaDuelCharacter.BP_ArenaDuelCharacter"));
+		if (!CharacterBlueprint || !CharacterBlueprint->GeneratedClass) return false;
+		auto* BlueprintDefaults = Cast<AArenaDuelCharacter>(CharacterBlueprint->GeneratedClass->GetDefaultObject());
+		if (!BlueprintDefaults) return false;
+		BlueprintDefaults->GetFirstPersonArms()->SetSkeletalMesh(Arms);
+		return SaveAssetPackage(CharacterBlueprint);
+	}
+}
+
+// Explicit editor setup command. It creates the forearm viewmodel and fixes the
+// native and saved Blueprint defaults so HandGrip_R is valid on the next PIE spawn.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelCreateArmsAsset, "ArenaDuel.VisualAssetSetup.Arms", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FArenaDuelCreateArmsAsset::RunTest(const FString& Parameters)
 {
-	const TCHAR* PackagePath = TEXT("/Game/ArenaDuel/Characters/Common/SKM_ArenaDuelArms");
-	if (LoadObject<USkeletalMesh>(nullptr, PackagePath, nullptr, LOAD_NoWarn)) return true;
-	USkeletalMesh* Source = LoadObject<USkeletalMesh>(nullptr, TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"));
-	if (!Source || !Source->GetMeshDescription(0)) { AddError(TEXT("Epic mesh has no editable source description")); return false; }
-	UPackage* Package = CreatePackage(PackagePath);
-	USkeletalMesh* Arms = DuplicateObject<USkeletalMesh>(Source, Package, TEXT("SKM_ArenaDuelArms"));
-	Arms->SetFlags(RF_Public | RF_Standalone);
-	int32 KeptPolygons = 0;
-	for (int32 LOD = 0; LOD < Arms->GetLODNum(); ++LOD)
+	const TCHAR* PackagePath = TEXT("/Game/ArenaDuel/Characters/Common/SKM_ArenaDuelFPSArms");
+	USkeletalMesh* Arms = LoadObject<USkeletalMesh>(nullptr, PackagePath, nullptr, LOAD_NoWarn);
+	if (!Arms)
 	{
-		FMeshDescription* Description = Arms->GetMeshDescription(LOD);
-		if (!Description) continue; // Generated reductions rebuild from the edited source.
-		const FSkeletalMeshConstAttributes Attributes(*Description);
-		const auto Weights = Attributes.GetVertexSkinWeights();
-		const auto BoneNames = Attributes.GetBoneNames();
-		TArray<FPolygonID> Remove;
-		for (const FPolygonID Polygon : Description->Polygons().GetElementIDs())
+		USkeletalMesh* Source = LoadObject<USkeletalMesh>(nullptr, TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"));
+		if (!Source || !Source->GetMeshDescription(0)) { AddError(TEXT("Epic mesh has no editable source description")); return false; }
+		UPackage* Package = CreatePackage(PackagePath);
+		Arms = DuplicateObject<USkeletalMesh>(Source, Package, TEXT("SKM_ArenaDuelFPSArms"));
+		Arms->SetFlags(RF_Public | RF_Standalone);
+		int32 KeptPolygons = 0;
+		for (int32 LOD = 0; LOD < Arms->GetLODNum(); ++LOD)
 		{
-			bool bArmPolygon = true;
-			for (const FVertexID Vertex : Description->GetPolygonVertices(Polygon))
+			FMeshDescription* Description = Arms->GetMeshDescription(LOD);
+			if (!Description) continue;
+			const FSkeletalMeshConstAttributes Attributes(*Description);
+			const auto Weights = Attributes.GetVertexSkinWeights();
+			const auto BoneNames = Attributes.GetBoneNames();
+			TArray<FPolygonID> Remove;
+			for (const FPolygonID Polygon : Description->Polygons().GetElementIDs())
 			{
-				float ArmWeight = 0;
-				for (const auto& Weight : Weights.Get(Vertex))
+				bool bForearmOrHand = true;
+				for (const FVertexID Vertex : Description->GetPolygonVertices(Polygon))
 				{
-					const FString Bone = BoneNames[FBoneID(Weight.GetBoneIndex())].ToString();
-					if (Bone.StartsWith(TEXT("upperarm")) || Bone.StartsWith(TEXT("lowerarm")) || Bone.StartsWith(TEXT("hand"))
-						|| Bone.StartsWith(TEXT("thumb")) || Bone.StartsWith(TEXT("index")) || Bone.StartsWith(TEXT("middle"))
-						|| Bone.StartsWith(TEXT("ring")) || Bone.StartsWith(TEXT("pinky"))) ArmWeight += Weight.GetWeight();
+					float ForearmWeight = 0.0f;
+					for (const auto& Weight : Weights.Get(Vertex))
+					{
+						const FString Bone = BoneNames[FBoneID(Weight.GetBoneIndex())].ToString();
+						if (Bone.StartsWith(TEXT("lowerarm")) || Bone.StartsWith(TEXT("hand"))
+							|| Bone.StartsWith(TEXT("thumb")) || Bone.StartsWith(TEXT("index")) || Bone.StartsWith(TEXT("middle"))
+							|| Bone.StartsWith(TEXT("ring")) || Bone.StartsWith(TEXT("pinky"))) ForearmWeight += Weight.GetWeight();
+					}
+					if (ForearmWeight < 0.5f) { bForearmOrHand = false; break; }
 				}
-				if (ArmWeight < 0.5f) { bArmPolygon = false; break; }
+				if (!bForearmOrHand) Remove.Add(Polygon); else if (LOD == 0) ++KeptPolygons;
 			}
-			if (!bArmPolygon) Remove.Add(Polygon); else if (LOD == 0) ++KeptPolygons;
+			Description->DeletePolygons(Remove);
+			FElementIDRemappings Remappings;
+			Description->Compact(Remappings);
+			Arms->CommitMeshDescription(LOD);
 		}
-		Description->DeletePolygons(Remove);
-		FElementIDRemappings Remappings;
-		Description->Compact(Remappings);
-		Arms->CommitMeshDescription(LOD);
+		if (KeptPolygons < 100) { AddError(FString::Printf(TEXT("Forearm extraction retained too little geometry: %d polygons"), KeptPolygons)); return false; }
+		Arms->SetPhysicsAsset(nullptr);
+		Arms->Build();
+		FAssetRegistryModule::AssetCreated(Arms);
+		if (!SaveAssetPackage(Arms)) { AddError(TEXT("Could not save the first-person forearm mesh")); return false; }
+		AddInfo(FString::Printf(TEXT("Generated first-person mesh with %d forearm and hand polygons"), KeptPolygons));
 	}
-	if (KeptPolygons < 100) { AddError(TEXT("Arm extraction retained too little geometry")); return false; }
-	Arms->SetPhysicsAsset(nullptr);
-	Arms->Build();
-	FAssetRegistryModule::AssetCreated(Arms);
-	Package->MarkPackageDirty();
-	const FString Filename = FPackageName::LongPackageNameToFilename(PackagePath, FPackageName::GetAssetPackageExtension());
-	IFileManager::Get().MakeDirectory(*FPaths::GetPath(Filename), true);
-	FSavePackageArgs Args;
-	Args.TopLevelFlags = RF_Public | RF_Standalone;
-	if (!UPackage::SavePackage(Package, Arms, *Filename, Args)) { AddError(TEXT("Unreal could not serialize arms")); return false; }
-	AddInfo(FString::Printf(TEXT("Unreal-derived arms: %d source polygons, compatible skeleton and sockets preserved"), KeptPolygons));
+	if (!AssignArmsMeshToCharacterDefaults(Arms)) { AddError(TEXT("Could not assign the forearm mesh to native and Blueprint character defaults")); return false; }
 	return true;
 }
+
 #endif

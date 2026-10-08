@@ -14,6 +14,7 @@
 #include "Components/BoxComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/StaticMeshSocket.h"
 #include "Engine/SkeletalMesh.h"
 #include "Materials/MaterialInterface.h"
 #include "EngineUtils.h"
@@ -76,7 +77,7 @@ bool FArenaDuelVisualContract::RunTest(const FString& Parameters)
 	const auto* BlueprintDefaults = BlueprintClass ? BlueprintClass->GetDefaultObject<AArenaDuelCharacter>() : nullptr;
 	TestTrue(TEXT("Saved Blueprint inherits body and first-person mesh"), BlueprintDefaults && BlueprintDefaults->GetMesh()->GetSkeletalMeshAsset() && BlueprintDefaults->GetFirstPersonArms()->GetSkeletalMeshAsset());
 	TestNotNull(TEXT("Compatible skeletal first-person mesh"), Character->GetFirstPersonArms()->GetSkeletalMeshAsset());
-	TestTrue(TEXT("First person uses the supported Epic Manny mesh"), Character->GetFirstPersonArms()->GetSkeletalMeshAsset() && Character->GetFirstPersonArms()->GetSkeletalMeshAsset()->GetName() == TEXT("SKM_Manny_Simple"));
+	TestTrue(TEXT("First person uses the dedicated forearm and hand mesh"), Character->GetFirstPersonArms()->GetSkeletalMeshAsset() && Character->GetFirstPersonArms()->GetSkeletalMeshAsset()->GetName() == TEXT("SKM_ArenaDuelFPSArms"));
 	TestTrue(TEXT("Primitives no longer render"), Character->BodyVisual->bHiddenInGame && Character->HeadVisual->bHiddenInGame);
 	TestTrue(TEXT("Body/arms visibility separated"), VisualSmoke::Flag(Character->GetMesh(), TEXT("bOwnerNoSee")) && VisualSmoke::Flag(Character->GetFirstPersonArms(), TEXT("bOnlyOwnerSee")));
 	TestEqual(TEXT("Body hit extent unchanged"), Character->BodyHitZone->GetUnscaledBoxExtent(), FVector(38,38,70));
@@ -87,7 +88,9 @@ bool FArenaDuelVisualContract::RunTest(const FString& Parameters)
 	{
 		const FString Path = FString::Printf(TEXT("/Game/ArenaDuel/Weapons/%s/SM_%s"), Name, Name);
 		const auto* MeshAsset = LoadObject<UStaticMesh>(nullptr, *Path);
-		TestTrue(TEXT("Generated weapon loads with cosmetic muzzle"), MeshAsset && MeshAsset->FindSocket(TEXT("Muzzle")));
+		const UStaticMeshSocket* Muzzle = MeshAsset ? MeshAsset->FindSocket(TEXT("Muzzle")) : nullptr;
+		TestTrue(TEXT("Generated weapon muzzle is ahead of grip on +X"), Muzzle && Muzzle->RelativeLocation.X > 0.0f
+			&& FVector::DotProduct(Muzzle->RelativeRotation.RotateVector(FVector::ForwardVector), FVector::ForwardVector) > 0.99f);
 	}
 	return true;
 }
@@ -95,6 +98,11 @@ bool FArenaDuelVisualContract::RunTest(const FString& Parameters)
 struct FArenaDuelVisualNetworkState : FBasePIENetworkComponentState
 {
 	TWeakObjectPtr<AArenaDuelCharacter> PreviousPawn;
+	FTransform DeathMeshRelativeTransform = FTransform::Identity;
+	float DeathObservedAt = -1.0f;
+	bool bDeathTransformCaptured = false;
+	FTransform HipViewmodelTransform = FTransform::Identity;
+	float HipFieldOfView = 90.0f;
 };
 NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 {
@@ -118,16 +126,55 @@ NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 			Network.ThenServer(TEXT("Host switches visual weapon"), [Index](auto& S){ Pawn(S.World,true)->GetWeaponComponent()->EquipWeapon(Index); })
 			.ThenClient(TEXT("Client switches through normal weapon command"),0,[Index](auto& S){ Pawn(S.World,true)->GetWeaponComponent()->EquipWeapon(Index); })
 			.UntilServer(TEXT("Server has both weapon choices"),[Index](auto& S){ return Equipped(Pawn(S.World,true),Index) && Equipped(Pawn(S.World,false),Index); },FTimespan::FromSeconds(5))
-			.UntilClient(TEXT("Owner and remote held weapons converge"),0,[Index](auto& S){ return Equipped(Pawn(S.World,true),Index) && Equipped(Pawn(S.World,false),Index); },FTimespan::FromSeconds(5));
+			.UntilClient(TEXT("Owner and remote held weapons converge"),0,[Index](auto& S){ return Equipped(Pawn(S.World,true),Index) && Equipped(Pawn(S.World,false),Index); },FTimespan::FromSeconds(5))
+			.UntilClient(TEXT("Support hand reaches this weapon grip without invalid pose"),0,[](auto& S){
+				const auto* C=Pawn(S.World,true);
+				if (!C || !C->GetFirstPersonArms() || !C->GetFirstPersonArms()->GetSkeletalMeshAsset()) return false;
+				FVector GripWorld;
+				if (!C->GetWeaponComponent()->GetLeftHandGripWorldLocation(GripWorld)) return false;
+				const FVector HandWorld=C->GetFirstPersonArms()->GetBoneLocation(TEXT("hand_l"));
+				return !GripWorld.ContainsNaN() && !HandWorld.ContainsNaN() && FVector::Dist(GripWorld,HandWorld)<6.0f;
+			},FTimespan::FromSeconds(4))
+			.ThenClient(TEXT("Record weapon hip transform and enter ADS"),0,[](auto& S){
+				auto* C=Pawn(S.World,true);
+				S.HipViewmodelTransform=C->GetFirstPersonViewmodelRoot()->GetRelativeTransform();
+				S.HipFieldOfView=C->GetFirstPersonCamera()->FieldOfView;
+				C->GetWeaponComponent()->StartAim();
+			})
+			.UntilClient(TEXT("Each weapon ADS keeps muzzle in front and aligned"),0,[](auto& S){
+				const auto* C=Pawn(S.World,true);
+				const auto* Gun=C ? C->GetWeaponComponent()->GetFirstPersonWeaponMesh() : nullptr;
+				if(!C || !Gun || !Gun->GetStaticMesh() || !Gun->GetStaticMesh()->FindSocket(TEXT("Muzzle"))) return false;
+				const FTransform CameraTransform=C->GetFirstPersonCamera()->GetComponentTransform();
+				const FVector GripView=CameraTransform.InverseTransformPosition(Gun->GetComponentLocation());
+				const FVector MuzzleView=CameraTransform.InverseTransformPosition(Gun->GetSocketLocation(TEXT("Muzzle")));
+				return C->GetWeaponComponent()->IsAiming()
+					&& FMath::IsNearlyEqual(C->GetFirstPersonCamera()->FieldOfView,C->GetWeaponComponent()->GetCurrentDefinition().AimFOV,0.1f)
+					&& FVector::DotProduct(Gun->GetForwardVector(),CameraTransform.GetUnitAxis(EAxis::X))>0.98f
+					&& MuzzleView.X>GripView.X+10.0f;
+			},FTimespan::FromSeconds(4))
+			.ThenClient(TEXT("Return this weapon from ADS to its exact hip transform"),0,[](auto& S){ Pawn(S.World,true)->GetWeaponComponent()->StopAim(); })
+			.UntilClient(TEXT("Hip transform and FOV restore without drift"),0,[](auto& S){
+				const auto* C=Pawn(S.World,true);
+				if (!C) return false;
+				FVector HipLocation;
+				FRotator HipRotation;
+				C->GetWeaponComponent()->GetCurrentViewmodelBaseTransform(HipLocation, HipRotation);
+				const FTransform Actual=C->GetFirstPersonViewmodelRoot()->GetRelativeTransform();
+				return C && !C->GetWeaponComponent()->IsAiming()
+					&& FMath::IsNearlyEqual(C->GetFirstPersonCamera()->FieldOfView,S.HipFieldOfView,0.1f)
+					&& FVector::Dist(Actual.GetLocation(),HipLocation)<2.0f
+					&& Actual.GetRotation().AngularDistance(HipRotation.Quaternion())<FMath::DegreesToRadians(2.0f);
+			},FTimespan::FromSeconds(4));
 		}
 		for (auto Archetype : {EArenaDuelCharacterArchetype::Warden, EArenaDuelCharacterArchetype::Rift, EArenaDuelCharacterArchetype::Shadow})
 		{
 			Network.ThenServer(TEXT("Switch both archetype appearances"),[Archetype](auto& S){ for(bool Local:{true,false}) Pawn(S.World,Local)->template GetPlayerState<AArenaDuelPlayerState>()->SetCharacterArchetypeForDevelopment(Archetype); })
-			.UntilClient(TEXT("Replicated body and arms materials update"),0,[Archetype](auto& S){
+			.UntilClient(TEXT("Body armor updates while first-person skin stays intact"),0,[Archetype](auto& S){
 				const TCHAR* Names[] = {TEXT("M_ShadowArmor"),TEXT("M_WardenArmor"),TEXT("M_RiftArmor")};
 				for(bool Local:{true,false}) {
 					auto* C=Pawn(S.World,Local); if(!C || !C->GetMesh()->GetMaterial(0) || C->GetMesh()->GetMaterial(0)->GetName()!=Names[static_cast<int32>(Archetype)]) return false;
-					if(C->GetFirstPersonArms()->GetMaterial(0)!=C->GetMesh()->GetMaterial(0)) return false;
+					if(!C->GetFirstPersonArms()->GetMaterial(0) || C->GetFirstPersonArms()->GetMaterial(0)->GetName()==Names[static_cast<int32>(Archetype)]) return false;
 				} return true;
 			},FTimespan::FromSeconds(5));
 		}
@@ -141,8 +188,9 @@ NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 			if (!Anim || !Anim->GetAnimationAsset()) TestRunner->AddError(TEXT("First person pose did not evaluate"));
 			const auto* Gun=C->GetWeaponComponent()->GetFirstPersonWeaponMesh();
 			const FVector ViewLocation = C->GetFirstPersonCamera()->GetComponentTransform().InverseTransformPosition(Gun->GetComponentLocation());
-			if (FVector::DotProduct(Gun->GetForwardVector(),C->GetFirstPersonCamera()->GetForwardVector()) < 0.98f || ViewLocation.X < 10 || ViewLocation.X > 100 || FMath::Abs(ViewLocation.Y) > 40)
-				TestRunner->AddError(TEXT("Evaluated viewmodel is not in front of the camera facing forward"));
+			const float ForwardDot = FVector::DotProduct(Gun->GetForwardVector(),C->GetFirstPersonCamera()->GetForwardVector());
+			if (ForwardDot < 0.98f || ViewLocation.X < 10 || ViewLocation.X > 100 || FMath::Abs(ViewLocation.Y) > 40)
+				TestRunner->AddError(FString::Printf(TEXT("Evaluated viewmodel is not in front of camera: forwardDot=%.3f viewLocation=(%.1f, %.1f, %.1f) gunYaw=%.1f cameraYaw=%.1f"), ForwardDot, ViewLocation.X, ViewLocation.Y, ViewLocation.Z, Gun->GetComponentRotation().Yaw, C->GetFirstPersonCamera()->GetComponentRotation().Yaw));
 		})
 		.ThenClient(TEXT("ADS keeps connected arm and gun hierarchy"),0,[](auto& S){ Pawn(S.World,true)->GetWeaponComponent()->StartAim(); })
 		.UntilClient(TEXT("ADS FOV and visual alignment settle"),0,[](auto& S){
@@ -152,13 +200,39 @@ NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 		},FTimespan::FromSeconds(4))
 		.ThenClient(TEXT("Leave ADS"),0,[](auto& S){ Pawn(S.World,true)->GetWeaponComponent()->StopAim(); })
 		.UntilClient(TEXT("User-selected hip FOV restored"),0,[](auto& S){const auto* C=Pawn(S.World,true);const auto* Controller=VisualSmoke::PC(S.World);return C&&Controller&&FMath::IsNearlyEqual(C->GetFirstPersonCamera()->FieldOfView,Controller->GetLocalSettings().FOV,0.1f);},FTimespan::FromSeconds(4))
-		.ThenServer(TEXT("Death keeps skeletal presentation cosmetic"),[](auto& S){ Pawn(S.World,false)->AdminKill(); })
+		.ThenServer(TEXT("Death keeps skeletal presentation cosmetic"),[](auto& S){ S.DeathObservedAt=-1.0f; S.bDeathTransformCaptured=false; Pawn(S.World,false)->AdminKill(); })
 		.UntilClient(TEXT("Death hides own arms and preserves world lying pose"),0,[](auto& S){
 			const auto* C=Pawn(S.World,true);
+			if(C && C->IsDead() && S.DeathObservedAt<0.0f)
+				S.DeathObservedAt=S.World->GetTimeSeconds();
+			const bool bFallen=C && C->IsDead() && FMath::IsNearlyEqual(FMath::Abs(C->GetMesh()->GetRelativeRotation().Roll),90.0f,0.1f);
+			if(bFallen && !S.bDeathTransformCaptured) { S.DeathMeshRelativeTransform=C->GetMesh()->GetRelativeTransform(); S.bDeathTransformCaptured=true; }
 			return C && C->IsDead() && !C->GetFirstPersonArms()->IsVisible() && !C->GetWeaponComponent()->GetFirstPersonWeaponMesh()->IsVisible()
-				&& C->GetMesh()->bPauseAnims && FMath::IsNearlyEqual(FMath::Abs(C->GetMesh()->GetRelativeRotation().Roll),90.0f,0.1f) && C->GetMesh()->GetCollisionEnabled()==ECollisionEnabled::NoCollision;
+				&& C->GetMesh()->bPauseAnims && bFallen && C->GetMesh()->GetCollisionEnabled()==ECollisionEnabled::NoCollision;
 		},FTimespan::FromSeconds(2))
-		.UntilClient(TEXT("Automatic next round restores own and opponent visuals"),0,[](auto& S){return Valid(Pawn(S.World,true)) && !Pawn(S.World,true)->IsDead() && Valid(Pawn(S.World,false));},FTimespan::FromSeconds(6));
+		.UntilClient(TEXT("Client corpse remains dead and pose-latched for 2.8 seconds"),0,[](auto& S){
+			const auto* C=Pawn(S.World,true);
+			return C && C->IsDead() && C->GetMesh()->bPauseAnims && S.DeathObservedAt>=0.0f && S.bDeathTransformCaptured
+				&& S.World->GetTimeSeconds()-S.DeathObservedAt>=2.8f
+				&& C->GetMesh()->GetRelativeTransform().Equals(S.DeathMeshRelativeTransform,0.1f);
+		},FTimespan::FromSeconds(3.0))
+		.UntilClient(TEXT("Automatic next round restores own and opponent visuals"),0,[](auto& S){return Valid(Pawn(S.World,true)) && !Pawn(S.World,true)->IsDead() && Valid(Pawn(S.World,false));},FTimespan::FromSeconds(6))
+		.ThenServer(TEXT("Reverse the death direction by killing the listen-server pawn"),[](auto& S){ S.DeathObservedAt=-1.0f; S.bDeathTransformCaptured=false; Pawn(S.World,true)->AdminKill(); })
+		.UntilClient(TEXT("Remote host corpse reaches the fallen state"),0,[](auto& S){
+			const auto* C=Pawn(S.World,false);
+			if(C && C->IsDead() && S.DeathObservedAt<0.0f)
+				S.DeathObservedAt=S.World->GetTimeSeconds();
+			const bool bFallen=C && C->IsDead() && FMath::IsNearlyEqual(FMath::Abs(C->GetMesh()->GetRelativeRotation().Roll),90.0f,0.1f);
+			if(bFallen && !S.bDeathTransformCaptured) { S.DeathMeshRelativeTransform=C->GetMesh()->GetRelativeTransform(); S.bDeathTransformCaptured=true; }
+			return C && C->IsDead() && C->GetMesh()->bPauseAnims && bFallen;
+		},FTimespan::FromSeconds(2))
+		.UntilClient(TEXT("Remote host corpse remains pose-latched for 2.8 seconds"),0,[](auto& S){
+			const auto* C=Pawn(S.World,false);
+			return C && C->IsDead() && C->GetMesh()->bPauseAnims && S.DeathObservedAt>=0.0f && S.bDeathTransformCaptured
+				&& S.World->GetTimeSeconds()-S.DeathObservedAt>=2.8f
+				&& C->GetMesh()->GetRelativeTransform().Equals(S.DeathMeshRelativeTransform,0.1f);
+		},FTimespan::FromSeconds(3.0))
+		.UntilClient(TEXT("Final round restart replaces the reverse-direction corpse"),0,[](auto& S){return Valid(Pawn(S.World,true)) && !Pawn(S.World,true)->IsDead() && Valid(Pawn(S.World,false)) && !Pawn(S.World,false)->IsDead();},FTimespan::FromSeconds(6));
 	}
 };
 #endif

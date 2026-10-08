@@ -8,13 +8,13 @@ public class ArenaDuel : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "GameplayAbilities", "GameplayTags", "GameplayTasks", "UMG", "RHI" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "GameplayAbilities", "GameplayTags", "GameplayTasks", "UMG", "RHI", "AnimationCore" });
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
 
 		if (Target.bBuildEditor)
 		{
-			PrivateDependencyModuleNames.AddRange(new string[] { "CQTest", "EngineSettings", "IrisCore", "LevelEditor", "UnrealEd", "MeshDescription", "SkeletalMeshDescription", "AnimationCore" });
+			PrivateDependencyModuleNames.AddRange(new string[] { "CQTest", "EngineSettings", "IrisCore", "LevelEditor", "UnrealEd", "MeshDescription", "SkeletalMeshDescription" });
 		}
 
 		// Uncomment if you are using Slate UI

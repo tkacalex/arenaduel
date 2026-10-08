@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "unreal-mcp": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://127.0.0.1:8000/mcp"]
+    }
+  }
+}

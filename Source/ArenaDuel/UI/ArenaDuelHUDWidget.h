@@ -71,6 +71,7 @@ protected:
 	UPROPERTY() TArray<TObjectPtr<UTextBlock>> AbilityCooldowns;
 	UPROPERTY() TArray<TObjectPtr<UWidget>> AbilityRoots;
 	UPROPERTY() TArray<TObjectPtr<UBorder>> AbilityBackgrounds;
+	UPROPERTY() TArray<TObjectPtr<UBorder>> AbilityAccents;
 	UPROPERTY() TArray<TObjectPtr<UBorder>> LeftRoundIndicators;
 	UPROPERTY() TArray<TObjectPtr<UBorder>> RightRoundIndicators;
 	TWeakObjectPtr<AArenaDuelGameState> CachedGameState;

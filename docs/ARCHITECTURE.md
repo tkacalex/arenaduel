@@ -151,6 +151,8 @@ Wall runs now have a configurable same-wall reattach cooldown. Slide boost is cl
 
 Phase 4 local behavior validation is complete. The editor suite now covers multi-frame air-control trajectory, stamina drain and regeneration, wall-run entry rejection and exit, same-wall reattach lockout, wall jump behavior, vault and mantle progression, invalid traversal cases, and capsule collision safety. Advanced-action network validation remains incomplete and is the next checkpoint.
 
+Slide feel pass (October 2026): the slide is a smooth exponential glide (`SlideFriction`) instead of a constant speed. Slope gravity (`SlideGravityScale`) accelerates downhill slides and bleeds uphill ones; time spent accelerating downhill does not count toward `SlideDuration`, so long ramps carry the slide. Input steers the slide by rotating its direction at `SlideTurnRate` without adding speed, and backwards input brakes with `SlideBrakeDeceleration`. The entry boost recharges over `SlideBoostCooldown`, so slide spam cannot stack speed. Slide jump keeps full horizontal momentum. The local camera eases eye height through crouch and uncrouch instead of snapping, and adds a small FOV kick, drop and steering tilt while sliding (`AArenaDuelCharacter::CalcCamera`, local presentation only, no gameplay effect).
+
 `L_Phase4MovementTest` is a temporary flat development map containing labeled sprint, slide, vault, mantle, and wall test geometry. It is not the final arena.
 
 ## Phase 5 weapon foundation

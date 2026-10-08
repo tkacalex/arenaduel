@@ -30,3 +30,6 @@ Desktop.ini
 # Local logs and crash artifacts
 *.log
 *.dmp
+
+# Local Claude Desktop configuration copy (contains account identifiers)
+Tools/claude_desktop_config.json

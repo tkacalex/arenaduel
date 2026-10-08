@@ -23,6 +23,21 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/GameModeBase.h"
+#include "GameFramework/PlayerInput.h"
+#include "InputCoreTypes.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelAdminF1InputContractTest, "ArenaDuel.Admin.F1InputContract", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FArenaDuelAdminF1InputContractTest::RunTest(const FString& Parameters)
+{
+	bool bF1ChangesViewMode = false;
+	for (const FKeyBind& Binding : GetDefault<UPlayerInput>()->DebugExecBindings)
+	{
+		bF1ChangesViewMode |= Binding.Key == EKeys::F1 && Binding.Command.Contains(TEXT("viewmode"), ESearchCase::IgnoreCase);
+	}
+	TestFalse(TEXT("F1 is reserved for ArenaDuel admin and cannot switch rendering mode"), bF1ChangesViewMode);
+	return true;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelAdminWidgetConstructionTest, "ArenaDuel.Admin.NativeWidget", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 

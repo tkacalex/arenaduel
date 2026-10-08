@@ -32,7 +32,15 @@ void AArenaDuelGameState::SetMatchPhase(EArenaDuelMatchPhase NewPhase, float End
 	MatchPhase = NewPhase;
 	bRoundInProgress = NewPhase == EArenaDuelMatchPhase::InRound;
 	CountdownEndServerTime = NewPhase == EArenaDuelMatchPhase::Countdown ? EndServerTime : 0.0f;
+	if (NewPhase != EArenaDuelMatchPhase::CharacterSelect) CharacterAutoReadyEndServerTime = 0.0f;
 	OnRep_MatchPhase();
+	ForceNetUpdate();
+}
+
+void AArenaDuelGameState::SetCharacterAutoReadyEndServerTime(float EndServerTime)
+{
+	if (!HasAuthority()) return;
+	CharacterAutoReadyEndServerTime = FMath::Max(0.0f, EndServerTime);
 	ForceNetUpdate();
 }
 
@@ -59,6 +67,7 @@ void AArenaDuelGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	DOREPLIFETIME(AArenaDuelGameState, MatchWinnerSlot);
 	DOREPLIFETIME(AArenaDuelGameState, MatchPhase);
 	DOREPLIFETIME(AArenaDuelGameState, CountdownEndServerTime);
+	DOREPLIFETIME(AArenaDuelGameState, CharacterAutoReadyEndServerTime);
 }
 
 void AArenaDuelGameState::OnRep_RoundInProgress()

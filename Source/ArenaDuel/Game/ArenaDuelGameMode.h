@@ -41,8 +41,11 @@ protected:
 	void AssignDuelSlot(AArenaDuelPlayerState* JoiningPlayerState);
 	void EndRoundForDevelopment(AArenaDuelPlayerState* WinningPlayerState);
 	void EnterCharacterSelect();
+	void AutoReadyCharacterSelectPlayers();
+	void StartCharacterAutoReadyTimer();
 	void StartSelectedMatch();
 	void CheckBothReady();
+	FTimerHandle CharacterAutoReadyTimer;
 	FTimerHandle CharacterCountdownTimer;
 
 	FTimerHandle RoundRestartTimer;

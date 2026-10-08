@@ -67,6 +67,9 @@ protected:
 	UPROPERTY(Transient) TArray<FArenaDuelSelectionPanel> Panels;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> CenterLabel;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> CenterStatus;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> AutoReadyStatus;
+	UPROPERTY(Transient) TObjectPtr<UBorder> AutoReadyBackdrop;
+	UPROPERTY(Transient) TObjectPtr<UBorder> AutoReadyAccent;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> Matchup;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> Connection;
 	UPROPERTY(Transient) TObjectPtr<UButton> SettingsButton;

@@ -8,7 +8,7 @@ The repository contains an Unreal Engine 5.8.3 C++ project with first-person mov
 
 Verified engine path: `C:\Program Files\Epic Games\UE_5.8`.
 
-The project contains a first multiplayer framework and first-person Character foundation. Phase 3 input assets, Blueprint subclasses, and movement test maps are serialized by Unreal and versioned with Git LFS. Current development tools include the F1 admin menu for standalone play and the listen-server host; remote clients and Shipping builds are denied admin access. This remains a development prototype, not a final match or online-services implementation.
+The project contains a first multiplayer framework and first-person Character foundation. Phase 3 input assets, Blueprint subclasses, and movement test maps are serialized by Unreal and versioned with Git LFS. F1 opens the development admin menu for standalone play and the listen-server host; remote clients and Shipping builds are denied admin access. This remains a development prototype, not a final match or online-services implementation.
 
 The generated Blank project already includes the Enhanced Input module and default input classes. ArenaDuel now contains `IA_Move`, `IA_Look`, `IA_Jump`, `IA_Sprint`, `IA_Crouch`, `IMC_Gameplay`, and configured Blueprint references created through Unreal Editor Python automation. Phase 4 adds a C++ movement component with sprint, crouch, slide, slide jump, air control tuning, stamina, momentum bounds, and basic traversal modes.
 

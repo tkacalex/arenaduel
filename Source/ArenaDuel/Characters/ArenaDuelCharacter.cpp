@@ -7,6 +7,7 @@
 
 #include "../ArenaDuel.h"
 #include "Camera/CameraComponent.h"
+#include "Camera/CameraTypes.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -47,11 +48,12 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	FirstPersonArms->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::FirstPerson;
 	FirstPersonArms->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FirstPersonArms->SetCastShadow(false);
-	// Use the complete Epic Manny mesh for the first-person representation. The old
-	// skin-weight extracted mesh produced malformed shoulder/torso blobs.
-	FirstPersonArms->SetRelativeLocation(FVector(0.0f, 0.0f, -132.0f));
-	FirstPersonArms->SetRelativeRotation(FRotator::ZeroRotator);
-	FirstPersonArms->SetRelativeScale3D(FVector(1.0f));
+	// Use forearms and hands only, with the elbow cut kept outside the viewmodel frame.
+	FirstPersonArms->SetRelativeLocation(FVector(20.0f, 0.0f, -90.0f));
+	// Match Manny's measured +Y body basis to the camera's +X forward axis.
+	FirstPersonArms->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
+	// Keep both gloved hands and the forearms prominent in the first-person view.
+	FirstPersonArms->SetRelativeScale3D(FVector(0.70f));
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> Manny(TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"));
 	GetMesh()->SetSkeletalMesh(Manny.Object);
 	GetMesh()->SetRelativeLocation(FVector(0, 0, -GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()));
@@ -61,22 +63,9 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	GetMesh()->SetOwnerNoSee(true);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GetMesh()->SetAnimInstanceClass(UArenaDuelVisualAnimInstance::StaticClass());
-	// The editor setup command can derive the arms on a fresh checkout before they exist.
-	FirstPersonArms->SetSkeletalMesh(Manny.Object);
+	static ConstructorHelpers::FObjectFinder<USkeletalMesh> Arms(TEXT("/Game/ArenaDuel/Characters/Common/SKM_ArenaDuelFPSArms"));
+	if (Arms.Succeeded()) FirstPersonArms->SetSkeletalMesh(Arms.Object);
 	FirstPersonArms->SetAnimInstanceClass(UArenaDuelVisualAnimInstance::StaticClass());
-	FirstPersonArms->HideBoneByName(TEXT("head"), PBO_None);
-	FirstPersonArms->HideBoneByName(TEXT("neck_01"), PBO_None);
-	FirstPersonArms->HideBoneByName(TEXT("neck_02"), PBO_None);
-	FirstPersonArms->HideBoneByName(TEXT("spine_04"), PBO_None);
-	FirstPersonArms->HideBoneByName(TEXT("spine_05"), PBO_None);
-	FirstPersonArms->HideBoneByName(TEXT("clavicle_l"), PBO_None);
-	FirstPersonArms->HideBoneByName(TEXT("clavicle_r"), PBO_None);
-	FirstPersonArms->HideBoneByName(TEXT("thigh_l"), PBO_None);
-	FirstPersonArms->HideBoneByName(TEXT("thigh_r"), PBO_None);
-	FirstPersonArms->HideBoneByName(TEXT("calf_l"), PBO_None);
-	FirstPersonArms->HideBoneByName(TEXT("calf_r"), PBO_None);
-	FirstPersonArms->HideBoneByName(TEXT("foot_l"), PBO_None);
-	FirstPersonArms->HideBoneByName(TEXT("foot_r"), PBO_None);
 	FirstPersonCamera->bEnableFirstPersonFieldOfView = true;
 	FirstPersonCamera->bEnableFirstPersonScale = true;
 	FirstPersonCamera->FirstPersonFieldOfView = 94.0f;
@@ -147,7 +136,75 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 void AArenaDuelCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	if (FirstPersonCamera)
+	{
+		CameraBaseRelativeLocation = FirstPersonCamera->GetRelativeLocation();
+	}
 	RefreshCharacterVisuals();
+}
+
+void AArenaDuelCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+	// The capsule shrinks instantly; keep the eye where it was and ease it down instead of snapping.
+	if (IsLocallyControlled())
+	{
+		CrouchEyeOffset += ScaledHalfHeightAdjust;
+	}
+}
+
+void AArenaDuelCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+	if (IsLocallyControlled())
+	{
+		CrouchEyeOffset -= ScaledHalfHeightAdjust;
+	}
+}
+
+void AArenaDuelCharacter::UpdateLocalMovementCamera(float DeltaSeconds)
+{
+	if (!FirstPersonCamera || !IsLocallyControlled() || bDead)
+	{
+		return;
+	}
+	const float Dt = FMath::Clamp(DeltaSeconds, 0.0f, 0.1f);
+	const UArenaDuelCharacterMovementComponent* Movement = GetArenaDuelMovementComponent();
+	const bool bSliding = Movement && Movement->IsSliding();
+
+	// Exponential smoothing is frame-rate independent and never overshoots.
+	CrouchEyeOffset *= FMath::Exp(-CrouchCameraInterpSpeed * Dt);
+	if (FMath::Abs(CrouchEyeOffset) < 0.01f)
+	{
+		CrouchEyeOffset = 0.0f;
+	}
+	const float SlideTarget = bSliding ? 1.0f : 0.0f;
+	SlideCameraBlend = SlideTarget + (SlideCameraBlend - SlideTarget) * FMath::Exp(-SlideCameraInterpSpeed * Dt);
+
+	float SteerInput = 0.0f;
+	if (bSliding && Controller)
+	{
+		const FVector InputDirection = Movement->GetCurrentAcceleration().GetSafeNormal2D();
+		const FVector ViewRight = FRotationMatrix(FRotator(0.0f, Controller->GetControlRotation().Yaw, 0.0f)).GetUnitAxis(EAxis::Y);
+		SteerInput = FVector::DotProduct(InputDirection, ViewRight);
+	}
+	const float RollTarget = SlideCameraBlend * (-SlideCameraBaseRoll + SteerInput * SlideCameraSteerRoll);
+	SlideCameraRoll = RollTarget + (SlideCameraRoll - RollTarget) * FMath::Exp(-SlideCameraInterpSpeed * Dt);
+
+	FVector CameraLocation = CameraBaseRelativeLocation;
+	CameraLocation.Z += CrouchEyeOffset - SlideCameraExtraDrop * SlideCameraBlend;
+	FirstPersonCamera->SetRelativeLocation(CameraLocation);
+}
+
+void AArenaDuelCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
+{
+	UpdateLocalMovementCamera(DeltaTime);
+	Super::CalcCamera(DeltaTime, OutResult);
+	if (IsLocallyControlled() && !bDead)
+	{
+		OutResult.Rotation.Roll += SlideCameraRoll;
+		OutResult.FOV += SlideCameraFOVKick * SlideCameraBlend;
+	}
 }
 
 void AArenaDuelCharacter::RefreshCharacterVisuals()
@@ -166,20 +223,20 @@ void AArenaDuelCharacter::RefreshCharacterVisuals()
 	LeftShoulderArmor->SetVisibility(Archetype == EArenaDuelCharacterArchetype::Warden);
 	RightShoulderArmor->SetVisibility(Archetype != EArenaDuelCharacterArchetype::Shadow);
 	for (auto* Plate : {LeftShoulderArmor.Get(), RightShoulderArmor.Get()}) Plate->SetMaterial(0, Accent);
-	for (auto* VisualMesh : {GetMesh(), FirstPersonArms.Get()})
-	{
-		if (ArchetypeArmorMaterials.IsValidIndex(Index))
-			for (int32 MaterialIndex=0; MaterialIndex<VisualMesh->GetNumMaterials(); ++MaterialIndex) VisualMesh->SetMaterial(MaterialIndex,ArchetypeArmorMaterials[Index]);
-	}
+	// Keep the local arms' authored skin/glove materials. Archetype armor belongs
+	// to the world character; applying it to every arm section made hands read as
+	// a single reflective shoulder mass in first person.
+	if (ArchetypeArmorMaterials.IsValidIndex(Index))
+		for (int32 MaterialIndex=0; MaterialIndex<GetMesh()->GetNumMaterials(); ++MaterialIndex) GetMesh()->SetMaterial(MaterialIndex,ArchetypeArmorMaterials[Index]);
 	if (WeaponComponent) WeaponComponent->RefreshWeaponVisual();
 	if (bDead) ApplyDevelopmentDeathPose();
 }
 
 FRotator AArenaDuelCharacter::GetThirdPersonMeshBaseRotation() const
 {
-	// Manny's authored body basis is aligned with the gameplay actor in UE 5.8.
-	// Keep this named helper so death and future presentation changes share one basis.
-	return FRotator::ZeroRotator;
+	// Manny's authored forward axis is +Y while the character/camera forward is +X.
+	// Keep actor/controller yaw authoritative and rotate only the visual basis.
+	return FRotator(0.0f, -90.0f, 0.0f);
 }
 
 void AArenaDuelCharacter::PossessedBy(AController* NewController)
@@ -425,6 +482,9 @@ void AArenaDuelCharacter::ApplyDevelopmentDeathPose()
 	if (bDeathPresentationLatched)
 	{
 		GetMesh()->bPauseAnims = true;
+		const FRotator FallenRotation = LivingMeshRelativeRotation + FRotator(0.0f, 0.0f, 90.0f);
+		GetMesh()->SetRelativeRotation(FallenRotation);
+		GetMesh()->SetRelativeLocation(LivingMeshRelativeLocation + FVector(0.0f, 0.0f, 20.0f));
 		FirstPersonArms->SetVisibility(false);
 		return;
 	}
@@ -715,6 +775,7 @@ void AArenaDuelCharacter::SprintStarted()
 		if (UArenaDuelCharacterMovementComponent* MovementComponent = GetArenaDuelMovementComponent())
 		{
 			MovementComponent->StartSprint();
+			if (WeaponComponent) WeaponComponent->StopAim();
 		}
 	}
 }
@@ -763,7 +824,7 @@ void AArenaDuelCharacter::SlideCompleted()
 {
 	if (UArenaDuelCharacterMovementComponent* MovementComponent = GetArenaDuelMovementComponent())
 	{
-		MovementComponent->StopSlide();
+		MovementComponent->ReleaseSlideInput();
 	}
 }
 

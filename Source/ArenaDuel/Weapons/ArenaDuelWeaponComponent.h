@@ -13,19 +13,40 @@ class USceneComponent;
 class UStaticMesh;
 class UMaterialInterface;
 
-USTRUCT()
+USTRUCT(BlueprintType)
 struct FArenaDuelWeaponVisualDefinition
 {
 	GENERATED_BODY()
-	UPROPERTY() TSoftObjectPtr<UStaticMesh> Mesh;
-	UPROPERTY() FVector HipLocation = FVector(35, 18, -34);
-	UPROPERTY() FRotator HipRotation = FRotator::ZeroRotator;
-	UPROPERTY() FVector HandLocation = FVector::ZeroVector;
-	UPROPERTY() FRotator HandRotation = FRotator::ZeroRotator;
-	UPROPERTY() FRotator ThirdPersonHandRotation = FRotator::ZeroRotator;
-	UPROPERTY() FVector Scale = FVector(1);
-	UPROPERTY() FVector FirstPersonScale = FVector(1);
-	UPROPERTY() FVector WorldScale = FVector(0.75f);
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) TSoftObjectPtr<UStaticMesh> Mesh;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FVector HipViewmodelLocation = FVector(35, 18, -34);
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FRotator HipViewmodelRotation = FRotator::ZeroRotator;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FVector FirstPersonGripLocation = FVector::ZeroVector;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FRotator FirstPersonGripRotation = FRotator::ZeroRotator;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FVector FirstPersonScale = FVector(1);
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FVector LeftHandGripLocation = FVector::ZeroVector;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FVector ThirdPersonGripLocation = FVector::ZeroVector;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FRotator ThirdPersonGripRotation = FRotator::ZeroRotator;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FVector ThirdPersonScale = FVector(0.75f);
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float VisualRecoilKick = 1.0f;
+};
+
+// Cosmetic values only. Shot direction and server-side weapon balance never read this struct.
+USTRUCT(BlueprintType)
+struct FArenaDuelViewmodelFeel
+{
+	GENERATED_BODY()
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float AimResponse = 14.0f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float MotionResponse = 12.0f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float RecoilResponse = 19.0f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float SwayDegreesPerDegreePerSecond = 0.004f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float MaxSwayDegrees = 2.0f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float MovementBob = 0.65f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float SprintBob = 1.2f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float IdleBreathing = 0.12f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float AdsMotionMultiplier = 0.22f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float SprintLowering = 10.0f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float LandingKick = 2.5f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float WallPushback = 22.0f;
 };
 
 UENUM(BlueprintType)
@@ -134,6 +155,7 @@ public:
 
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	void StartFire();
@@ -146,8 +168,10 @@ public:
 	void RefillAllAmmoForDevelopment();
 	void RefreshWeaponVisual();
 	void SetUserHipFOV(float NewFOV);
+	void GetCurrentViewmodelBaseTransform(FVector& OutLocation, FRotator& OutRotation) const;
 	UStaticMeshComponent* GetFirstPersonWeaponMesh() const { return FirstPersonWeaponMesh; }
 	UStaticMeshComponent* GetThirdPersonWeaponMesh() const { return ThirdPersonWeaponMesh; }
+	bool GetLeftHandGripWorldLocation(FVector& OutLocation) const;
 
 	const FArenaDuelWeaponDefinition& GetCurrentDefinition() const;
 	int32 GetWeaponDefinitionCount() const { return WeaponDefinitions.Num(); }
@@ -191,11 +215,11 @@ protected:
 	bool IsLocalAdminMenuOpen() const;
 	void CancelLocalAndServerFire(bool bClearLocalRecoil = false);
 	void UpdateAimVisual();
+	void TickLocalPresentation(float DeltaSeconds);
 	void ApplyLocalRecoil();
 	void LocalCosmeticShot();
 	void RecoverCosmeticKick();
 	void CompleteReload();
-	void GetCurrentViewmodelBaseTransform(FVector& OutLocation, FRotator& OutRotation) const;
 	void SetLastShot(EArenaDuelShotResult Result, float Distance, AActor* Target);
 	void InitializeRuntimeAmmo();
 	FArenaDuelWeaponRuntimeState* GetMutableCurrentRuntimeState();
@@ -220,7 +244,8 @@ protected:
 	TObjectPtr<UStaticMeshComponent> FirstPersonWeaponMesh;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Weapons")
 	TObjectPtr<UStaticMeshComponent> ThirdPersonWeaponMesh;
-	UPROPERTY() TArray<FArenaDuelWeaponVisualDefinition> WeaponVisualDefinitions;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Weapons|Presentation") TArray<FArenaDuelWeaponVisualDefinition> WeaponVisualDefinitions;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Weapons|Presentation") FArenaDuelViewmodelFeel ViewmodelFeel;
 	UPROPERTY() TObjectPtr<UMaterialInterface> WeaponBodyMaterial;
 	UPROPERTY() TObjectPtr<UMaterialInterface> WeaponAccentCyan;
 	UPROPERTY() TObjectPtr<UMaterialInterface> WeaponAccentViolet;
@@ -248,6 +273,29 @@ protected:
 	float LocalRecoilRecoveryTimeRemaining = 0.0f;
 	float LastCosmeticShotWorldTime = -1.0f;
 	float HipFOV = 90.0f;
+	float AimBlend = 0.0f;
+	float SprintBlend = 0.0f;
+	float BobBlend = 0.0f;
+	float BobPhase = 0.0f;
+	float IdlePhase = 0.0f;
+	float SwayYaw = 0.0f;
+	float SwayYawVelocity = 0.0f;
+	float SwayPitch = 0.0f;
+	float SwayPitchVelocity = 0.0f;
+	float RecoilVelocity = 0.0f;
+	float VisualYawKick = 0.0f;
+	float VisualYawVelocity = 0.0f;
+	float LandingOffset = 0.0f;
+	float LandingVelocity = 0.0f;
+	float WallBlend = 0.0f;
+	float WallTraceTime = 0.0f;
+	float WallTarget = 0.0f;
+	float EquipDrop = 0.0f;
+	FRotator PreviousControlRotation = FRotator::ZeroRotator;
+	float PreviousVerticalVelocity = 0.0f;
+	bool bHadControlRotation = false;
+	bool bWasFalling = false;
+	bool bPresentationInitialized = false;
 
 	UFUNCTION()
 	void OnRep_EquippedWeapon();

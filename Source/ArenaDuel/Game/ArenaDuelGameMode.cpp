@@ -18,6 +18,11 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 
+namespace
+{
+	constexpr float CharacterAutoReadyDelaySeconds = 12.0f;
+}
+
 AArenaDuelGameMode::AArenaDuelGameMode()
 {
 	GameStateClass = AArenaDuelGameState::StaticClass();
@@ -39,6 +44,24 @@ void AArenaDuelGameMode::PostLogin(APlayerController* NewPlayer)
 	if (NewPlayer)
 	{
 		AssignDuelSlot(NewPlayer->GetPlayerState<AArenaDuelPlayerState>());
+		if (GetGameState<AArenaDuelGameState>() && GetGameState<AArenaDuelGameState>()->GetMatchPhase() == EArenaDuelMatchPhase::CharacterSelect)
+		{
+			StartCharacterAutoReadyTimer();
+		}
+		// Some startup paths create the pawn before PostLogin assigns the duel slot.
+		// Correct that pawn immediately so slot 0 and slot 1 never share a start.
+		if (AArenaDuelPlayerState* DuelPlayer = NewPlayer->GetPlayerState<AArenaDuelPlayerState>();
+			DuelPlayer && DuelPlayer->GetDuelSlot() < 2)
+		{
+			AActor* ExpectedStart = FindPlayerStart(NewPlayer, TEXT(""));
+			if (APawn* ExistingPawn = NewPlayer->GetPawn(); ExpectedStart && ExistingPawn
+				&& !ExistingPawn->GetActorLocation().Equals(ExpectedStart->GetActorLocation(), 1.0f))
+			{
+				NewPlayer->UnPossess();
+				ExistingPawn->Destroy();
+				RestartPlayer(NewPlayer);
+			}
+		}
 	}
 }
 
@@ -118,6 +141,32 @@ void AArenaDuelGameMode::EnterCharacterSelect()
 	State->SetRoundState(1, false, INDEX_NONE);
 	State->SetMatchPhase(EArenaDuelMatchPhase::CharacterSelect);
 	RestartDuelPlayers();
+	StartCharacterAutoReadyTimer();
+}
+
+void AArenaDuelGameMode::StartCharacterAutoReadyTimer()
+{
+	AArenaDuelGameState* State = GetGameState<AArenaDuelGameState>();
+	if (!HasAuthority() || !State || State->GetMatchPhase() != EArenaDuelMatchPhase::CharacterSelect) return;
+	GetWorldTimerManager().ClearTimer(CharacterAutoReadyTimer);
+	State->SetCharacterAutoReadyEndServerTime(State->GetServerWorldTimeSeconds() + CharacterAutoReadyDelaySeconds);
+	GetWorldTimerManager().SetTimer(CharacterAutoReadyTimer, this, &ThisClass::AutoReadyCharacterSelectPlayers, CharacterAutoReadyDelaySeconds, false);
+}
+
+void AArenaDuelGameMode::AutoReadyCharacterSelectPlayers()
+{
+	AArenaDuelGameState* State = GetGameState<AArenaDuelGameState>();
+	if (!HasAuthority() || !State || State->GetMatchPhase() != EArenaDuelMatchPhase::CharacterSelect) return;
+	State->SetCharacterAutoReadyEndServerTime(0.0f);
+	for (uint8 DuelSlot = 0; DuelSlot < 2; ++DuelSlot)
+	{
+		if (AArenaDuelPlayerState* Player = FindPlayerStateByDuelSlot(DuelSlot);
+			Player && !Player->IsCharacterReady() && AArenaDuelPlayerState::IsImplementedArchetype(Player->GetCharacterArchetype()))
+		{
+			Player->SetCharacterReadyAuthoritatively(true);
+		}
+	}
+	CheckBothReady();
 }
 
 void AArenaDuelGameMode::RequestCharacterSelection(APlayerController* Requester, EArenaDuelCharacterArchetype Archetype)
@@ -144,6 +193,7 @@ void AArenaDuelGameMode::CheckBothReady()
 	AArenaDuelPlayerState* Left = FindPlayerStateByDuelSlot(0);
 	AArenaDuelPlayerState* Right = FindPlayerStateByDuelSlot(1);
 	if (!State || State->GetMatchPhase() != EArenaDuelMatchPhase::CharacterSelect || !Left || !Right || !Left->IsCharacterReady() || !Right->IsCharacterReady()) return;
+	GetWorldTimerManager().ClearTimer(CharacterAutoReadyTimer);
 	// Three numbered seconds plus a brief FIGHT beat, derived locally from one timestamp.
 	State->SetMatchPhase(EArenaDuelMatchPhase::Countdown, State->GetServerWorldTimeSeconds() + 3.35f);
 	GetWorldTimerManager().SetTimer(CharacterCountdownTimer, this, &AArenaDuelGameMode::StartSelectedMatch, 3.35f, false);
@@ -314,6 +364,7 @@ void AArenaDuelGameMode::ClearPendingRoundAndMatchTimers()
 	GetWorldTimerManager().ClearTimer(RoundRestartTimer);
 	GetWorldTimerManager().ClearTimer(MatchResetTimer);
 	GetWorldTimerManager().ClearTimer(CharacterCountdownTimer);
+	GetWorldTimerManager().ClearTimer(CharacterAutoReadyTimer);
 }
 
 void AArenaDuelGameMode::ResetMatchAndRestartPlayers()

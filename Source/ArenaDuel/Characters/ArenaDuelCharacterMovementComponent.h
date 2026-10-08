@@ -27,6 +27,7 @@ public:
 	void StartSprint();
 	void StopSprint();
 	void StartSlide();
+	void ReleaseSlideInput();
 	void StopSlide();
 	bool IsSprinting() const { return bWantsSprint && IsMovingOnGround() && !IsSliding(); }
 	bool IsSliding() const { return MovementMode == MOVE_Custom && CustomMovementMode == static_cast<uint8>(EArenaDuelCustomMovementMode::Slide); }
@@ -36,6 +37,7 @@ public:
 	bool WantsSprintIntent() const { return bWantsSprint; }
 	bool WantsSlideIntent() const { return bWantsSlide; }
 	bool IsSlideQueued() const { return bSlideQueued; }
+	bool IsSlideBoostReady() const { return TimeSinceSlideEnded >= SlideBoostCooldown; }
 	void SetSprintIntentFromNetwork(bool bWantsSprintIntent);
 	void SetSlideIntentFromNetwork(bool bWantsSlideIntent);
 	void ConsumeStamina(float Amount);
@@ -52,6 +54,7 @@ public:
 	bool WantsWallJumpIntent() const { return bAdvancedWallJump; }
 
 	virtual float GetMaxSpeed() const override;
+	virtual bool CanCrouchInCurrentState() const override;
 	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
 	virtual void UpdateFromCompressedFlags(uint8 Flags) override;
 	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
@@ -73,23 +76,43 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
 	float SlideMinSpeed = 700.0f;
 
+	/** Speed added on slide entry while the boost is ready. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
-	float SlideInitialBoost = 150.0f;
+	float SlideInitialBoost = 250.0f;
+
+	/** Minimum speed right after a boosted slide entry. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
+	float SlideEntrySpeed = 1200.0f;
+
+	/** Exponential speed decay per second on flat ground. Low values keep the slide fast and smooth. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
+	float SlideFriction = 0.18f;
+
+	/** How fast the slide direction follows movement input, in degrees per second. Speed is preserved while turning. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide", meta = (ClampMin = "0"))
+	float SlideTurnRate = 85.0f;
+
+	/** Extra deceleration while holding backwards input during a slide. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide", meta = (ClampMin = "0"))
+	float SlideBrakeDeceleration = 900.0f;
+
+	/** Scales slope gravity: downhill slides accelerate, uphill slides bleed speed. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide", meta = (ClampMin = "0"))
+	float SlideGravityScale = 1.0f;
+
+	/** Time after a slide ends before the next slide receives the entry boost again. Prevents slide-spam speed stacking. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide", meta = (ClampMin = "0"))
+	float SlideBoostCooldown = 0.75f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
-	float SlideEntrySpeed = 1025.0f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
-	float SlideFriction = 0.72f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
-	float SlideSteering = 0.25f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
-	float SlideEndSpeed = 400.0f;
+	float SlideEndSpeed = 450.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
 	float SlideMinDuration = 0.4f;
+
+	/** Maximum slide time on flat ground or uphill. Time spent accelerating downhill does not count. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
+	float SlideDuration = 1.5f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
 	float SlideInputBuffer = 0.3f;
@@ -98,7 +121,7 @@ public:
 	float SlideQueueMinSpeed = 560.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
-	float SlideJumpHorizontalRetention = 0.9f;
+	float SlideJumpHorizontalRetention = 1.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
 	float SlideJumpVerticalMultiplier = 1.0f;
@@ -158,6 +181,7 @@ protected:
 	bool TryFindWall(FHitResult& OutHit, FVector& OutNormal) const;
 	bool TryStartTraversal();
 	void PhysSlide(float DeltaSeconds, int32 Iterations);
+	FVector ComputeSlideSlopeAcceleration() const;
 	void PhysWallRun(float DeltaSeconds, int32 Iterations);
 	void PhysTraversal(float DeltaSeconds, int32 Iterations, bool bMantle);
 	void EnterSlide();
@@ -167,9 +191,11 @@ protected:
 
 	bool bWantsSprint = false;
 	bool bWantsSlide = false;
+	bool bSlideConsumedUntilRelease = false;
 	bool bSlideQueued = false;
 	float SlideInputBufferRemaining = 0.0f;
 	float SlideElapsed = 0.0f;
+	float TimeSinceSlideEnded = 1000.0f;
 	FVector WallNormal = FVector::ZeroVector;
 	UPROPERTY(Replicated)
 	float Stamina = 100.0f;

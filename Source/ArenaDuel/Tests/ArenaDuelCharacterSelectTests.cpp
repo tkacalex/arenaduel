@@ -86,6 +86,8 @@ NETWORK_TEST_CLASS(FArenaDuelCharacterSelectNetworkTest, "ArenaDuel.CharacterSel
 			AArenaDuelPlayerState* P1 = Player(State.World, 0);
 			AArenaDuelPlayerState* P2 = Player(State.World, 1);
 			if (GS->GetMatchPhase() != EArenaDuelMatchPhase::CharacterSelect || GS->IsRoundInProgress()) TestRunner->AddError(TEXT("Initial phase is not locked CharacterSelect"));
+			const float AutoReadyRemaining = GS->GetCharacterAutoReadyEndServerTime() - GS->GetServerWorldTimeSeconds();
+			if (AutoReadyRemaining < 8.0f || AutoReadyRemaining > 12.5f) TestRunner->AddError(TEXT("Auto ready must use a replicated twelve second deadline"));
 			if (P1->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Shadow || P2->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Shadow) TestRunner->AddError(TEXT("Default selection changed"));
 			Host->ServerRequestCharacterSelection(static_cast<EArenaDuelCharacterArchetype>(255));
 			if (P1->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Shadow) TestRunner->AddError(TEXT("Invalid enum was allowed"));

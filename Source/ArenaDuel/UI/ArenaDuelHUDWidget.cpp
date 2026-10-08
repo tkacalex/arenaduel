@@ -120,36 +120,42 @@ void UArenaDuelHUDWidget::BuildWidgetTree()
 	WidgetTree->RootWidget = RootCanvas;
 	UOverlay* HealthPanel = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
 	HealthPanelRoot = HealthPanel; RootCanvas->AddChild(HealthPanel);
-	PlaceFixed(HealthPanel, FVector2D(0,1), FVector2D(28,-24), FVector2D(390,112), FVector2D(0,1));
-	UBorder* HealthBackground = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass()); HealthBackground->SetBrushColor(Background); HealthPanel->AddChild(HealthBackground);
+	PlaceFixed(HealthPanel, FVector2D(0,1), FVector2D(24,-24), FVector2D(398,102), FVector2D(0,1));
+	UBorder* HealthBackground = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass()); HealthBackground->SetBrushColor(FLinearColor(0.018f, 0.035f, 0.055f, 0.88f)); HealthPanel->AddChild(HealthBackground);
 	HealthContentCanvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass()); HealthPanel->AddChild(HealthContentCanvas);
-	HealthValue = Text(WidgetTree, TEXT("100"), 58, Primary); HealthContentCanvas->AddChild(HealthValue); PlaceFixed(HealthValue, FVector2D(0,0), FVector2D(14,8), FVector2D(126,68), FVector2D(0,0));
-	HealthLabel = Text(WidgetTree, TEXT("HP"), 16, Secondary); HealthContentCanvas->AddChild(HealthLabel); PlaceFixed(HealthLabel, FVector2D(0,0), FVector2D(142,12), FVector2D(44,22), FVector2D(0,0));
-	HealthBar = Bar(WidgetTree, Primary); HealthContentCanvas->AddChild(HealthBar); PlaceFixed(HealthBar, FVector2D(0,0), FVector2D(142,38), FVector2D(228,10), FVector2D(0,0));
-	StaminaLabel = Text(WidgetTree, TEXT("STAMINA"), 11, HUDCyan); HealthContentCanvas->AddChild(StaminaLabel); PlaceFixed(StaminaLabel, FVector2D(0,0), FVector2D(142,56), FVector2D(100,17), FVector2D(0,0));
-	StaminaBar = Bar(WidgetTree, HUDCyan); HealthContentCanvas->AddChild(StaminaBar); PlaceFixed(StaminaBar, FVector2D(0,0), FVector2D(142,77), FVector2D(228,7), FVector2D(0,0));
+	UBorder* HealthAccent = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass()); HealthAccent->SetBrushColor(HUDCyan); HealthContentCanvas->AddChild(HealthAccent); PlaceFixed(HealthAccent, FVector2D(0,0), FVector2D(0,12), FVector2D(3,78), FVector2D(0,0));
+	UBorder* HealthDivider = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass()); HealthDivider->SetBrushColor(FLinearColor(0.38f,0.48f,0.58f,0.35f)); HealthContentCanvas->AddChild(HealthDivider); PlaceFixed(HealthDivider, FVector2D(0,0), FVector2D(138,18), FVector2D(1,66), FVector2D(0,0));
+	HealthValue = Text(WidgetTree, TEXT("100"), 46, Primary); HealthValue->SetJustification(ETextJustify::Right); HealthContentCanvas->AddChild(HealthValue); PlaceFixed(HealthValue, FVector2D(0,0), FVector2D(16,18), FVector2D(105,58), FVector2D(0,0));
+	HealthLabel = Text(WidgetTree, TEXT("HP"), 12, Secondary); HealthContentCanvas->AddChild(HealthLabel); PlaceFixed(HealthLabel, FVector2D(0,0), FVector2D(156,12), FVector2D(44,20), FVector2D(0,0));
+	HealthBar = Bar(WidgetTree, Primary); HealthContentCanvas->AddChild(HealthBar); PlaceFixed(HealthBar, FVector2D(0,0), FVector2D(156,36), FVector2D(220,9), FVector2D(0,0));
+	StaminaLabel = Text(WidgetTree, TEXT("STAMINA"), 11, HUDCyan); HealthContentCanvas->AddChild(StaminaLabel); PlaceFixed(StaminaLabel, FVector2D(0,0), FVector2D(156,55), FVector2D(100,17), FVector2D(0,0));
+	StaminaBar = Bar(WidgetTree, HUDCyan); HealthContentCanvas->AddChild(StaminaBar); PlaceFixed(StaminaBar, FVector2D(0,0), FVector2D(156,77), FVector2D(220,7), FVector2D(0,0));
 
 	UOverlay* WeaponPanel = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
-	WeaponPanelRoot = WeaponPanel; RootCanvas->AddChild(WeaponPanel); PlaceFixed(WeaponPanel, FVector2D(1,1), FVector2D(-28,-24), FVector2D(360,112), FVector2D(1,1));
-	UBorder* WeaponBackground = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass()); WeaponBackground->SetBrushColor(Background); WeaponPanel->AddChild(WeaponBackground);
+	WeaponPanelRoot = WeaponPanel; RootCanvas->AddChild(WeaponPanel); PlaceFixed(WeaponPanel, FVector2D(1,1), FVector2D(-24,-24), FVector2D(310,86), FVector2D(1,1));
+	UBorder* WeaponBackground = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass()); WeaponBackground->SetBrushColor(FLinearColor(0.018f, 0.035f, 0.055f, 0.92f)); WeaponPanel->AddChild(WeaponBackground);
 	WeaponContentCanvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass()); WeaponPanel->AddChild(WeaponContentCanvas);
-	WeaponName = Text(WidgetTree, TEXT("ARC RIFLE"), 21, HUDCyan); WeaponContentCanvas->AddChild(WeaponName); PlaceFixed(WeaponName, FVector2D(0,0), FVector2D(15,9), FVector2D(175,29), FVector2D(0,0));
-	FireMode = Text(WidgetTree, TEXT("AUTO"), 13, Secondary); WeaponContentCanvas->AddChild(FireMode); PlaceFixed(FireMode, FVector2D(0,0), FVector2D(15,40), FVector2D(74,22), FVector2D(0,0));
-	ReloadLabel = Text(WidgetTree, TEXT("RELOADING"), 12, HUDCyan); ReloadLabel->SetVisibility(ESlateVisibility::Collapsed); WeaponContentCanvas->AddChild(ReloadLabel); PlaceFixed(ReloadLabel, FVector2D(0,0), FVector2D(92,40), FVector2D(105,22), FVector2D(0,0));
-	MagazineAmmo = Text(WidgetTree, TEXT("30"), 52, Primary); WeaponContentCanvas->AddChild(MagazineAmmo); PlaceFixed(MagazineAmmo, FVector2D(0,0), FVector2D(174,8), FVector2D(72,66), FVector2D(0,0));
-	ReserveAmmo = Text(WidgetTree, TEXT("/ 120"), 20, Secondary); WeaponContentCanvas->AddChild(ReserveAmmo); PlaceFixed(ReserveAmmo, FVector2D(0,0), FVector2D(264,31), FVector2D(84,32), FVector2D(0,0));
+	UBorder* WeaponAccent = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass()); WeaponAccent->SetBrushColor(HUDCyan); WeaponContentCanvas->AddChild(WeaponAccent); PlaceFixed(WeaponAccent, FVector2D(0,0), FVector2D(0,12), FVector2D(3,62), FVector2D(0,0));
+	UBorder* AmmoDivider = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass()); AmmoDivider->SetBrushColor(FLinearColor(0.38f, 0.48f, 0.58f, 0.35f)); WeaponContentCanvas->AddChild(AmmoDivider); PlaceFixed(AmmoDivider, FVector2D(0,0), FVector2D(151,15), FVector2D(1,56), FVector2D(0,0));
+	WeaponName = Text(WidgetTree, TEXT("ARC RIFLE"), 17, HUDCyan); WeaponContentCanvas->AddChild(WeaponName); PlaceFixed(WeaponName, FVector2D(0,0), FVector2D(15,10), FVector2D(132,25), FVector2D(0,0));
+	FireMode = Text(WidgetTree, TEXT("AUTO"), 10, Secondary); WeaponContentCanvas->AddChild(FireMode); PlaceFixed(FireMode, FVector2D(0,0), FVector2D(15,49), FVector2D(48,16), FVector2D(0,0));
+	ReloadLabel = Text(WidgetTree, TEXT("RELOADING"), 10, HUDCyan); ReloadLabel->SetVisibility(ESlateVisibility::Collapsed); WeaponContentCanvas->AddChild(ReloadLabel); PlaceFixed(ReloadLabel, FVector2D(0,0), FVector2D(70,49), FVector2D(78,16), FVector2D(0,0));
+	MagazineAmmo = Text(WidgetTree, TEXT("30"), 40, Primary); WeaponContentCanvas->AddChild(MagazineAmmo); PlaceFixed(MagazineAmmo, FVector2D(0,0), FVector2D(163,7), FVector2D(68,53), FVector2D(0,0));
+	ReserveAmmo = Text(WidgetTree, TEXT("/ 120"), 15, Secondary); WeaponContentCanvas->AddChild(ReserveAmmo); PlaceFixed(ReserveAmmo, FVector2D(0,0), FVector2D(232,25), FVector2D(67,25), FVector2D(0,0));
 
 	for (int32 Index = 0; Index < 2; ++Index)
 	{
 		UOverlay* Ability = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass()); RootCanvas->AddChild(Ability); AbilityRoots.Add(Ability);
-		const float X = Index == 0 ? -555.0f : -460.0f;
-		PlaceFixed(Ability, FVector2D(1,1), FVector2D(X,-24), FVector2D(72,62), FVector2D(1,1));
-		UBorder* AbilityBg = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass()); AbilityBg->SetBrushColor(FLinearColor(0.027f,0.063f,0.106f,0.68f)); Ability->AddChild(AbilityBg); AbilityBackgrounds.Add(AbilityBg);
+		const float X = Index == 0 ? -478.0f : -346.0f;
+		const float Width = Index == 0 ? 130.0f : 120.0f;
+		PlaceFixed(Ability, FVector2D(1,1), FVector2D(X,-24), FVector2D(Width,86), FVector2D(1,1));
+		UBorder* AbilityBg = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass()); AbilityBg->SetBrushColor(FLinearColor(0.018f,0.035f,0.055f,0.92f)); Ability->AddChild(AbilityBg); AbilityBackgrounds.Add(AbilityBg);
 		UCanvasPanel* AbilityCanvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass()); Ability->AddChild(AbilityCanvas);
-		UTextBlock* Key = Text(WidgetTree, Index == 0 ? TEXT("Q") : TEXT("E"), 19, Index == 0 ? HUDCyan : HUDViolet); AbilityCanvas->AddChild(Key); PlaceFixed(Key, FVector2D(0,0), FVector2D(0,3), FVector2D(72,24), FVector2D(0,0));
-		UTextBlock* Cooldown = Text(WidgetTree, TEXT(""), 11, HUDCyan); Cooldown->SetVisibility(ESlateVisibility::Collapsed); AbilityCanvas->AddChild(Cooldown); PlaceFixed(Cooldown, FVector2D(0,0), FVector2D(0,25), FVector2D(72,15), FVector2D(0,0));
-		UTextBlock* Name = Text(WidgetTree, TEXT("ABILITY"), 9, FLinearColor(0.47f,0.52f,0.59f,0.78f)); AbilityCanvas->AddChild(Name); PlaceFixed(Name, FVector2D(0,0), FVector2D(0,43), FVector2D(72,16), FVector2D(0,0));
-		Key->SetJustification(ETextJustify::Center); Cooldown->SetJustification(ETextJustify::Center); Name->SetJustification(ETextJustify::Center);
+		UBorder* AbilityAccent = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass()); AbilityAccent->SetBrushColor(Index == 0 ? HUDCyan : HUDViolet); AbilityCanvas->AddChild(AbilityAccent); PlaceFixed(AbilityAccent, FVector2D(0,0), FVector2D(0,12), FVector2D(3,62), FVector2D(0,0)); AbilityAccents.Add(AbilityAccent);
+		UTextBlock* Key = Text(WidgetTree, Index == 0 ? TEXT("Q") : TEXT("E"), 23, Index == 0 ? HUDCyan : HUDViolet); AbilityCanvas->AddChild(Key); PlaceFixed(Key, FVector2D(0,0), FVector2D(14,8), FVector2D(34,34), FVector2D(0,0));
+		UTextBlock* Cooldown = Text(WidgetTree, TEXT(""), 13, HUDCyan); Cooldown->SetVisibility(ESlateVisibility::Collapsed); AbilityCanvas->AddChild(Cooldown); PlaceFixed(Cooldown, FVector2D(0,0), FVector2D(56,15), FVector2D(Width-70,23), FVector2D(0,0));
+		UTextBlock* Name = Text(WidgetTree, TEXT("ABILITY"), 10, FLinearColor(0.47f,0.52f,0.59f,0.78f)); AbilityCanvas->AddChild(Name); PlaceFixed(Name, FVector2D(0,0), FVector2D(14,49), FVector2D(Width-24,19), FVector2D(0,0));
+		Cooldown->SetJustification(ETextJustify::Right);
 		AbilityKeys.Add(Key); AbilityNames.Add(Name); AbilityCooldowns.Add(Cooldown);
 	}
 
@@ -329,5 +335,7 @@ void UArenaDuelHUDWidget::SetAbilitySlotState(int32 Index, const FText& Name, co
 		: Index == 0 ? HUDCyan : bWardenAbilityPalette ? FLinearColor(0.68f, 0.88f, 1.0f, 1.0f) : HUDViolet;
 	AbilityNames[Index]->SetColorAndOpacity(bReady ? Accent : Secondary);
 	AbilityKeys[Index]->SetColorAndOpacity(Accent);
-	if (AbilityBackgrounds.IsValidIndex(Index)) AbilityBackgrounds[Index]->SetBrushColor(FLinearColor(0.027f, 0.063f, 0.106f, bReady ? 0.82f : 0.58f));
+	if (AbilityCooldowns.IsValidIndex(Index)) AbilityCooldowns[Index]->SetColorAndOpacity(Accent);
+	if (AbilityAccents.IsValidIndex(Index)) AbilityAccents[Index]->SetBrushColor(Accent);
+	if (AbilityBackgrounds.IsValidIndex(Index)) AbilityBackgrounds[Index]->SetBrushColor(FLinearColor(0.018f, 0.035f, 0.055f, bReady ? 0.92f : 0.72f));
 }

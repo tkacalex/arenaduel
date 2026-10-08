@@ -104,12 +104,16 @@ public:
 	}
 };
 
+DEFINE_LOG_CATEGORY_STATIC(LogArenaDuelSlide, Log, All);
+
 namespace ArenaDuelMovement
 {
 	static constexpr uint8 SlideMode = static_cast<uint8>(EArenaDuelCustomMovementMode::Slide);
 	static constexpr uint8 WallRunMode = static_cast<uint8>(EArenaDuelCustomMovementMode::WallRun);
 	static constexpr uint8 VaultMode = static_cast<uint8>(EArenaDuelCustomMovementMode::Vault);
 	static constexpr uint8 MantleMode = static_cast<uint8>(EArenaDuelCustomMovementMode::Mantle);
+	// Minimum time after a slide ends before a held slide key may start a new slide. Prevents crouch/stand flicker.
+	static constexpr float SlideReentryCooldown = 0.35f;
 }
 
 UArenaDuelCharacterMovementComponent::UArenaDuelCharacterMovementComponent(const FObjectInitializer& ObjectInitializer)
@@ -141,14 +145,16 @@ void UArenaDuelCharacterMovementComponent::StopSprint()
 
 void UArenaDuelCharacterMovementComponent::StartSlide()
 {
+	// This method is called for a new Started input event, never every held frame.
+	bSlideConsumedUntilRelease = false;
 	bWantsSlide = true;
-	if (!IsFalling() && Velocity.Size2D() >= SlideMinSpeed)
+	if (IsMovingOnGround() && Velocity.Size2D() >= SlideMinSpeed)
 	{
 		bSlideQueued = false;
 		SlideInputBufferRemaining = 0.0f;
 		EnterSlide();
 	}
-	else if (!IsFalling() && bWantsSprint && Velocity.Size2D() >= SlideQueueMinSpeed)
+	else if (IsMovingOnGround() && bWantsSprint && Velocity.Size2D() >= SlideQueueMinSpeed)
 	{
 		bSlideQueued = true;
 		SlideInputBufferRemaining = SlideInputBuffer;
@@ -160,11 +166,17 @@ void UArenaDuelCharacterMovementComponent::StartSlide()
 	}
 }
 
-void UArenaDuelCharacterMovementComponent::StopSlide()
+void UArenaDuelCharacterMovementComponent::ReleaseSlideInput()
 {
 	bWantsSlide = false;
+	bSlideConsumedUntilRelease = false;
 	bSlideQueued = false;
 	SlideInputBufferRemaining = 0.0f;
+}
+
+void UArenaDuelCharacterMovementComponent::StopSlide()
+{
+	ReleaseSlideInput();
 	if (IsSliding())
 	{
 		ExitSlide();
@@ -186,6 +198,11 @@ float UArenaDuelCharacterMovementComponent::GetMaxSpeed() const
 		return SprintSpeed;
 	}
 	return WalkSpeed;
+}
+
+bool UArenaDuelCharacterMovementComponent::CanCrouchInCurrentState() const
+{
+	return Super::CanCrouchInCurrentState() || (IsSliding() && CanEverCrouch() && UpdatedComponent && !UpdatedComponent->IsSimulatingPhysics());
 }
 
 FNetworkPredictionData_Client* UArenaDuelCharacterMovementComponent::GetPredictionData_Client() const
@@ -221,6 +238,10 @@ void UArenaDuelCharacterMovementComponent::SetSprintIntentFromNetwork(bool bWant
 void UArenaDuelCharacterMovementComponent::SetSlideIntentFromNetwork(bool bWantsSlideIntent)
 {
 	bWantsSlide = bWantsSlideIntent;
+	if (!bWantsSlide)
+	{
+		bSlideConsumedUntilRelease = false;
+	}
 }
 
 void UArenaDuelCharacterMovementComponent::QueueAdvancedJump(bool bWallJump)
@@ -241,6 +262,10 @@ void UArenaDuelCharacterMovementComponent::UpdateCharacterStateBeforeMovement(fl
 	{
 		return;
 	}
+	if (IsSliding())
+	{
+		bWantsToCrouch = true;
+	}
 	Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
 	// Compressed client movement intent cannot unlock a server-owned lobby or round break.
 	if (const AArenaDuelGameState* State = GetWorld() ? GetWorld()->GetGameState<AArenaDuelGameState>() : nullptr; State && !State->CanLivingCharacterMove(Cast<AArenaDuelCharacter>(CharacterOwner)))
@@ -260,6 +285,10 @@ void UArenaDuelCharacterMovementComponent::UpdateCharacterStateBeforeMovement(fl
 		}
 	}
 	WallReattachTimeRemaining = FMath::Max(0.0f, WallReattachTimeRemaining - DeltaSeconds);
+	if (!IsSliding())
+	{
+		TimeSinceSlideEnded = FMath::Min(TimeSinceSlideEnded + DeltaSeconds, 1000.0f);
+	}
 
 	MaxWalkSpeed = WalkSpeed;
 	MaxWalkSpeedCrouched = CrouchSpeed;
@@ -286,13 +315,16 @@ void UArenaDuelCharacterMovementComponent::UpdateCharacterStateBeforeMovement(fl
 
 	if (IsSliding())
 	{
-		if (!bWantsSlide || !IsMovingOnGround() || (SlideElapsed >= SlideMinDuration && Velocity.Size2D() < SlideEndSpeed))
+		if (SlideElapsed >= SlideDuration || (SlideElapsed >= SlideMinDuration && Velocity.Size2D() < SlideEndSpeed))
 		{
+			UE_LOG(LogArenaDuelSlide, Verbose, TEXT("Slide end (time/speed) elapsed=%.2f speed=%.0f"), SlideElapsed, Velocity.Size2D());
+			bSlideConsumedUntilRelease = bWantsSlide;
 			ExitSlide();
 		}
 	}
-	else if (bWantsSlide && (MovementMode == MOVE_Walking || MovementMode == MOVE_NavWalking) && Velocity.Size2D() >= SlideMinSpeed)
+	else if (bWantsSlide && !bSlideConsumedUntilRelease && TimeSinceSlideEnded >= ArenaDuelMovement::SlideReentryCooldown && (MovementMode == MOVE_Walking || MovementMode == MOVE_NavWalking) && Velocity.Size2D() >= SlideMinSpeed)
 	{
+		UE_LOG(LogArenaDuelSlide, Verbose, TEXT("Auto slide entry (held input) role=%d speed=%.0f"), static_cast<int32>(CharacterOwner->GetLocalRole()), Velocity.Size2D());
 		EnterSlide();
 	}
 
@@ -341,21 +373,84 @@ void UArenaDuelCharacterMovementComponent::PhysSlide(float DeltaSeconds, int32 I
 	{
 		return;
 	}
-
-	Velocity.Z = 0.0f;
-	SlideElapsed += DeltaSeconds;
-	Velocity *= FMath::Clamp(1.0f - SlideFriction * DeltaSeconds, 0.0f, 1.0f);
-	if (!Acceleration.IsNearlyZero())
+	// Switching from walking to a custom mode clears CurrentFloor in the engine.
+	// MoveAlongFloor does nothing until the slide establishes its own floor contact.
+	if (GetWorld() && GetWorld()->IsGameWorld())
 	{
-		Velocity += Acceleration.GetSafeNormal2D() * SlideSteering * GetMaxAcceleration() * DeltaSeconds;
+		FindFloor(UpdatedComponent->GetComponentLocation(), CurrentFloor, false);
+		if (!CurrentFloor.IsWalkableFloor())
+		{
+			// Leaving a ledge: keep momentum and fall. Holding the key must not re-enter until landing + cooldown.
+			UE_LOG(LogArenaDuelSlide, Verbose, TEXT("Slide end (no floor) dist=%.1f blocking=%d elapsed=%.2f"), CurrentFloor.FloorDist, CurrentFloor.bBlockingHit ? 1 : 0, SlideElapsed);
+			bSlideConsumedUntilRelease = bWantsSlide;
+			ExitSlide();
+			return;
+		}
 	}
-	Velocity = Velocity.GetClampedToMaxSize2D(GlobalMomentumCap);
-	MoveAlongFloor(Velocity, DeltaSeconds, nullptr);
 
-	if ((SlideElapsed >= SlideMinDuration && Velocity.Size2D() < SlideEndSpeed) || !bWantsSlide)
+	const float Dt = FMath::Max(DeltaSeconds, 0.0f);
+	FVector Horizontal(Velocity.X, Velocity.Y, 0.0f);
+
+	// Slope gravity: downhill slides gain speed, uphill slides bleed it.
+	const FVector SlopeAcceleration = ComputeSlideSlopeAcceleration();
+	const bool bAcceleratingDownhill = !SlopeAcceleration.IsNearlyZero(1.0f) && FVector::DotProduct(SlopeAcceleration, Horizontal.GetSafeNormal()) > 50.0f;
+	Horizontal += SlopeAcceleration * Dt;
+
+	// Smooth exponential glide on flat ground; no friction while gravity pulls the slide downhill.
+	if (!bAcceleratingDownhill)
 	{
+		Horizontal *= FMath::Exp(-SlideFriction * Dt);
+	}
+
+	// Steering rotates the slide direction without adding speed; backwards input brakes.
+	const FVector InputDirection = FVector(Acceleration.X, Acceleration.Y, 0.0f).GetSafeNormal();
+	const float Speed = Horizontal.Size();
+	if (!InputDirection.IsNearlyZero() && Speed > KINDA_SMALL_NUMBER)
+	{
+		const FVector Forward = Horizontal / Speed;
+		const float Alignment = FVector::DotProduct(Forward, InputDirection);
+		if (Alignment < -0.5f)
+		{
+			Horizontal = Forward * FMath::Max(0.0f, Speed - SlideBrakeDeceleration * Dt);
+		}
+		else
+		{
+			const float CurrentYaw = FMath::RadiansToDegrees(FMath::Atan2(Forward.Y, Forward.X));
+			const float TargetYaw = FMath::RadiansToDegrees(FMath::Atan2(InputDirection.Y, InputDirection.X));
+			const float YawDelta = FMath::Clamp(FRotator::NormalizeAxis(TargetYaw - CurrentYaw), -SlideTurnRate * Dt, SlideTurnRate * Dt);
+			Horizontal = FRotator(0.0f, YawDelta, 0.0f).RotateVector(Forward) * Speed;
+		}
+	}
+
+	Velocity = Horizontal.GetClampedToMaxSize2D(GlobalMomentumCap);
+	// Downhill time is free: long ramps keep the slide alive until speed or ground runs out.
+	if (!bAcceleratingDownhill)
+	{
+		SlideElapsed += Dt;
+	}
+	MoveAlongFloor(Velocity, Dt, nullptr);
+
+	if (IsSliding() && (SlideElapsed >= SlideDuration || (SlideElapsed >= SlideMinDuration && Velocity.Size2D() < SlideEndSpeed)))
+	{
+		UE_LOG(LogArenaDuelSlide, Verbose, TEXT("Slide end (time/speed) elapsed=%.2f speed=%.0f"), SlideElapsed, Velocity.Size2D());
+		bSlideConsumedUntilRelease = bWantsSlide;
 		ExitSlide();
 	}
+}
+
+FVector UArenaDuelCharacterMovementComponent::ComputeSlideSlopeAcceleration() const
+{
+	if (SlideGravityScale <= 0.0f || !CurrentFloor.IsWalkableFloor())
+	{
+		return FVector::ZeroVector;
+	}
+	const FVector Normal = CurrentFloor.HitResult.ImpactNormal;
+	if (Normal.IsNearlyZero() || Normal.Z >= 0.999f || Normal.Z <= 0.0f)
+	{
+		return FVector::ZeroVector;
+	}
+	// Horizontal part of gravity projected onto the floor plane: |g| * sin(theta) * cos(theta) along the downhill direction.
+	return FVector(Normal.X, Normal.Y, 0.0f) * (-GetGravityZ() * SlideGravityScale * Normal.Z);
 }
 
 void UArenaDuelCharacterMovementComponent::PhysWallRun(float DeltaSeconds, int32 Iterations)
@@ -548,11 +643,22 @@ void UArenaDuelCharacterMovementComponent::EnterSlide()
 	}
 	if (CharacterOwner)
 	{
-		CharacterOwner->Crouch();
+		bWantsToCrouch = true;
+		// Shrink the capsule while still in walking mode. Walking keeps the capsule base on the floor;
+		// crouching after switching to the custom mode would shrink around the center, lift the feet
+		// off the floor, lose the floor and bounce between slide and stand every few frames.
+		if (!IsCrouching() && IsMovingOnGround())
+		{
+			Crouch(false);
+		}
 	}
+	UE_LOG(LogArenaDuelSlide, Verbose, TEXT("Slide enter role=%d speed=%.0f crouched=%d boost=%d"), CharacterOwner ? static_cast<int32>(CharacterOwner->GetLocalRole()) : -1, Velocity.Size2D(), IsCrouching() ? 1 : 0, IsSlideBoostReady() ? 1 : 0);
 	SlideElapsed = 0.0f;
 	const FVector HorizontalDirection = Velocity.GetSafeNormal2D();
-	const float TargetSpeed = FMath::Max(Velocity.Size2D() + SlideInitialBoost, SlideEntrySpeed);
+	const float CurrentSpeed = Velocity.Size2D();
+	// The entry boost only applies when it has recharged, so slide spam cannot stack speed up to the cap.
+	const float TargetSpeed = IsSlideBoostReady() ? FMath::Max(CurrentSpeed + SlideInitialBoost, SlideEntrySpeed) : CurrentSpeed;
+	TimeSinceSlideEnded = 0.0f;
 	Velocity = (HorizontalDirection * TargetSpeed).GetClampedToMaxSize2D(GlobalMomentumCap);
 	SetMovementMode(MOVE_Custom, ArenaDuelMovement::SlideMode);
 }
@@ -564,6 +670,7 @@ void UArenaDuelCharacterMovementComponent::ExitSlide()
 		return;
 	}
 	SlideElapsed = 0.0f;
+	TimeSinceSlideEnded = 0.0f;
 	bool bHasWalkableFloor = false;
 	if (UpdatedComponent)
 	{
@@ -635,6 +742,7 @@ void UArenaDuelCharacterMovementComponent::ResetMovementIntentForDevelopment()
 	StopSlide();
 	bSlideQueued = false;
 	SlideInputBufferRemaining = 0.0f;
+	TimeSinceSlideEnded = SlideBoostCooldown;
 	ClearAdvancedJumpIntent();
 	CharacterOwner->UnCrouch();
 	CharacterOwner->ForceNetUpdate();

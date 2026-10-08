@@ -1,5 +1,11 @@
 # ArenaDuel Agent Instructions
 
+## Automation priority
+
+1. Automate every repeatable and verifiable step that available tools can perform, including builds, tests, runtime inspection, and editor changes.
+2. Prefer automated workflows over asking the user to perform steps.
+3. Verify results with evidence and report limits honestly. Ask the user to act only when a concrete blocker or human-only acceptance step requires it.
+
 ## Before changing anything
 
 1. Inspect the workspace, repository status, current branch, and relevant files before editing.

@@ -53,6 +53,34 @@ public:
 	void AdminResetPlayer();
 	void PlayShadowStepCameraImpulse();
 	void PlayRiftCameraImpulse();
+	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult) override;
+	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	float GetSlideCameraBlend() const { return SlideCameraBlend; }
+
+	/** Extra field of view at full slide, in degrees. Local presentation only. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Camera|Movement")
+	float SlideCameraFOVKick = 7.0f;
+
+	/** Constant camera tilt while sliding, in degrees. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Camera|Movement")
+	float SlideCameraBaseRoll = 2.0f;
+
+	/** Additional tilt toward the steering direction while sliding, in degrees. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Camera|Movement")
+	float SlideCameraSteerRoll = 3.5f;
+
+	/** Additional camera drop below crouch height while sliding, in cm. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Camera|Movement")
+	float SlideCameraExtraDrop = 10.0f;
+
+	/** How quickly the eye height follows crouch and uncrouch. Higher is snappier. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Camera|Movement", meta = (ClampMin = "0.1"))
+	float CrouchCameraInterpSpeed = 12.0f;
+
+	/** How quickly slide FOV, tilt and drop blend in and out. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Camera|Movement", meta = (ClampMin = "0.1"))
+	float SlideCameraInterpSpeed = 10.0f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
 	TObjectPtr<UBoxComponent> BodyHitZone;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
@@ -171,6 +199,11 @@ protected:
 	FRotator LocalDeathCameraStartRotation = FRotator::ZeroRotator;
 	float LocalDeathCameraStartTime = 0.0f;
 	bool bDeathPresentationLatched = false;
+	void UpdateLocalMovementCamera(float DeltaSeconds);
+	float CrouchEyeOffset = 0.0f;
+	float SlideCameraBlend = 0.0f;
+	float SlideCameraRoll = 0.0f;
+	FVector CameraBaseRelativeLocation = FVector(0.0f, 0.0f, 64.0f);
 	FVector LivingMeshRelativeLocation = FVector::ZeroVector;
 	FRotator LivingMeshRelativeRotation = FRotator::ZeroRotator;
 };

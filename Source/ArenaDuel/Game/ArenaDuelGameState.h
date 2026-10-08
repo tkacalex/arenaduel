@@ -30,7 +30,9 @@ public:
 	EArenaDuelMatchPhase GetMatchPhase() const { return MatchPhase; }
 	bool IsCharacterSelectVisible() const { return MatchPhase == EArenaDuelMatchPhase::CharacterSelect || MatchPhase == EArenaDuelMatchPhase::Countdown; }
 	float GetCountdownEndServerTime() const { return CountdownEndServerTime; }
+	float GetCharacterAutoReadyEndServerTime() const { return CharacterAutoReadyEndServerTime; }
 	void SetMatchPhase(EArenaDuelMatchPhase NewPhase, float EndServerTime = 0.0f);
+	void SetCharacterAutoReadyEndServerTime(float EndServerTime);
 	int32 GetLastRoundWinnerSlot() const { return LastRoundWinnerSlot; }
 	bool IsMatchComplete() const { return bMatchComplete; }
 	int32 GetMatchWinnerSlot() const { return MatchWinnerSlot; }
@@ -44,6 +46,9 @@ protected:
 
 	UPROPERTY(Replicated)
 	float CountdownEndServerTime = 0.0f;
+
+	UPROPERTY(Replicated)
+	float CharacterAutoReadyEndServerTime = 0.0f;
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
 	int32 RoundNumber = 1;

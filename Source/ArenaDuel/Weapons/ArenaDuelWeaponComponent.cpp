@@ -3,6 +3,7 @@
 #include "ArenaDuelWeaponComponent.h"
 #include "../Abilities/ArenaDuelArcBarrier.h"
 #include "../Characters/ArenaDuelCharacter.h"
+#include "../Characters/ArenaDuelCharacterMovementComponent.h"
 #include "../Game/ArenaDuelGameState.h"
 #include "../Player/ArenaDuelPlayerState.h"
 #include "../Player/ArenaDuelPlayerController.h"
@@ -23,6 +24,16 @@
 
 namespace
 {
+	// Exact critically damped step. Its response does not depend on the frame rate.
+	static void StepSpring(float& Position, float& Velocity, float Target, float Response, float DeltaSeconds)
+	{
+		const float Decay = FMath::Exp(-FMath::Max(Response, 0.01f) * DeltaSeconds);
+		const float Offset = Position - Target;
+		const float Step = (Velocity + Response * Offset) * DeltaSeconds;
+		Position = Target + (Offset + Step) * Decay;
+		Velocity = (Velocity - Response * Step) * Decay;
+	}
+
 	static TArray<FArenaDuelWeaponDefinition> MakeDefinitions()
 	{
 		FArenaDuelWeaponDefinition Arc;
@@ -57,7 +68,8 @@ namespace
 
 UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 {
-	PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bStartWithTickEnabled = false;
 	SetIsReplicatedByDefault(true);
 	WeaponDefinitions = MakeDefinitions();
 	WeaponBodyMaterial=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneMetal"));
@@ -76,24 +88,31 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 	{
 		FArenaDuelWeaponVisualDefinition Visual;
 		Visual.Mesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(FString::Printf(TEXT("/Game/ArenaDuel/Weapons/%s/SM_%s.SM_%s"), Name, Name, Name)));
-		// HandGrip_R is a child socket basis. Its inverse is the local transform
-		// that aligns the generated +X muzzle axis with the camera/character basis.
-		// Keep FP and TP values explicit so they can be tuned independently.
-		Visual.HandRotation = FRotator(-15.85794f, 11.63120f, -12.32760f).Quaternion().Inverse().Rotator();
-		Visual.ThirdPersonHandRotation = Visual.HandRotation;
+		// Generated firearm meshes use +X for muzzle forward. The measured rifle
+		// idle pose rotates HandGrip_R to -78.4 degrees after Manny's mesh basis
+		// correction, so this local yaw brings the muzzle back onto actor/camera +X.
+		// Keep FP and TP values independent because they use different parents.
+		Visual.FirstPersonGripRotation = FRotator(0.0f, 78.4f, 0.0f);
+		Visual.ThirdPersonGripRotation = FRotator(0.0f, 78.4f, 0.0f);
 		WeaponVisualDefinitions.Add(Visual);
 	}
-	WeaponVisualDefinitions[0].HipLocation=FVector(28,16,-40);
-	WeaponVisualDefinitions[1].HipLocation=FVector(34,17,-39);
-	WeaponVisualDefinitions[1].HipRotation = FRotator(0, 0, -2);
-	WeaponVisualDefinitions[2].HipLocation = FVector(44,16,-39);
-	WeaponVisualDefinitions[3].HipLocation = FVector(30,19,-42);
-	WeaponVisualDefinitions[3].HipRotation = FRotator(0, 0, 2);
-	WeaponVisualDefinitions[0].Scale=FVector(0.48f);
-	WeaponVisualDefinitions[1].Scale=FVector(0.46f);
-	WeaponVisualDefinitions[2].Scale=FVector(0.43f);
-	WeaponVisualDefinitions[3].Scale=FVector(0.45f);
-	for (FArenaDuelWeaponVisualDefinition& Visual : WeaponVisualDefinitions) Visual.FirstPersonScale = Visual.Scale;
+	WeaponVisualDefinitions[0].HipViewmodelLocation=FVector(28,16,-40);
+	WeaponVisualDefinitions[1].HipViewmodelLocation=FVector(34,17,-39);
+	WeaponVisualDefinitions[1].HipViewmodelRotation = FRotator(0, 0, -2);
+	WeaponVisualDefinitions[2].HipViewmodelLocation = FVector(44,16,-39);
+	WeaponVisualDefinitions[3].HipViewmodelLocation = FVector(30,19,-42);
+	WeaponVisualDefinitions[3].HipViewmodelRotation = FRotator(0, 0, 2);
+	WeaponVisualDefinitions[0].FirstPersonScale=FVector(0.40f);
+	WeaponVisualDefinitions[1].FirstPersonScale=FVector(0.38f);
+	WeaponVisualDefinitions[2].FirstPersonScale=FVector(0.36f);
+	WeaponVisualDefinitions[3].FirstPersonScale=FVector(0.38f);
+	// Local positions on the gun meshes. These are the support-hand targets for
+	// the current generated weapons and can be tuned per weapon in the component.
+	WeaponVisualDefinitions[0].LeftHandGripLocation=FVector(20,-5,-3);
+	WeaponVisualDefinitions[1].LeftHandGripLocation=FVector(11,-5,-3);
+	WeaponVisualDefinitions[2].LeftHandGripLocation=FVector(27,-5,-3);
+	WeaponVisualDefinitions[3].LeftHandGripLocation=FVector(17,-6,-3);
+	for (FArenaDuelWeaponVisualDefinition& Visual : WeaponVisualDefinitions) Visual.ThirdPersonScale = FVector(0.75f);
 	// Visual alignment only; approved FOV, sensitivity, spread and recoil are unchanged.
 	for (auto& Definition : WeaponDefinitions) Definition.AimViewmodelLocation.Z -= 19.0f;
 }
@@ -110,6 +129,26 @@ void UArenaDuelWeaponComponent::BeginPlay()
 	}
 	if (GetOwnerRole() == ROLE_Authority) { InitializeRuntimeAmmo(); NextAllowedFireServerTimes.SetNum(WeaponDefinitions.Num()); }
 	RefreshWeaponVisual();
+}
+
+void UArenaDuelWeaponComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	TickLocalPresentation(DeltaTime);
+}
+
+bool UArenaDuelWeaponComponent::GetLeftHandGripWorldLocation(FVector& OutLocation) const
+{
+	if (!WeaponVisualDefinitions.IsValidIndex(EquippedWeaponIndex) || !FirstPersonWeaponMesh || !FirstPersonWeaponMesh->GetStaticMesh()) return false;
+	if (FirstPersonWeaponMesh->DoesSocketExist(TEXT("LeftHandGrip")))
+	{
+		OutLocation = FirstPersonWeaponMesh->GetSocketLocation(TEXT("LeftHandGrip"));
+	}
+	else
+	{
+		OutLocation = FirstPersonWeaponMesh->GetComponentTransform().TransformPosition(WeaponVisualDefinitions[EquippedWeaponIndex].LeftHandGripLocation);
+	}
+	return !OutLocation.ContainsNaN();
 }
 
 void UArenaDuelWeaponComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -201,23 +240,17 @@ void UArenaDuelWeaponComponent::EquipWeapon(int32 Index)
 void UArenaDuelWeaponComponent::StartAim()
 {
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->GetArenaDuelMovementComponent() && Character->GetArenaDuelMovementComponent()->IsSprinting()) return;
 	if (bAiming) return;
 	bAiming = true;
 	if (GetOwnerRole() == ROLE_Authority) ServerSetAiming_Implementation(true); else ServerSetAiming(true);
-	if (GetWorld()) GetWorld()->GetTimerManager().SetTimer(AimVisualTimerHandle, this, &UArenaDuelWeaponComponent::UpdateAimVisual, 0.02f, true);
+	SetComponentTickEnabled(true);
 }
 void UArenaDuelWeaponComponent::StopAim()
 {
 	bAiming = false;
 	if (GetOwnerRole() == ROLE_Authority) ServerSetAiming_Implementation(false); else ServerSetAiming(false);
-	if (GetWorld())
-	{
-		GetWorld()->GetTimerManager().SetTimer(AimVisualTimerHandle, this, &UArenaDuelWeaponComponent::UpdateAimVisual, 0.02f, true);
-	}
-	else
-	{
-		UpdateAimVisual();
-	}
+	SetComponentTickEnabled(true);
 }
 void UArenaDuelWeaponComponent::CancelCombatActions()
 {
@@ -266,7 +299,8 @@ void UArenaDuelWeaponComponent::ServerSetAiming_Implementation(bool bAimingState
 	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character) return;
 	if (!bAimingState) { bAiming = false; return; }
-	if (!Character->IsDead() && Character->GetController() && IsRoundInProgress()) bAiming = true;
+	if (!Character->IsDead() && Character->GetController() && IsRoundInProgress()
+		&& (!Character->GetArenaDuelMovementComponent() || !Character->GetArenaDuelMovementComponent()->IsSprinting())) bAiming = true;
 }
 void UArenaDuelWeaponComponent::ServerSetFireHeld_Implementation(bool bHeld) { if (bHeld && IsRoundInProgress()) StartAuthoritativeFire(); else StopAuthoritativeFire(); }
 bool UArenaDuelWeaponComponent::IsRoundInProgress() const
@@ -308,6 +342,9 @@ void UArenaDuelWeaponComponent::CancelLocalAndServerFire(bool bClearLocalRecoil)
 	if (bClearLocalRecoil)
 	{
 		LocalWeaponKick = 0.0f;
+		RecoilVelocity = 0.0f;
+		VisualYawKick = 0.0f;
+		VisualYawVelocity = 0.0f;
 		LocalRecoilPitchRemaining = 0.0f;
 		LocalRecoilYawRemaining = 0.0f;
 		LocalRecoilRecoveryTimeRemaining = 0.0f;
@@ -421,7 +458,9 @@ void UArenaDuelWeaponComponent::LocalCosmeticShot()
 {
 	if (!bFireHeld || bReloading || (GetCurrentMagazineAmmo() <= 0 && !HasInfiniteAmmoForDevelopment()) || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	LastCosmeticShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
-	LocalWeaponKick = 1.0f;
+	const float Kick = WeaponVisualDefinitions.IsValidIndex(EquippedWeaponIndex) ? WeaponVisualDefinitions[EquippedWeaponIndex].VisualRecoilKick : 1.0f;
+	LocalWeaponKick = FMath::Min(LocalWeaponKick + Kick, 3.0f);
+	VisualYawKick = FMath::Clamp(VisualYawKick + ((LastShotSequence & 1) ? 0.35f : -0.35f) * Kick, -1.5f, 1.5f);
 	ApplyLocalRecoil();
 	LocalRecoilRecoveryTimeRemaining = 0.0f;
 	if (GetWorld()) GetWorld()->GetTimerManager().SetTimer(LocalCosmeticRecoveryTimerHandle, this, &UArenaDuelWeaponComponent::RecoverCosmeticKick, 0.02f, true);
@@ -453,22 +492,12 @@ void UArenaDuelWeaponComponent::RecoverCosmeticKick()
 			LocalRecoilRecoveryTimeRemaining = FMath::Max(0.0f, LocalRecoilRecoveryTimeRemaining - DeltaSeconds);
 		}
 	}
-	LocalWeaponKick = FMath::FInterpTo(LocalWeaponKick, 0.0f, DeltaSeconds, 12.0f);
-	if (Character && Character->GetFirstPersonViewmodelRoot())
-	{
-		FVector BaseLocation;
-		FRotator BaseRotation;
-		GetCurrentViewmodelBaseTransform(BaseLocation, BaseRotation);
-		Character->GetFirstPersonViewmodelRoot()->SetRelativeLocation(BaseLocation + FVector(-5.0f * LocalWeaponKick, 0.0f, 2.0f * LocalWeaponKick));
-		Character->GetFirstPersonViewmodelRoot()->SetRelativeRotation(BaseRotation + FRotator(-1.5f * LocalWeaponKick, 0.0f, 0.0f));
-	}
 	if (!bFireHeld && FMath::IsNearlyZero(LocalWeaponKick, KINDA_SMALL_NUMBER) && FMath::IsNearlyZero(LocalRecoilPitchRemaining, 0.005f) && FMath::IsNearlyZero(LocalRecoilYawRemaining, 0.005f))
 	{
 		LocalWeaponKick = 0.0f;
 		LocalRecoilPitchRemaining = 0.0f;
 		LocalRecoilYawRemaining = 0.0f;
 		LocalRecoilRecoveryTimeRemaining = 0.0f;
-		RefreshWeaponVisual();
 		if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LocalCosmeticRecoveryTimerHandle);
 	}
 }
@@ -479,6 +508,9 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 	const auto& Visual = WeaponVisualDefinitions[EquippedWeaponIndex];
 	UStaticMesh* Mesh = Visual.Mesh.LoadSynchronous();
 	FirstPersonWeaponMesh->AttachToComponent(Character->GetFirstPersonArms(), FAttachmentTransformRules::KeepRelativeTransform, TEXT("HandGrip_R"));
+	// Arm geometry is intentionally scaled independently from the weapon model.
+	// Preserve the per-weapon first-person scale instead of inheriting the arm scale.
+	FirstPersonWeaponMesh->SetAbsolute(false, false, true);
 	ThirdPersonWeaponMesh->AttachToComponent(Character->GetMesh(), FAttachmentTransformRules::KeepRelativeTransform, TEXT("HandGrip_R"));
 	for (auto* WeaponMesh : { FirstPersonWeaponMesh.Get(), ThirdPersonWeaponMesh.Get() })
 	{
@@ -486,10 +518,10 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 		// Explicit registration also covers host/client possession arriving after BeginPlay.
 		if (!WeaponMesh->IsRegistered() && GetWorld() && !Character->HasAnyFlags(RF_ClassDefaultObject)) WeaponMesh->RegisterComponent();
 		WeaponMesh->SetStaticMesh(Mesh);
-		WeaponMesh->SetRelativeLocation(Visual.HandLocation);
 		const bool bFirstPerson = WeaponMesh == FirstPersonWeaponMesh.Get();
-		WeaponMesh->SetRelativeRotation(bFirstPerson ? Visual.HandRotation : Visual.ThirdPersonHandRotation);
-		WeaponMesh->SetRelativeScale3D(bFirstPerson ? Visual.FirstPersonScale : Visual.WorldScale);
+		WeaponMesh->SetRelativeLocation(bFirstPerson ? Visual.FirstPersonGripLocation : Visual.ThirdPersonGripLocation);
+		WeaponMesh->SetRelativeRotation(bFirstPerson ? Visual.FirstPersonGripRotation : Visual.ThirdPersonGripRotation);
+		WeaponMesh->SetRelativeScale3D(bFirstPerson ? Visual.FirstPersonScale : Visual.ThirdPersonScale);
 		if (WeaponBodyMaterial) for (int32 I=0;I<WeaponMesh->GetNumMaterials();++I) WeaponMesh->SetMaterial(I,WeaponBodyMaterial);
 	}
 	const AArenaDuelPlayerState* Player=Character->GetPlayerState<AArenaDuelPlayerState>();
@@ -500,17 +532,16 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 		if(ThirdPersonWeaponMesh->GetNumMaterials()>1)ThirdPersonWeaponMesh->SetMaterial(1,Accent);
 	}
 	FirstPersonWeaponMesh->SetRelativeScale3D(Visual.FirstPersonScale);
-	ThirdPersonWeaponMesh->SetRelativeScale3D(Visual.WorldScale);
+	ThirdPersonWeaponMesh->SetRelativeScale3D(Visual.ThirdPersonScale);
 	FirstPersonWeaponMesh->SetVisibility(Character->IsLocallyControlled() && !Character->IsDead());
 	ThirdPersonWeaponMesh->SetVisibility(true);
-	FVector Location;
-	FRotator Rotation;
-	GetCurrentViewmodelBaseTransform(Location, Rotation);
-	// ADS and recoil operate on one shared root so hands and weapon cannot separate.
-	if (auto* Root = Character->GetFirstPersonViewmodelRoot())
+	SetComponentTickEnabled(Character->IsLocallyControlled() && !Character->IsDead());
+	// Initialize once. The local presentation tick owns this root after possession.
+	if (!bPresentationInitialized && Character->IsLocallyControlled() && Character->GetFirstPersonViewmodelRoot())
 	{
-		Root->SetRelativeLocation(Location + FVector(-5 * LocalWeaponKick, 0, 2 * LocalWeaponKick));
-		Root->SetRelativeRotation(Rotation + FRotator(-1.5f * LocalWeaponKick, 0, 0));
+		Character->GetFirstPersonViewmodelRoot()->SetRelativeLocation(Visual.HipViewmodelLocation);
+		Character->GetFirstPersonViewmodelRoot()->SetRelativeRotation(Visual.HipViewmodelRotation);
+		bPresentationInitialized = true;
 	}
 }
 
@@ -524,40 +555,98 @@ void UArenaDuelWeaponComponent::GetCurrentViewmodelBaseTransform(FVector& OutLoc
 {
 	const FArenaDuelWeaponDefinition& Definition = GetCurrentDefinition();
 	const FArenaDuelWeaponVisualDefinition Visual = WeaponVisualDefinitions.IsValidIndex(EquippedWeaponIndex) ? WeaponVisualDefinitions[EquippedWeaponIndex] : FArenaDuelWeaponVisualDefinition();
-	const FVector HipLocation = Visual.HipLocation;
-	const FRotator HipRotation = Visual.HipRotation;
+	const FVector HipLocation = Visual.HipViewmodelLocation;
+	const FRotator HipRotation = Visual.HipViewmodelRotation;
 	OutLocation = bAiming ? Definition.AimViewmodelLocation : HipLocation;
 	OutRotation = bAiming ? Definition.AimViewmodelRotation : HipRotation;
 }
 void UArenaDuelWeaponComponent::UpdateAimVisual()
 {
+	TickLocalPresentation(GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.0f);
+}
+
+void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
+{
 	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
-	if (!Character || !Character->IsLocallyControlled() || !Character->GetFirstPersonCamera()) return;
-	const float TargetFOV = bAiming ? GetCurrentDefinition().AimFOV : HipFOV;
-	const float NewFOV = FMath::FInterpTo(Character->GetFirstPersonCamera()->FieldOfView, TargetFOV, 0.02f, 12.0f);
-	Character->GetFirstPersonCamera()->SetFieldOfView(NewFOV);
-	FVector TargetLocation;
-	FRotator TargetRotation;
-	GetCurrentViewmodelBaseTransform(TargetLocation, TargetRotation);
-	TargetLocation += FVector(-5 * LocalWeaponKick, 0, 2 * LocalWeaponKick);
-	TargetRotation += FRotator(-1.5f * LocalWeaponKick, 0, 0);
-	USceneComponent* Root = Character->GetFirstPersonViewmodelRoot();
-	if (Root)
+	if (!Character || !Character->IsLocallyControlled() || Character->IsDead() || !GetWorld()
+		|| !Character->GetFirstPersonViewmodelRoot() || !Character->GetFirstPersonCamera()
+		|| !WeaponVisualDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
+	DeltaSeconds = FMath::Clamp(DeltaSeconds, 0.0f, 0.25f);
+	if (DeltaSeconds <= 0.0f) return;
+	const FArenaDuelWeaponVisualDefinition& Visual = WeaponVisualDefinitions[EquippedWeaponIndex];
+	const UArenaDuelCharacterMovementComponent* Movement = Character->GetArenaDuelMovementComponent();
+	const bool bSprint = Movement && Movement->IsSprinting();
+	const bool bFalling = Movement && Movement->IsFalling();
+	const float AimTarget = bAiming && !bSprint ? 1.0f : 0.0f;
+	const float AimDecay = FMath::Exp(-FMath::Max(ViewmodelFeel.AimResponse, 0.01f) * DeltaSeconds);
+	const float MotionDecay = FMath::Exp(-FMath::Max(ViewmodelFeel.MotionResponse, 0.01f) * DeltaSeconds);
+	AimBlend = AimTarget + (AimBlend - AimTarget) * AimDecay;
+	SprintBlend = (bSprint ? 1.0f : 0.0f) + (SprintBlend - (bSprint ? 1.0f : 0.0f)) * MotionDecay;
+	Character->GetFirstPersonCamera()->SetFieldOfView(FMath::Lerp(HipFOV, GetCurrentDefinition().AimFOV, AimBlend));
+
+	const FRotator ControlRotation = Character->GetControlRotation();
+	const float YawRate = bHadControlRotation ? FMath::Clamp(FRotator::NormalizeAxis(ControlRotation.Yaw - PreviousControlRotation.Yaw) / DeltaSeconds, -720.0f, 720.0f) : 0.0f;
+	const float PitchRate = bHadControlRotation ? FMath::Clamp(FRotator::NormalizeAxis(ControlRotation.Pitch - PreviousControlRotation.Pitch) / DeltaSeconds, -720.0f, 720.0f) : 0.0f;
+	PreviousControlRotation = ControlRotation;
+	bHadControlRotation = true;
+	const float MotionWeight = FMath::Lerp(1.0f, ViewmodelFeel.AdsMotionMultiplier, AimBlend);
+	const float SwayGain = FMath::Max(ViewmodelFeel.SwayDegreesPerDegreePerSecond, 0.0f) * MotionWeight;
+	const float MaxSway = FMath::Max(ViewmodelFeel.MaxSwayDegrees, 0.0f);
+	StepSpring(SwayYaw, SwayYawVelocity, FMath::Clamp(-YawRate * SwayGain, -MaxSway, MaxSway), ViewmodelFeel.MotionResponse, DeltaSeconds);
+	StepSpring(SwayPitch, SwayPitchVelocity, FMath::Clamp(-PitchRate * SwayGain, -MaxSway, MaxSway), ViewmodelFeel.MotionResponse, DeltaSeconds);
+	StepSpring(LocalWeaponKick, RecoilVelocity, 0.0f, ViewmodelFeel.RecoilResponse, DeltaSeconds);
+	StepSpring(VisualYawKick, VisualYawVelocity, 0.0f, ViewmodelFeel.RecoilResponse, DeltaSeconds);
+
+	const FVector LocalVelocity = Character->GetActorRotation().UnrotateVector(Character->GetVelocity());
+	const float Speed = FVector2D(LocalVelocity.X, LocalVelocity.Y).Size();
+	const float MoveTarget = FMath::Clamp(Speed / (bSprint ? 900.0f : 600.0f), 0.0f, 1.0f);
+	BobBlend = MoveTarget + (BobBlend - MoveTarget) * MotionDecay;
+	BobPhase = FMath::Fmod(BobPhase + Speed * DeltaSeconds * 0.025f, 2.0f * PI);
+	IdlePhase = FMath::Fmod(IdlePhase + DeltaSeconds * 1.6f, 2.0f * PI);
+	if (bWasFalling && !bFalling)
 	{
-		Root->SetRelativeLocation(FMath::VInterpTo(Root->GetRelativeLocation(), TargetLocation, 0.02f, 14.0f));
-		Root->SetRelativeRotation(FMath::RInterpTo(Root->GetRelativeRotation(), TargetRotation, 0.02f, 14.0f));
+		LandingVelocity -= FMath::Clamp(-PreviousVerticalVelocity / 650.0f, 0.0f, 1.0f) * ViewmodelFeel.LandingKick * 18.0f;
 	}
-	const bool bFOVSettled = FMath::IsNearlyEqual(NewFOV, TargetFOV, 0.1f);
-	const bool bViewmodelSettled = !Root || (Root->GetRelativeLocation().Equals(TargetLocation, 0.1f) && Root->GetRelativeRotation().Equals(TargetRotation, 0.1f));
-	if (bFOVSettled && bViewmodelSettled && GetWorld())
+	else if (!bWasFalling && bFalling)
 	{
-		Character->GetFirstPersonCamera()->SetFieldOfView(TargetFOV);
-		if (Root)
-		{
-			Root->SetRelativeLocation(TargetLocation);
-			Root->SetRelativeRotation(TargetRotation);
-		}
-		GetWorld()->GetTimerManager().ClearTimer(AimVisualTimerHandle);
+		LandingVelocity += ViewmodelFeel.LandingKick * 4.0f;
+	}
+	bWasFalling = bFalling;
+	PreviousVerticalVelocity = Character->GetVelocity().Z;
+	StepSpring(LandingOffset, LandingVelocity, 0.0f, ViewmodelFeel.MotionResponse, DeltaSeconds);
+
+	// One short camera trace at most every 50 ms. It only moves the cosmetic root.
+	WallTraceTime -= DeltaSeconds;
+	if (WallTraceTime <= 0.0f)
+	{
+		WallTraceTime = 0.05f;
+		const FVector Eye = Character->GetFirstPersonCamera()->GetComponentLocation();
+		const FVector End = Eye + Character->GetFirstPersonCamera()->GetForwardVector() * 110.0f;
+		FHitResult Hit;
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelViewmodelWall), false, Character);
+		WallTarget = GetWorld()->LineTraceSingleByChannel(Hit, Eye, End, ECC_Visibility, Params)
+			? FMath::Clamp(1.0f - Hit.Distance / 110.0f, 0.0f, 1.0f) : 0.0f;
+	}
+	WallBlend = WallTarget + (WallBlend - WallTarget) * MotionDecay;
+	EquipDrop *= MotionDecay;
+	const float BobAmount = BobBlend * FMath::Lerp(ViewmodelFeel.MovementBob, ViewmodelFeel.SprintBob, SprintBlend) * MotionWeight;
+	const float Breath = ViewmodelFeel.IdleBreathing * (1.0f - BobBlend) * MotionWeight;
+	const FVector Bob(0.0f, FMath::Sin(BobPhase) * BobAmount * 0.5f,
+		FMath::Abs(FMath::Cos(BobPhase)) * BobAmount + FMath::Sin(IdlePhase) * Breath);
+	const FVector MotionLocation(-5.0f * LocalWeaponKick - ViewmodelFeel.WallPushback * WallBlend,
+		-SwayYaw * 0.3f + FMath::Clamp(LocalVelocity.Y / 900.0f, -1.0f, 1.0f) * MotionWeight,
+		Bob.Z + LandingOffset - ViewmodelFeel.SprintLowering * SprintBlend - 10.0f * EquipDrop - 8.0f * WallBlend);
+	const FVector BaseLocation = FMath::Lerp(Visual.HipViewmodelLocation, GetCurrentDefinition().AimViewmodelLocation, AimBlend);
+	const FRotator BaseRotation = FMath::Lerp(Visual.HipViewmodelRotation, GetCurrentDefinition().AimViewmodelRotation, AimBlend);
+	const FRotator MotionRotation(SwayPitch - 1.5f * LocalWeaponKick + 5.0f * SprintBlend,
+		SwayYaw + VisualYawKick,
+		-SwayYaw * 0.35f + FMath::Sin(BobPhase) * BobAmount * 0.3f);
+	const FVector FinalLocation = BaseLocation + MotionLocation + FVector(0.0f, Bob.Y, 0.0f);
+	const FRotator FinalRotation = BaseRotation + MotionRotation;
+	if (!FinalLocation.ContainsNaN() && !FinalRotation.ContainsNaN())
+	{
+		Character->GetFirstPersonViewmodelRoot()->SetRelativeLocation(FinalLocation);
+		Character->GetFirstPersonViewmodelRoot()->SetRelativeRotation(FinalRotation);
 	}
 }
 void UArenaDuelWeaponComponent::SetLastShot(EArenaDuelShotResult Result, float Distance, AActor* Target)
@@ -569,4 +658,8 @@ void UArenaDuelWeaponComponent::ClientShotConfirmation_Implementation(int32 Sequ
 {
 	LastShotSequence = Sequence; LastShotResult = Result; LastShotDistance = Distance; LastPelletsHit = PelletsHit; LastHeadPellets = HeadPellets; LastShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
 }
-void UArenaDuelWeaponComponent::OnRep_EquippedWeapon() { RefreshWeaponVisual(); }
+void UArenaDuelWeaponComponent::OnRep_EquippedWeapon()
+{
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled()) EquipDrop = 1.0f;
+	RefreshWeaponVisual();
+}

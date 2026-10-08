@@ -10,6 +10,7 @@
 #include "Components/HorizontalBoxSlot.h"
 #include "Components/ScaleBox.h"
 #include "Components/SizeBox.h"
+#include "Components/Spacer.h"
 #include "Components/TextBlock.h"
 #include "Components/ProgressBar.h"
 #include "Engine/World.h"
@@ -139,6 +140,9 @@ void UArenaDuelCharacterSelectWidget::BuildTree()
 	BuildPlayerPanel(1);
 	CenterLabel = Text(WidgetTree, ReferenceCanvas, TEXT("VS"), 64, White, 755, 488, 410, 120, ETextJustify::Center);
 	CenterStatus = Text(WidgetTree, ReferenceCanvas, TEXT("WAITING FOR BOTH PLAYERS"), 14, Muted, 750, 626, 420, 76, ETextJustify::Center);
+	AutoReadyBackdrop = Backing(WidgetTree, ReferenceCanvas, FLinearColor(0.025f, 0.065f, 0.105f, 0.90f), 770, 711, 380, 56);
+	AutoReadyAccent = Backing(WidgetTree, ReferenceCanvas, CharacterSelectCyan.CopyWithNewOpacity(0.8f), 770, 711, 380, 2);
+	AutoReadyStatus = Text(WidgetTree, ReferenceCanvas, TEXT("AUTO READY IN 12 SEC"), 17, White, 788, 724, 344, 30, ETextJustify::Center);
 	Matchup = Text(WidgetTree, ReferenceCanvas, TEXT("PLAYER 1  >  VS  <  PLAYER 2"), 16, CharacterSelectCyan, 725, 864, 470, 78, ETextJustify::Center);
 	Text(WidgetTree, ReferenceCanvas, TEXT("ESC   BACK / CANCEL READY"), 13, Muted, 85, 1005, 420, 30);
 	Text(WidgetTree, ReferenceCanvas, TEXT("A / D   SWITCH CHARACTER     |     ENTER   READY"), 13, Muted, 520, 1005, 880, 30, ETextJustify::Center);
@@ -180,54 +184,83 @@ void UArenaDuelCharacterSelectWidget::BuildPlayerPanel(int32 SideIndex)
 	for (int32 Index = 0; Index < 2; ++Index)
 	{
 		const float X = 28 + Index * 294;
-		Backing(WidgetTree, Root, FLinearColor(0.014f, 0.034f, 0.065f), X, 544, 280, 92);
+		Backing(WidgetTree, Root, FLinearColor(0.014f, 0.034f, 0.065f), X, 544, 280, 84);
 		Backing(WidgetTree, Root, Color.CopyWithNewOpacity(0.45f), X, 544, 280, 1);
-		Text(WidgetTree, Root, Index == 0 ? TEXT("Q") : TEXT("E"), 17, Color, X + 9, 610, 37, 25, ETextJustify::Center);
-		UTextBlock* Name = Text(WidgetTree, Root, TEXT(""), 14, White, X + 59, 554, 214, 27);
-		UTextBlock* Description = Text(WidgetTree, Root, TEXT(""), 12, Muted, X + 59, 586, 210, 45);
+		Backing(WidgetTree, Root, Color.CopyWithNewOpacity(0.30f), X + 83, 554, 1, 62);
+		Text(WidgetTree, Root, Index == 0 ? TEXT("Q") : TEXT("E"), 16, Color, X + 11, 551, 48, 23, ETextJustify::Center);
+		UTextBlock* Name = Text(WidgetTree, Root, TEXT(""), 14, White, X + 97, 552, 174, 27);
+		UTextBlock* Description = Text(WidgetTree, Root, TEXT(""), 12, Muted, X + 97, 583, 170, 40);
 		if (Index == 0) { PanelWidgets.PrimaryName = Name; PanelWidgets.PrimaryDescription = Description; }
 		else { PanelWidgets.SecondaryName = Name; PanelWidgets.SecondaryDescription = Description; }
 	}
-	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("SHADOW"), Color, 70, 656, 152, 45));
-	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("WARDEN"), Color, 237, 656, 152, 45));
-	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("RIFT"), Color, 404, 656, 152, 45));
+	Text(WidgetTree, Root, TEXT("CHOOSE YOUR FIGHTER"), 11, Muted, 42, 638, 300, 18);
+	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("SHADOW"), Color, 42, 662, 174, 46));
+	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("WARDEN"), Color, 229, 662, 174, 46));
+	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("RIFT"), Color, 416, 662, 174, 46));
 	for (int32 RosterIndex = 0; RosterIndex < PanelWidgets.RosterButtons.Num(); ++RosterIndex)
 	{
 		UButton* Roster = PanelWidgets.RosterButtons[RosterIndex];
 		Roster->ClearChildren();
 		UHorizontalBox* Layout = WidgetTree->ConstructWidget<UHorizontalBox>();
+		USizeBox* IconArea = WidgetTree->ConstructWidget<USizeBox>();
+		IconArea->SetWidthOverride(32.0f);
+		IconArea->SetHeightOverride(28.0f);
 		UTextBlock* Icon = WidgetTree->ConstructWidget<UTextBlock>();
 		Icon->SetText(FText::FromString(TEXT("◇")));
-		Icon->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 18));
+		Icon->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 16));
 		Icon->SetColorAndOpacity(Color);
 		Icon->SetJustification(ETextJustify::Center);
-		UHorizontalBoxSlot* IconSlot = Layout->AddChildToHorizontalBox(Icon);
-		IconSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-		IconSlot->SetPadding(FMargin(8.0f, 0.0f, 2.0f, 0.0f));
+		IconArea->AddChild(Icon);
+		UHorizontalBoxSlot* IconSlot = Layout->AddChildToHorizontalBox(IconArea);
+		IconSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
+		IconSlot->SetVerticalAlignment(VAlign_Center);
+		IconSlot->SetPadding(FMargin(4.0f, 0.0f, 0.0f, 0.0f));
+		USpacer* IconLabelGap = WidgetTree->ConstructWidget<USpacer>();
+		IconLabelGap->SetSize(FVector2D(12.0f, 1.0f));
+		UHorizontalBoxSlot* GapSlot = Layout->AddChildToHorizontalBox(IconLabelGap);
+		GapSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
 		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>();
 		Label->SetText(FText::FromString(RosterIndex == 0 ? TEXT("SHADOW") : RosterIndex == 1 ? TEXT("WARDEN") : TEXT("RIFT")));
-		Label->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 16));
+		Label->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 15));
 		Label->SetColorAndOpacity(Color);
 		Label->SetJustification(ETextJustify::Left);
 		UHorizontalBoxSlot* LabelSlot = Layout->AddChildToHorizontalBox(Label);
 		LabelSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-		LabelSlot->SetPadding(FMargin(2.0f, 0.0f, 6.0f, 0.0f));
+		LabelSlot->SetVerticalAlignment(VAlign_Center);
+		LabelSlot->SetPadding(FMargin(0.0f, 0.0f, 4.0f, 0.0f));
 		Roster->AddChild(Layout);
 	}
 	PanelWidgets.RosterButtons[0]->OnClicked.AddDynamic(this, &ThisClass::SelectShadow);
 	PanelWidgets.RosterButtons[1]->OnClicked.AddDynamic(this, &ThisClass::SelectWarden);
 	PanelWidgets.RosterButtons[2]->OnClicked.AddDynamic(this, &ThisClass::SelectRift);
 	UTextBlock* ReadyText = nullptr;
-	PanelWidgets.ReadyButton = Button(WidgetTree, Root, TEXT("READY"), Color, 28, 721, 574, 48, &ReadyText);
+	PanelWidgets.ReadyButton = Button(WidgetTree, Root, TEXT("READY"), Color, 28, 723, 574, 46, &ReadyText);
 	PanelWidgets.ReadyText = ReadyText;
 	PanelWidgets.ReadyButton->OnClicked.AddDynamic(this, &ThisClass::ToggleReady);
 }
 
 bool UArenaDuelCharacterSelectWidget::HasExpectedTree() const
 {
-	return WidgetTree && WidgetTree->RootWidget && ReferenceCanvas && Panels.Num() == 2 && CenterLabel && Matchup
+	const bool bPanelsReady = WidgetTree && WidgetTree->RootWidget && ReferenceCanvas && Panels.Num() == 2 && CenterLabel && AutoReadyStatus && AutoReadyBackdrop && AutoReadyAccent && Matchup
 		&& Panels[0].Root && Panels[1].Root && Panels[0].RosterButtons.Num() == 3 && Panels[1].RosterButtons.Num() == 3
 		&& Panels[0].ReadyButton && Panels[1].ReadyButton;
+	if (!bPanelsReady) return false;
+	for (const FArenaDuelSelectionPanel& Panel : Panels)
+	{
+		for (const UButton* Roster : Panel.RosterButtons)
+		{
+			const UHorizontalBox* Layout = Roster ? Cast<UHorizontalBox>(Roster->GetChildAt(0)) : nullptr;
+			const USizeBox* IconArea = Layout && Layout->GetChildrenCount() == 3 ? Cast<USizeBox>(Layout->GetChildAt(0)) : nullptr;
+			const USpacer* Gap = Layout && Layout->GetChildrenCount() == 3 ? Cast<USpacer>(Layout->GetChildAt(1)) : nullptr;
+			const UTextBlock* Label = Layout && Layout->GetChildrenCount() == 3 ? Cast<UTextBlock>(Layout->GetChildAt(2)) : nullptr;
+			if (!IconArea || !Gap || !Label || !FMath::IsNearlyEqual(IconArea->GetWidthOverride(), 32.0f)
+				|| !FMath::IsNearlyEqual(Gap->GetSize().X, 12.0f))
+			{
+				return false;
+			}
+		}
+	}
+	return true;
 }
 
 void UArenaDuelCharacterSelectWidget::NativeConstruct()
@@ -286,12 +319,26 @@ void UArenaDuelCharacterSelectWidget::RefreshLobby()
 	}
 	if (bCountdown)
 	{
+		AutoReadyStatus->SetVisibility(ESlateVisibility::Collapsed);
+		AutoReadyBackdrop->SetVisibility(ESlateVisibility::Collapsed);
+		AutoReadyAccent->SetVisibility(ESlateVisibility::Collapsed);
 		const float Remaining = State->GetCountdownEndServerTime() - State->GetServerWorldTimeSeconds();
 		UpdateText(CenterLabel, Remaining > 0.35f ? FString::FromInt(FMath::Clamp(FMath::CeilToInt(Remaining - 0.35f), 1, 3)) : TEXT("FIGHT"));
 		UpdateText(CenterStatus, TEXT("MATCH STARTING"));
 	}
 	else
 	{
+		const float AutoReadyEnd = State ? State->GetCharacterAutoReadyEndServerTime() : 0.0f;
+		const bool bShowAutoReady = Players[0] && Players[1] && AutoReadyEnd > 0.0f;
+		const ESlateVisibility AutoReadyVisibility = bShowAutoReady ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
+		AutoReadyStatus->SetVisibility(AutoReadyVisibility);
+		AutoReadyBackdrop->SetVisibility(AutoReadyVisibility);
+		AutoReadyAccent->SetVisibility(AutoReadyVisibility);
+		if (bShowAutoReady)
+		{
+			const int32 Seconds = FMath::Clamp(FMath::CeilToInt(AutoReadyEnd - State->GetServerWorldTimeSeconds()), 0, 12);
+			UpdateText(AutoReadyStatus, FString::Printf(TEXT("AUTO READY IN %02d SEC"), Seconds));
+		}
 		UpdateText(CenterLabel, TEXT("VS"));
 		UpdateText(CenterStatus, !Players[0] || !Players[1] ? TEXT("WAITING FOR OPPONENT") : Players[0]->IsCharacterReady() ? TEXT("PLAYER 1 READY / WAITING FOR PLAYER 2") : Players[1]->IsCharacterReady() ? TEXT("PLAYER 2 READY / WAITING FOR PLAYER 1") : TEXT("WAITING FOR BOTH PLAYERS"));
 	}
@@ -414,8 +461,8 @@ int32 UArenaDuelCharacterSelectWidget::NativePaint(const FPaintArgs& Args, const
 		// Native original ability glyphs, including hook and paired rift outlines.
 		for (int32 Ability = 0; Ability < 2; ++Ability)
 		{
-			const float IX = X + 55 + Ability * 294;
-			const float IY = Y + 571;
+			const float IX = X + 48 + Ability * 294;
+			const float IY = Y + 593;
 			if (bRift && Ability == 0) Lines({{IX - 18, IY + 18}, {IX + 10, IY - 14}, {IX + 18, IY - 5}, {IX + 9, IY + 3}, {IX + 3, IY - 4}}, CharacterSelectCyan, 2);
 			else if (bRift) { Lines({{IX - 17, IY + 15}, {IX - 20, IY - 11}, {IX - 8, IY - 18}, {IX - 3, IY + 15}}, CharacterSelectViolet, 2); Lines({{IX + 3, IY + 15}, {IX + 8, IY - 18}, {IX + 20, IY - 11}, {IX + 17, IY + 15}}, CharacterSelectCyan, 2); }
 			else if (Ability == 0 && bWarden) Lines({{IX - 15, IY - 12}, {IX + 15, IY - 12}, {IX + 12, IY + 8}, {IX, IY + 19}, {IX - 12, IY + 8}, {IX - 15, IY - 12}}, Color, 2);
