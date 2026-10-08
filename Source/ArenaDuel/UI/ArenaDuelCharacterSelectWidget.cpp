@@ -16,6 +16,7 @@
 #include "Engine/World.h"
 #include "TimerManager.h"
 #include "Styling/CoreStyle.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
 #include "Rendering/DrawElements.h"
 #include "Rendering/SlateRenderer.h"
 #include "Framework/Application/SlateApplication.h"
@@ -27,8 +28,44 @@ namespace CharacterSelectStyle
 	const FLinearColor CharacterSelectViolet(0.82f, 0.40f, 1.0f);
 	const FLinearColor White(0.96f, 0.97f, 0.99f);
 	const FLinearColor Muted(0.59f, 0.67f, 0.77f);
-	const FLinearColor PanelBackground(0.02f, 0.05f, 0.10f, 0.93f);
+	const FLinearColor PanelBackground(0.016f, 0.036f, 0.075f, 0.95f);
+	const FLinearColor Ink(0.008f, 0.016f, 0.036f);
+	const FLinearColor ControlFill(0.028f, 0.066f, 0.11f, 0.96f);
 	FLinearColor Accent(int32 SideIndex) { return SideIndex == 0 ? CharacterSelectCyan : CharacterSelectViolet; }
+	FLinearColor Mix(const FLinearColor& From, const FLinearColor& To, float Alpha)
+	{
+		FLinearColor Result = From + (To - From) * Alpha;
+		Result.A = 1.0f;
+		return Result;
+	}
+	// LetterSpacing is in 1/1000 em, which gives headings tracking without space-padded strings.
+	FSlateFontInfo Font(const TCHAR* Typeface, int32 Size, int32 LetterSpacing = 0)
+	{
+		FSlateFontInfo Info = FCoreStyle::GetDefaultFontStyle(Typeface, Size);
+		Info.LetterSpacing = LetterSpacing;
+		return Info;
+	}
+	FSlateBrush Rounded(const FLinearColor& Fill, float Radius, const FLinearColor& Outline = FLinearColor::Transparent, float OutlineWidth = 0.0f)
+	{
+		return FSlateRoundedBoxBrush(FSlateColor(Fill), Radius, FSlateColor(Outline), OutlineWidth);
+	}
+	FButtonStyle ButtonStyle(const FLinearColor& Fill, const FLinearColor& Outline, float OutlineWidth = 1.0f)
+	{
+		FButtonStyle Style = FCoreStyle::Get().GetWidgetStyle<FButtonStyle>("Button");
+		const FLinearColor Solid = Outline.CopyWithNewOpacity(1.0f);
+		Style.SetNormal(Rounded(Fill, 6.0f, Outline, OutlineWidth));
+		Style.SetHovered(Rounded(Mix(Fill, Solid, 0.22f), 6.0f, Solid, OutlineWidth + 0.5f));
+		Style.SetPressed(Rounded(Mix(Fill, Solid, 0.36f), 6.0f, Solid, OutlineWidth + 0.5f));
+		Style.SetDisabled(Rounded(Fill, 6.0f, Outline, OutlineWidth));
+		return Style;
+	}
+	// The lobby refreshes on a timer, so styles are only pushed when the visual state really changed.
+	void ApplyButtonStyle(UButton* Button, const FButtonStyle& Style)
+	{
+		if (!Button) return;
+		const FSlateBrush& Current = Button->GetStyle().Normal;
+		if (Current.TintColor != Style.Normal.TintColor || Current.OutlineSettings.Color != Style.Normal.OutlineSettings.Color) Button->SetStyle(Style);
+	}
 
 	void Place(UCanvasPanel* Parent, UWidget* Widget, float X, float Y, float Width, float Height)
 	{
@@ -36,12 +73,14 @@ namespace CharacterSelectStyle
 		SideIndex->SetPosition(FVector2D(X, Y));
 		SideIndex->SetSize(FVector2D(Width, Height));
 	}
-	UTextBlock* Text(UWidgetTree* Tree, UCanvasPanel* Parent, const FString& Value, int32 FontSize, FLinearColor Color, float X, float Y, float Width, float Height, ETextJustify::Type Justification = ETextJustify::Left)
+	UTextBlock* Text(UWidgetTree* Tree, UCanvasPanel* Parent, const FString& Value, int32 FontSize, FLinearColor Color, float X, float Y, float Width, float Height, ETextJustify::Type Justification = ETextJustify::Left, const TCHAR* Typeface = TEXT("Regular"), int32 LetterSpacing = 0)
 	{
 		UTextBlock* Text = Tree->ConstructWidget<UTextBlock>();
 		Text->SetText(FText::FromString(Value));
-		Text->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", FontSize));
+		Text->SetFont(Font(Typeface, FontSize, LetterSpacing));
 		Text->SetColorAndOpacity(Color);
+		Text->SetShadowOffset(FVector2D(0.0f, 1.0f));
+		Text->SetShadowColorAndOpacity(FLinearColor(0.0f, 0.0f, 0.0f, 0.5f));
 		Text->SetJustification(Justification);
 		Text->SetAutoWrapText(true);
 		Text->SetVisibility(ESlateVisibility::HitTestInvisible);
@@ -53,10 +92,11 @@ namespace CharacterSelectStyle
 		const FText Next = FText::FromString(Value);
 		if (Block && !Block->GetText().EqualTo(Next)) Block->SetText(Next);
 	}
-	UBorder* Backing(UWidgetTree* Tree, UCanvasPanel* Parent, FLinearColor Color, float X, float Y, float W, float H)
+	UBorder* Backing(UWidgetTree* Tree, UCanvasPanel* Parent, FLinearColor Color, float X, float Y, float W, float H, float Radius = 0.0f, FLinearColor Outline = FLinearColor::Transparent, float OutlineWidth = 0.0f)
 	{
 		UBorder* Border = Tree->ConstructWidget<UBorder>();
-		Border->SetBrushColor(Color);
+		if (Radius > 0.0f || OutlineWidth > 0.0f) Border->SetBrush(Rounded(Color, Radius, Outline, OutlineWidth));
+		else Border->SetBrushColor(Color);
 		Border->SetVisibility(ESlateVisibility::HitTestInvisible);
 		Place(Parent, Border, X, Y, W, H);
 		return Border;
@@ -64,13 +104,9 @@ namespace CharacterSelectStyle
 	UButton* Button(UWidgetTree* Tree, UCanvasPanel* Parent, const FString& Label, FLinearColor Color, float X, float Y, float W, float H, UTextBlock** OutLabel = nullptr)
 	{
 		UButton* Button = Tree->ConstructWidget<UButton>();
-		FButtonStyle Style = FCoreStyle::Get().GetWidgetStyle<FButtonStyle>("Button");
-		Style.Normal.TintColor = FSlateColor(FLinearColor(0.04f, 0.11f, 0.17f, 0.94f));
-		Style.Hovered.TintColor = FSlateColor(FLinearColor(0.09f, 0.24f, 0.32f));
-		Style.Pressed.TintColor = FSlateColor(FLinearColor(0.12f, 0.30f, 0.37f));
-		Button->SetStyle(Style);
+		Button->SetStyle(ButtonStyle(ControlFill, Color.CopyWithNewOpacity(0.55f)));
 		UTextBlock* Block = Tree->ConstructWidget<UTextBlock>();
-		Block->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 19));
+		Block->SetFont(Font(TEXT("Bold"), 15, 160));
 		Block->SetText(FText::FromString(Label));
 		Block->SetColorAndOpacity(Color);
 		Block->SetJustification(ETextJustify::Center);
@@ -78,6 +114,12 @@ namespace CharacterSelectStyle
 		Place(Parent, Button, X, Y, W, H);
 		if (OutLabel) *OutLabel = Block;
 		return Button;
+	}
+	void KeyHint(UWidgetTree* Tree, UCanvasPanel* Parent, const FString& Key, const FString& Label, float X, float Y, float KeyWidth)
+	{
+		Backing(Tree, Parent, ControlFill, X, Y, KeyWidth, 28, 5.0f, Muted.CopyWithNewOpacity(0.5f), 1.0f);
+		Text(Tree, Parent, Key, 11, White, X, Y + 5, KeyWidth, 20, ETextJustify::Center, TEXT("Bold"), 80);
+		Text(Tree, Parent, Label, 11, Muted, X + KeyWidth + 12, Y + 5, 320, 20, ETextJustify::Left, TEXT("Regular"), 140);
 	}
 }
 
@@ -128,25 +170,27 @@ void UArenaDuelCharacterSelectWidget::BuildTree()
 	Scale->AddChild(Reference);
 	WidgetTree->RootWidget = Scale;
 	using namespace CharacterSelectStyle;
-	Backing(WidgetTree, ReferenceCanvas, FLinearColor(0.015f, 0.025f, 0.065f, 0.90f), 0, 0, 1920, 1080);
-	Text(WidgetTree, ReferenceCanvas, TEXT("A R E N A"), 39, CharacterSelectCyan, 720, 27, 250, 56, ETextJustify::Right);
-	Text(WidgetTree, ReferenceCanvas, TEXT("D U E L"), 39, CharacterSelectViolet, 980, 27, 225, 56);
-	Text(WidgetTree, ReferenceCanvas, TEXT("C H A R A C T E R   S E L E C T"), 17, White, 690, 83, 540, 30, ETextJustify::Center);
-	Text(WidgetTree, ReferenceCanvas, TEXT("P R E - M A T C H   L O B B Y"), 12, Muted, 720, 119, 480, 25, ETextJustify::Center);
-	Text(WidgetTree, ReferenceCanvas, TEXT("1V1 ARENA\nDEVELOPMENT DUEL"), 12, Muted, 65, 45, 300, 52);
-	Connection = Text(WidgetTree, ReferenceCanvas, TEXT("CONNECTING"), 12, Muted, 1550, 45, 300, 52, ETextJustify::Right);
+	Backing(WidgetTree, ReferenceCanvas, FLinearColor(0.008f, 0.014f, 0.04f, 0.94f), 0, 0, 1920, 1080);
+	Text(WidgetTree, ReferenceCanvas, TEXT("A R E N A"), 40, CharacterSelectCyan, 700, 24, 252, 58, ETextJustify::Right, TEXT("Bold"));
+	Text(WidgetTree, ReferenceCanvas, TEXT("D U E L"), 40, CharacterSelectViolet, 972, 24, 250, 58, ETextJustify::Left, TEXT("Bold"));
+	Text(WidgetTree, ReferenceCanvas, TEXT("CHARACTER SELECT"), 15, White, 690, 86, 540, 28, ETextJustify::Center, TEXT("Bold"), 520);
+	Text(WidgetTree, ReferenceCanvas, TEXT("PRE-MATCH LOBBY"), 10, Muted, 720, 118, 480, 22, ETextJustify::Center, TEXT("Regular"), 520);
+	Text(WidgetTree, ReferenceCanvas, TEXT("1V1 ARENA\nDEVELOPMENT DUEL"), 11, Muted, 65, 45, 300, 52, ETextJustify::Left, TEXT("Regular"), 140);
+	Connection = Text(WidgetTree, ReferenceCanvas, TEXT("CONNECTING"), 11, Muted, 1550, 45, 300, 52, ETextJustify::Right, TEXT("Regular"), 140);
 	Panels.SetNum(2);
 	BuildPlayerPanel(0);
 	BuildPlayerPanel(1);
-	CenterLabel = Text(WidgetTree, ReferenceCanvas, TEXT("VS"), 64, White, 755, 488, 410, 120, ETextJustify::Center);
-	CenterStatus = Text(WidgetTree, ReferenceCanvas, TEXT("WAITING FOR BOTH PLAYERS"), 14, Muted, 750, 626, 420, 76, ETextJustify::Center);
-	AutoReadyBackdrop = Backing(WidgetTree, ReferenceCanvas, FLinearColor(0.025f, 0.065f, 0.105f, 0.90f), 770, 711, 380, 56);
-	AutoReadyAccent = Backing(WidgetTree, ReferenceCanvas, CharacterSelectCyan.CopyWithNewOpacity(0.8f), 770, 711, 380, 2);
-	AutoReadyStatus = Text(WidgetTree, ReferenceCanvas, TEXT("AUTO READY IN 12 SEC"), 17, White, 788, 724, 344, 30, ETextJustify::Center);
-	Matchup = Text(WidgetTree, ReferenceCanvas, TEXT("PLAYER 1  >  VS  <  PLAYER 2"), 16, CharacterSelectCyan, 725, 864, 470, 78, ETextJustify::Center);
-	Text(WidgetTree, ReferenceCanvas, TEXT("ESC   BACK / CANCEL READY"), 13, Muted, 85, 1005, 420, 30);
-	Text(WidgetTree, ReferenceCanvas, TEXT("A / D   SWITCH CHARACTER     |     ENTER   READY"), 13, Muted, 520, 1005, 880, 30, ETextJustify::Center);
-	Text(WidgetTree, ReferenceCanvas, TEXT("MOUSE   SELECT"), 13, Muted, 1450, 1005, 390, 30, ETextJustify::Right);
+	CenterLabel = Text(WidgetTree, ReferenceCanvas, TEXT("VS"), 68, White, 755, 484, 410, 124, ETextJustify::Center, TEXT("Bold"), 80);
+	CenterStatus = Text(WidgetTree, ReferenceCanvas, TEXT("WAITING FOR BOTH PLAYERS"), 12, Muted, 750, 630, 420, 72, ETextJustify::Center, TEXT("Bold"), 200);
+	AutoReadyBackdrop = Backing(WidgetTree, ReferenceCanvas, FLinearColor(0.02f, 0.05f, 0.09f, 0.94f), 770, 711, 380, 56, 6.0f, CharacterSelectCyan.CopyWithNewOpacity(0.35f), 1.0f);
+	// The accent doubles as a draining timer bar; RefreshLobby resizes it.
+	AutoReadyAccent = Backing(WidgetTree, ReferenceCanvas, CharacterSelectCyan, 778, 758, 364, 3, 1.5f);
+	AutoReadyStatus = Text(WidgetTree, ReferenceCanvas, TEXT("AUTO READY IN 12 SEC"), 15, White, 788, 723, 344, 28, ETextJustify::Center, TEXT("Bold"), 160);
+	Matchup = Text(WidgetTree, ReferenceCanvas, TEXT("PLAYER 1    VS    PLAYER 2"), 14, CharacterSelectCyan, 725, 866, 470, 76, ETextJustify::Center, TEXT("Bold"), 240);
+	KeyHint(WidgetTree, ReferenceCanvas, TEXT("ESC"), TEXT("BACK / CANCEL READY"), 85, 1002, 52);
+	KeyHint(WidgetTree, ReferenceCanvas, TEXT("A / D"), TEXT("SWITCH CHARACTER"), 668, 1002, 64);
+	KeyHint(WidgetTree, ReferenceCanvas, TEXT("ENTER"), TEXT("READY"), 1016, 1002, 72);
+	KeyHint(WidgetTree, ReferenceCanvas, TEXT("MOUSE"), TEXT("SELECT"), 1660, 1002, 76);
 	SettingsButton = Button(WidgetTree, ReferenceCanvas, TEXT("SETTINGS"), CharacterSelectCyan, 1640, 945, 190, 42);
 	SettingsButton->OnClicked.AddDynamic(this, &ThisClass::OpenSettings);
 }
@@ -159,44 +203,42 @@ void UArenaDuelCharacterSelectWidget::BuildPlayerPanel(int32 SideIndex)
 	PanelWidgets.Root = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), SideIndex == 0 ? TEXT("Player1Panel") : TEXT("Player2Panel"));
 	Place(ReferenceCanvas, PanelWidgets.Root, SideIndex == 0 ? 90 : 1200, 155, 630, 785);
 	UCanvasPanel* Root = PanelWidgets.Root;
-	Backing(WidgetTree, Root, PanelBackground, 0, 0, 630, 785);
-	Backing(WidgetTree, Root, Color.CopyWithNewOpacity(0.09f), 18, 58, 594, 302);
-	Backing(WidgetTree, Root, Color.CopyWithNewOpacity(0.9f), 18, 18, 3, 24);
-	Text(WidgetTree, Root, FString::Printf(TEXT("PLAYER %d"), SideIndex + 1), 21, Color, 36, 16, 240, 34);
-	PanelWidgets.Identity = Text(WidgetTree, Root, TEXT("WAITING FOR PLAYER..."), 12, Muted, 280, 22, 320, 27, ETextJustify::Right);
-	PanelWidgets.Name = Text(WidgetTree, Root, TEXT("SHADOW"), 36, White, 30, 358, 510, 53);
-	PanelWidgets.Role = Text(WidgetTree, Root, TEXT("MOBILITY / TRICKSTER"), 17, Color, 30, 413, 325, 30);
-	PanelWidgets.Description = Text(WidgetTree, Root, TEXT(""), 14, Muted, 30, 450, 306, 85);
+	Backing(WidgetTree, Root, PanelBackground, 0, 0, 630, 785, 12.0f, Color.CopyWithNewOpacity(0.5f), 1.5f);
+	Backing(WidgetTree, Root, Color.CopyWithNewOpacity(0.07f), 18, 58, 594, 302, 6.0f, Color.CopyWithNewOpacity(0.28f), 1.0f);
+	Backing(WidgetTree, Root, Color, 18, 19, 4, 24, 2.0f);
+	Text(WidgetTree, Root, FString::Printf(TEXT("PLAYER %d"), SideIndex + 1), 19, Color, 36, 16, 260, 34, ETextJustify::Left, TEXT("Bold"), 160);
+	PanelWidgets.Identity = Text(WidgetTree, Root, TEXT("WAITING FOR PLAYER..."), 11, Muted, 280, 23, 328, 27, ETextJustify::Right, TEXT("Bold"), 220);
+	PanelWidgets.Name = Text(WidgetTree, Root, TEXT("SHADOW"), 36, White, 30, 362, 510, 53, ETextJustify::Left, TEXT("Bold"), 80);
+	PanelWidgets.Role = Text(WidgetTree, Root, TEXT("MOBILITY / TRICKSTER"), 14, Color, 31, 417, 325, 26, ETextJustify::Left, TEXT("Bold"), 180);
+	PanelWidgets.Description = Text(WidgetTree, Root, TEXT(""), 14, Muted, 31, 452, 306, 85);
 	const TCHAR* Labels[] = { TEXT("DAMAGE"), TEXT("MOBILITY"), TEXT("SURVIVAL"), TEXT("DIFFICULTY") };
 	for (int32 Index = 0; Index < 4; ++Index)
 	{
-		Text(WidgetTree, Root, Labels[Index], 10, Muted, 363, 413 + Index * 29, 96, 20);
+		Text(WidgetTree, Root, Labels[Index], 9, Muted, 363, 415 + Index * 29, 100, 20, ETextJustify::Left, TEXT("Bold"), 160);
 		UProgressBar* Bar = WidgetTree->ConstructWidget<UProgressBar>();
 		FProgressBarStyle Style;
-		Style.BackgroundImage = *FCoreStyle::Get().GetBrush("WhiteBrush");
-		Style.BackgroundImage.TintColor = FLinearColor(0.08f, 0.14f, 0.20f);
-		Style.FillImage = *FCoreStyle::Get().GetBrush("WhiteBrush");
+		Style.SetBackgroundImage(Rounded(FLinearColor(0.06f, 0.11f, 0.17f), 4.0f));
+		Style.SetFillImage(Rounded(FLinearColor::White, 4.0f));
 		Bar->SetWidgetStyle(Style);
 		Bar->SetFillColorAndOpacity(Color);
-		Place(Root, Bar, 465, 418 + Index * 29, 133, 7);
+		Place(Root, Bar, 468, 419 + Index * 29, 134, 8);
 		PanelWidgets.Ratings.Add(Bar);
 	}
 	for (int32 Index = 0; Index < 2; ++Index)
 	{
 		const float X = 28 + Index * 294;
-		Backing(WidgetTree, Root, FLinearColor(0.014f, 0.034f, 0.065f), X, 544, 280, 84);
-		Backing(WidgetTree, Root, Color.CopyWithNewOpacity(0.45f), X, 544, 280, 1);
-		Backing(WidgetTree, Root, Color.CopyWithNewOpacity(0.30f), X + 83, 554, 1, 62);
-		Text(WidgetTree, Root, Index == 0 ? TEXT("Q") : TEXT("E"), 16, Color, X + 11, 551, 48, 23, ETextJustify::Center);
-		UTextBlock* Name = Text(WidgetTree, Root, TEXT(""), 14, White, X + 97, 552, 174, 27);
+		Backing(WidgetTree, Root, FLinearColor(0.01f, 0.026f, 0.052f, 0.96f), X, 544, 280, 84, 6.0f, Color.CopyWithNewOpacity(0.30f), 1.0f);
+		Backing(WidgetTree, Root, Color.CopyWithNewOpacity(0.25f), X + 83, 556, 1, 60);
+		Text(WidgetTree, Root, Index == 0 ? TEXT("Q") : TEXT("E"), 15, Color, X + 11, 551, 48, 23, ETextJustify::Center, TEXT("Bold"));
+		UTextBlock* Name = Text(WidgetTree, Root, TEXT(""), 13, White, X + 97, 554, 174, 25, ETextJustify::Left, TEXT("Bold"), 100);
 		UTextBlock* Description = Text(WidgetTree, Root, TEXT(""), 12, Muted, X + 97, 583, 170, 40);
 		if (Index == 0) { PanelWidgets.PrimaryName = Name; PanelWidgets.PrimaryDescription = Description; }
 		else { PanelWidgets.SecondaryName = Name; PanelWidgets.SecondaryDescription = Description; }
 	}
-	Text(WidgetTree, Root, TEXT("CHOOSE YOUR FIGHTER"), 11, Muted, 42, 638, 300, 18);
-	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("SHADOW"), Color, 42, 662, 174, 46));
-	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("WARDEN"), Color, 229, 662, 174, 46));
-	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("RIFT"), Color, 416, 662, 174, 46));
+	Text(WidgetTree, Root, TEXT("CHOOSE YOUR FIGHTER"), 9, Muted, 30, 640, 300, 18, ETextJustify::Left, TEXT("Bold"), 260);
+	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("SHADOW"), Color, 28, 662, 184, 46));
+	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("WARDEN"), Color, 223, 662, 184, 46));
+	PanelWidgets.RosterButtons.Add(Button(WidgetTree, Root, TEXT("RIFT"), Color, 418, 662, 184, 46));
 	for (int32 RosterIndex = 0; RosterIndex < PanelWidgets.RosterButtons.Num(); ++RosterIndex)
 	{
 		UButton* Roster = PanelWidgets.RosterButtons[RosterIndex];
@@ -207,7 +249,7 @@ void UArenaDuelCharacterSelectWidget::BuildPlayerPanel(int32 SideIndex)
 		IconArea->SetHeightOverride(28.0f);
 		UTextBlock* Icon = WidgetTree->ConstructWidget<UTextBlock>();
 		Icon->SetText(FText::FromString(TEXT("◇")));
-		Icon->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 16));
+		Icon->SetFont(Font(TEXT("Bold"), 14));
 		Icon->SetColorAndOpacity(Color);
 		Icon->SetJustification(ETextJustify::Center);
 		IconArea->AddChild(Icon);
@@ -221,7 +263,7 @@ void UArenaDuelCharacterSelectWidget::BuildPlayerPanel(int32 SideIndex)
 		GapSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
 		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>();
 		Label->SetText(FText::FromString(RosterIndex == 0 ? TEXT("SHADOW") : RosterIndex == 1 ? TEXT("WARDEN") : TEXT("RIFT")));
-		Label->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 15));
+		Label->SetFont(Font(TEXT("Bold"), 14, 140));
 		Label->SetColorAndOpacity(Color);
 		Label->SetJustification(ETextJustify::Left);
 		UHorizontalBoxSlot* LabelSlot = Layout->AddChildToHorizontalBox(Label);
@@ -307,13 +349,25 @@ void UArenaDuelCharacterSelectWidget::RefreshLobby()
 		UpdateText(Panel.SecondaryDescription, Data.SecondaryDescription);
 		UpdateText(Panel.Identity, bLocal ? TEXT("YOU") : Player ? TEXT("OPPONENT") : TEXT("WAITING FOR PLAYER..."));
 		UpdateText(Panel.ReadyText, bCountdown ? TEXT("LOCKED / MATCH STARTING") : bReady ? (bLocal ? TEXT("READY / CLICK TO CANCEL") : TEXT("READY")) : bLocal ? TEXT("READY") : Player ? TEXT("SELECTING...") : TEXT("WAITING FOR PLAYER..."));
+		const FLinearColor SideColor = Accent(SideIndex);
+		Panel.Identity->SetColorAndOpacity(bLocal ? SideColor : Muted);
+		// Local unready is the one call to action on screen, so it gets the only solid accent fill.
+		const bool bCallToAction = bLocal && !bReady && !bCountdown;
+		ApplyButtonStyle(Panel.ReadyButton, bCallToAction ? ButtonStyle(Mix(Ink, SideColor, 0.82f), SideColor, 1.0f)
+			: bReady ? ButtonStyle(Mix(Ink, SideColor, 0.16f), SideColor, 2.0f)
+			: ButtonStyle(ControlFill, Muted.CopyWithNewOpacity(0.22f), 1.0f));
+		Panel.ReadyText->SetColorAndOpacity(bCallToAction ? Ink : bReady ? White : Muted);
 		Panel.ReadyButton->SetIsEnabled(bLocal && !bCountdown);
 		Panel.Root->SetRenderOpacity(bCountdown ? 0.73f : Player ? 1.0f : 0.60f);
 		for (int32 Index = 0; Index < Panel.RosterButtons.Num(); ++Index)
 		{
 			Panel.RosterButtons[Index]->SetIsEnabled(bLocal && !bReady && !bCountdown);
 			const bool bSelected = static_cast<int32>(Panel.DisplayArchetype) == Index;
-			Panel.RosterButtons[Index]->SetBackgroundColor(bSelected ? Accent(SideIndex) : FLinearColor(0.24f, 0.31f, 0.40f));
+			ApplyButtonStyle(Panel.RosterButtons[Index], bSelected ? ButtonStyle(Mix(Ink, SideColor, 0.30f), SideColor, 2.0f) : ButtonStyle(ControlFill, SideColor.CopyWithNewOpacity(0.22f), 1.0f));
+			const UHorizontalBox* Layout = Cast<UHorizontalBox>(Panel.RosterButtons[Index]->GetChildAt(0));
+			const USizeBox* IconArea = Layout ? Cast<USizeBox>(Layout->GetChildAt(0)) : nullptr;
+			UpdateText(IconArea ? Cast<UTextBlock>(IconArea->GetChildAt(0)) : nullptr, bSelected ? TEXT("◆") : TEXT("◇"));
+			if (UTextBlock* Label = Layout ? Cast<UTextBlock>(Layout->GetChildAt(2)) : nullptr) Label->SetColorAndOpacity(bSelected ? White : SideColor.CopyWithNewOpacity(0.78f));
 		}
 		for (int32 Index = 0; Index < 4; ++Index) if (!FMath::IsNearlyEqual(Panel.Ratings[Index]->GetPercent(), Data.Ratings[Index])) Panel.Ratings[Index]->SetPercent(Data.Ratings[Index]);
 	}
@@ -336,13 +390,15 @@ void UArenaDuelCharacterSelectWidget::RefreshLobby()
 		AutoReadyAccent->SetVisibility(AutoReadyVisibility);
 		if (bShowAutoReady)
 		{
-			const int32 Seconds = FMath::Clamp(FMath::CeilToInt(AutoReadyEnd - State->GetServerWorldTimeSeconds()), 0, 12);
+			const float Remaining = AutoReadyEnd - State->GetServerWorldTimeSeconds();
+			const int32 Seconds = FMath::Clamp(FMath::CeilToInt(Remaining), 0, 12);
+			if (UCanvasPanelSlot* AccentSlot = Cast<UCanvasPanelSlot>(AutoReadyAccent->Slot)) AccentSlot->SetSize(FVector2D(364.0f * FMath::Clamp(Remaining / 12.0f, 0.0f, 1.0f), 3.0f));
 			UpdateText(AutoReadyStatus, FString::Printf(TEXT("AUTO READY IN %02d SEC"), Seconds));
 		}
 		UpdateText(CenterLabel, TEXT("VS"));
 		UpdateText(CenterStatus, !Players[0] || !Players[1] ? TEXT("WAITING FOR OPPONENT") : Players[0]->IsCharacterReady() ? TEXT("PLAYER 1 READY / WAITING FOR PLAYER 2") : Players[1]->IsCharacterReady() ? TEXT("PLAYER 2 READY / WAITING FOR PLAYER 1") : TEXT("WAITING FOR BOTH PLAYERS"));
 	}
-	UpdateText(Matchup, FString::Printf(TEXT("%s  >  VS  <  %s"), Players[0] ? *Players[0]->GetCharacterArchetypeDisplayName().ToString() : TEXT("PLAYER 1"), Players[1] ? *Players[1]->GetCharacterArchetypeDisplayName().ToString() : TEXT("PLAYER 2")));
+	UpdateText(Matchup, FString::Printf(TEXT("%s    VS    %s"), Players[0] ? *Players[0]->GetCharacterArchetypeDisplayName().ToString() : TEXT("PLAYER 1"), Players[1] ? *Players[1]->GetCharacterArchetypeDisplayName().ToString() : TEXT("PLAYER 2")));
 	UpdateText(Connection, FString::Printf(TEXT("%s\n%.0f MS"), GetWorld() && GetWorld()->GetNetMode() == NM_Client ? TEXT("CLIENT") : TEXT("LISTEN / LOCAL SERVER"), Local ? Local->GetPingInMilliseconds() : 0.0f));
 }
 
@@ -396,7 +452,23 @@ int32 UArenaDuelCharacterSelectWidget::NativePaint(const FPaintArgs& Args, const
 		for (int32 I = 1; I + 1 < Points.Num(); ++I) { Indices.Add(0); Indices.Add(I); Indices.Add(I + 1); }
 		FSlateDrawElement::MakeCustomVerts(Elements, LayerId + 19, FSlateApplication::Get().GetRenderer()->GetResourceHandle(*FCoreStyle::Get().GetBrush("WhiteBrush")), Vertices, Indices, nullptr, 0, 0);
 	};
+	// Axis-aligned two-stop gradient in reference space, drawn below the portrait polygons and line art.
+	auto Gradient = [&](float X, float Y, float W, float H, FLinearColor From, FLinearColor To, bool bTopToBottom)
+	{
+		const FVector2D Size(W * Scale, H * Scale);
+		TArray<FSlateGradientStop> Stops;
+		Stops.Emplace(FVector2D::ZeroVector, From * Style.GetColorAndOpacityTint());
+		Stops.Emplace(bTopToBottom ? FVector2D(0.0f, Size.Y) : FVector2D(Size.X, 0.0f), To * Style.GetColorAndOpacityTint());
+		FSlateDrawElement::MakeGradient(Elements, LayerId + 18, Geometry.ToPaintGeometry(Size, FSlateLayoutTransform(Offset + FVector2D(X, Y) * Scale)), Stops, bTopToBottom ? Orient_Horizontal : Orient_Vertical);
+	};
 	using namespace CharacterSelectStyle;
+	// Side-coloured ambience, title rule and centre spine. Kept faint because this layer sits above the widget tree.
+	Gradient(0, 0, 620, 1080, CharacterSelectCyan.CopyWithNewOpacity(0.06f), CharacterSelectCyan.CopyWithNewOpacity(0.0f), false);
+	Gradient(1300, 0, 620, 1080, CharacterSelectViolet.CopyWithNewOpacity(0.0f), CharacterSelectViolet.CopyWithNewOpacity(0.06f), false);
+	Gradient(740, 146, 220, 2, CharacterSelectCyan.CopyWithNewOpacity(0.0f), CharacterSelectCyan.CopyWithNewOpacity(0.85f), false);
+	Gradient(960, 146, 220, 2, CharacterSelectViolet.CopyWithNewOpacity(0.85f), CharacterSelectViolet.CopyWithNewOpacity(0.0f), false);
+	Gradient(959, 330, 2, 150, White.CopyWithNewOpacity(0.0f), White.CopyWithNewOpacity(0.30f), true);
+	Gradient(959, 786, 2, 64, White.CopyWithNewOpacity(0.30f), White.CopyWithNewOpacity(0.0f), true);
 	// Static procedural arena depth in the open central region.
 	for (int32 Index = 0; Index < 7; ++Index)
 	{
@@ -404,8 +476,8 @@ int32 UArenaDuelCharacterSelectWidget::NativePaint(const FPaintArgs& Args, const
 		Lines({{740 + Inset, 860}, {740 + Inset, 300 + Inset}, {960, 180 + Inset}, {1180 - Inset, 300 + Inset}, {1180 - Inset, 860}}, CharacterSelectViolet.CopyWithNewOpacity(0.07f + Index * 0.007f));
 		Lines({{730, 940 - Index * 22.0f}, {960, 790 - Index * 7.0f}, {1190, 940 - Index * 22.0f}}, CharacterSelectCyan.CopyWithNewOpacity(0.055f));
 	}
-	Lines({{715, 48}, {672, 48}, {640, 28}, {60, 28}, {30, 58}, {30, 1008}, {62, 1047}, {735, 1047}}, CharacterSelectCyan.CopyWithNewOpacity(0.45f));
-	Lines({{1205, 48}, {1248, 48}, {1280, 28}, {1860, 28}, {1890, 58}, {1890, 1008}, {1858, 1047}, {1185, 1047}}, CharacterSelectViolet.CopyWithNewOpacity(0.45f));
+	Lines({{715, 48}, {672, 48}, {640, 28}, {60, 28}, {30, 58}, {30, 1008}, {62, 1047}, {735, 1047}}, CharacterSelectCyan.CopyWithNewOpacity(0.30f));
+	Lines({{1205, 48}, {1248, 48}, {1280, 28}, {1860, 28}, {1890, 58}, {1890, 1008}, {1858, 1047}, {1185, 1047}}, CharacterSelectViolet.CopyWithNewOpacity(0.30f));
 	Lines({{797, 545}, {826, 526}, {865, 526}}, CharacterSelectViolet.CopyWithNewOpacity(0.8f), 2);
 	Lines({{1123, 545}, {1094, 526}, {1055, 526}}, CharacterSelectCyan.CopyWithNewOpacity(0.8f), 2);
 	for (int32 SideIndex = 0; SideIndex < Panels.Num(); ++SideIndex)
@@ -413,8 +485,16 @@ int32 UArenaDuelCharacterSelectWidget::NativePaint(const FPaintArgs& Args, const
 		const float X = SideIndex == 0 ? 90 : 1200;
 		const float Y = 155;
 		const FLinearColor Color = Accent(SideIndex);
-		Lines({{X, Y + 42}, {X, Y + 18}, {X + 18, Y}, {X + 595, Y}, {X + 630, Y + 35}, {X + 630, Y + 751}, {X + 596, Y + 785}, {X + 23, Y + 785}, {X, Y + 762}, {X, Y + 42}}, Color.CopyWithNewOpacity(0.65f), 1.5f);
-		Lines({{X + 18, Y + 349}, {X + 18, Y + 65}, {X + 601, Y + 65}, {X + 612, Y + 76}, {X + 612, Y + 350}}, Color.CopyWithNewOpacity(0.40f));
+		// Panel and portrait frames are rounded brushes in the widget tree; paint only adds light and corner marks.
+		Gradient(X + 14, Y, 280, 3, Color, Color.CopyWithNewOpacity(0.0f), false);
+		Gradient(X + 2, Y + 3, 626, 54, Color.CopyWithNewOpacity(0.10f), Color.CopyWithNewOpacity(0.0f), true);
+		Gradient(X + 19, Y + 59, 592, 120, Color.CopyWithNewOpacity(0.08f), Color.CopyWithNewOpacity(0.0f), true);
+		Gradient(X + 19, Y + 219, 592, 140, Color.CopyWithNewOpacity(0.0f), Color.CopyWithNewOpacity(0.20f), true);
+		const float L = X + 18, R = X + 612, T = Y + 58, B = Y + 360;
+		Lines({{L, T + 22}, {L, T}, {L + 22, T}}, Color, 2);
+		Lines({{R - 22, T}, {R, T}, {R, T + 22}}, Color, 2);
+		Lines({{L, B - 22}, {L, B}, {L + 22, B}}, Color, 2);
+		Lines({{R - 22, B}, {R, B}, {R, B - 22}}, Color, 2);
 		const float CX = X + 310;
 		const float CY = Y + 196;
 		const bool bWarden = Panels[SideIndex].DisplayArchetype == EArenaDuelCharacterArchetype::Warden;
