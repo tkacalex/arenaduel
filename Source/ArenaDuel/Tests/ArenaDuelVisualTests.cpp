@@ -25,7 +25,7 @@ namespace VisualSmoke
 	// The corpse plays the authored death clip on the unpaused world body.
 	bool PlaysDeath(const AArenaDuelCharacter* Character)
 	{
-		const auto* Anim = Character ? Cast<UAnimSingleNodeInstance>(Character->GetMesh()->GetAnimInstance()) : nullptr;
+		auto* Anim = Character ? Cast<UAnimSingleNodeInstance>(Character->GetMesh()->GetAnimInstance()) : nullptr;
 		return Anim && Anim->GetCurrentAsset() && Anim->GetCurrentAsset()->GetName().StartsWith(TEXT("MM_Death")) && !Character->GetMesh()->bPauseAnims;
 	}
 	bool Flag(const UPrimitiveComponent* Component, const TCHAR* Name)
