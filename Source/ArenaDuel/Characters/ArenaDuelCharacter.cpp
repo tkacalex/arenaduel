@@ -31,6 +31,7 @@
 #include "InputCoreTypes.h"
 #include "GameplayEffect.h"
 #include "Net/UnrealNetwork.h"
+#include "Components/PointLightComponent.h"
 #include "UObject/ConstructorHelpers.h"
 
 AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitializer)
@@ -209,6 +210,10 @@ void AArenaDuelCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResul
 	{
 		OutResult.Rotation.Roll += SlideCameraRoll;
 		OutResult.FOV += SlideCameraFOVKick * SlideCameraBlend;
+		// A short, small flinch when hit. View only, the aim direction is untouched.
+		const float Flash = GetDamageFlash();
+		OutResult.Rotation.Roll += DamagePunchSign * 1.1f * LastDamageStrength * Flash * Flash;
+		OutResult.Rotation.Pitch += 0.7f * LastDamageStrength * Flash * Flash;
 	}
 }
 
@@ -220,6 +225,7 @@ void AArenaDuelCharacter::RefreshCharacterVisuals()
 	GetMesh()->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::WorldSpaceRepresentation;
 	// A corpse keeps the ragdoll collision it was given at death.
 	if (!bDead) ConfigureHitZoneCollision();
+	UpdateEnemyGlow();
 	FirstPersonArms->SetVisibility(IsLocallyControlled() && !bDead);
 	// Derived arm-only geometry retains the Epic skeleton, animation and grip socket.
 	const auto* State = GetPlayerState<AArenaDuelPlayerState>();
@@ -311,6 +317,7 @@ void AArenaDuelCharacter::ApplyServerDamage(float DamageAmount)
 	Modifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(-DamageAmount));
 	DamageEffect->Modifiers.Add(Modifier);
 	ASC->ApplyGameplayEffectToSelf(DamageEffect, 1.0f, ASC->MakeEffectContext());
+	ClientNotifyDamaged(DamageAmount);
 	if (GetHealth() <= 0.0f) HandleDeath();
 }
 
@@ -485,6 +492,49 @@ void AArenaDuelCharacter::UpdateLocalDeathCamera()
 	}
 }
 
+void AArenaDuelCharacter::ClientNotifyDamaged_Implementation(float DamageAmount)
+{
+	LastDamageWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+	LastDamageStrength = FMath::Clamp(DamageAmount / 40.0f, 0.35f, 1.0f);
+	DamagePunchSign = -DamagePunchSign;
+}
+
+float AArenaDuelCharacter::GetDamageFlash() const
+{
+	constexpr float FlashSeconds = 0.3f;
+	const float Age = GetWorld() ? GetWorld()->GetTimeSeconds() - LastDamageWorldTime : FlashSeconds;
+	return FMath::Clamp(1.0f - Age / FlashSeconds, 0.0f, 1.0f);
+}
+
+void AArenaDuelCharacter::UpdateEnemyGlow()
+{
+	// Only a living opponent glows, and only on the machine that looks at them. The lights and the
+	// body share lighting channel 1, which nothing else uses, so walls and floor stay untouched and
+	// the glow cannot leak around cover.
+	const bool bGlow = !bDead && !IsLocallyControlled() && GetNetMode() != NM_DedicatedServer && GetWorld() && GetWorld()->IsGameWorld();
+	if (bGlow && EnemyGlowLights.Num() == 0)
+	{
+		GetMesh()->SetLightingChannels(true, true, false);
+		for (const FVector& Offset : { FVector(70.0f, 0.0f, 30.0f), FVector(-70.0f, 0.0f, 30.0f), FVector(0.0f, 70.0f, 30.0f), FVector(0.0f, -70.0f, 30.0f) })
+		{
+			UPointLightComponent* Light = NewObject<UPointLightComponent>(this);
+			Light->SetupAttachment(GetCapsuleComponent());
+			Light->SetRelativeLocation(Offset);
+			Light->SetLightingChannels(false, true, false);
+			Light->SetLightColor(FLinearColor(1.0f, 0.08f, 0.05f));
+			Light->SetIntensity(EnemyGlowIntensity);
+			Light->SetAttenuationRadius(220.0f);
+			Light->SetCastShadows(false);
+			Light->RegisterComponent();
+			EnemyGlowLights.Add(Light);
+		}
+	}
+	for (UPointLightComponent* Light : EnemyGlowLights)
+	{
+		if (Light) Light->SetVisibility(bGlow);
+	}
+}
+
 void AArenaDuelCharacter::ConfigureHitZoneCollision()
 {
 	// The physics asset bodies of the world mesh are the hit zones. They answer no collision channel,
@@ -521,6 +571,7 @@ void AArenaDuelCharacter::ApplyDevelopmentDeathPose()
 	if (bDeathPresentationLatched) return;
 	bDeathPresentationLatched = true;
 	if (WeaponComponent) WeaponComponent->RefreshWeaponVisual();
+	UpdateEnemyGlow();
 	StartDeathRagdoll();
 }
 

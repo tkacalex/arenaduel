@@ -53,7 +53,8 @@ public:
 	void RecordServerHit(const FVector& WorldLocation, const FVector& Direction);
 	// Line trace against the animated physics bodies of the world mesh. OutHit.BoneName names the body hit.
 	bool TraceHitZones(const FVector& Start, const FVector& End, FHitResult& OutHit) const;
-	void AdminSetHealth(float NewHealth);
+	/** 1 right after the local player took damage, fading to 0. Drives the screen edge flash. */
+	float GetDamageFlash() const;	void AdminSetHealth(float NewHealth);
 	void AdminKill();
 	void AdminResetPlayer();
 	void PlayShadowStepCameraImpulse();
@@ -193,7 +194,19 @@ protected:
 	bool bDead = false;
 
 	UFUNCTION() void OnRep_Dead();
-	// Replicated with bDead so every machine pushes its local ragdoll the same way.
+
+	// Cosmetic: tells the owning player they were just hit.
+	UFUNCTION(Client, Unreliable)
+	void ClientNotifyDamaged(float DamageAmount);
+	float LastDamageWorldTime = -100.0f;
+	float LastDamageStrength = 0.0f;
+	float DamagePunchSign = 1.0f;
+
+	// Faint red rim lights that only light the opponent's body, never the arena.
+	UPROPERTY(Transient) TArray<TObjectPtr<class UPointLightComponent>> EnemyGlowLights;
+	void UpdateEnemyGlow();
+	/** Brightness of each of the four rim lights. Kept low: the opponent should read slightly red, not lit up. */
+	UPROPERTY(EditDefaultsOnly, Category = "Presentation") float EnemyGlowIntensity = 220.0f;	// Replicated with bDead so every machine pushes its local ragdoll the same way.
 	UPROPERTY(Replicated) FVector_NetQuantize DeathHitLocation;
 	UPROPERTY(Replicated) FVector_NetQuantizeNormal DeathHitDirection;
 	void SetDeadState();

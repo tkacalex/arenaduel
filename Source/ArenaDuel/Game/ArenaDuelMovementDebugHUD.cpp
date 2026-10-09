@@ -75,6 +75,16 @@ void AArenaDuelMovementDebugHUD::DrawHUD()
 
 	const FVector2D Center(Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f);
 	const float Spread = Weapon ? Weapon->GetCurrentSpreadDegrees() : 0.0f;
+	// Screen edge flash when the local player takes a hit: four thin red bands that fade within a third of a second.
+	if (const float Flash = Character ? Character->GetDamageFlash() : 0.0f; Flash > 0.0f && Canvas)
+	{
+		const float Width = Canvas->SizeX, Height = Canvas->SizeY, Band = 0.045f * Height;
+		const FLinearColor Edge(0.95f, 0.08f, 0.06f, 0.32f * Flash * Flash);
+		DrawRect(Edge, 0.0f, 0.0f, Width, Band);
+		DrawRect(Edge, 0.0f, Height - Band, Width, Band);
+		DrawRect(Edge, 0.0f, Band, Band, Height - 2.0f * Band);
+		DrawRect(Edge, Width - Band, Band, Band, Height - 2.0f * Band);
+	}
 	const float Kick = Weapon ? Weapon->GetCrosshairKick() : 0.0f;
 	const float Gap = FMath::Clamp(5.0f + Spread * 3.0f + Kick * 9.0f, 4.0f, 34.0f);
 	const FLinearColor Crosshair = Weapon && Weapon->IsAiming() ? FLinearColor(0.75f, 0.95f, 1.0f, 1.0f) : FLinearColor::White;

@@ -90,6 +90,8 @@ EArenaDuelShotResult UArenaDuelWeaponComponent::ClassifyHitBone(FName BoneName)
 UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
+	// After movement, so the viewmodel and tracers use this frame's final position.
+	PrimaryComponentTick.TickGroup = TG_PostPhysics;
 	PrimaryComponentTick.bStartWithTickEnabled = false;
 	SetIsReplicatedByDefault(true);
 	WeaponDefinitions = MakeDefinitions();
@@ -157,6 +159,67 @@ void UArenaDuelWeaponComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	TickLocalPresentation(DeltaTime);
+	UpdateTracers();
+}
+
+FVector UArenaDuelWeaponComponent::GetTracerStart() const
+{
+	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	if (!Character) return FVector::ZeroVector;
+	// The shooter sees the viewmodel gun, everyone else the world gun.
+	const bool bLocalView = Character->IsLocallyControlled();
+	const UStaticMeshComponent* Gun = bLocalView ? FirstPersonWeaponMesh : ThirdPersonWeaponMesh;
+	FVector Muzzle = Character->GetPawnViewLocation();
+	if (Gun && Gun->GetStaticMesh())
+	{
+		if (Gun->DoesSocketExist(TEXT("Muzzle"))) Muzzle = Gun->GetSocketLocation(TEXT("Muzzle"));
+		else
+		{
+			// Meshes without the socket point +X at the muzzle.
+			const FBoxSphereBounds Bounds = Gun->GetStaticMesh()->GetBounds();
+			Muzzle = Gun->GetComponentTransform().TransformPosition(Bounds.Origin + FVector(Bounds.BoxExtent.X, 0.0f, 0.0f));
+		}
+	}
+	// The viewmodel is drawn through its own lens and scaled toward the eye, while tracers are world
+	// geometry. Map the muzzle to the world point that lands on the same pixel as the drawn barrel tip.
+	// CalcCamera gives the view exactly as it will be rendered, including slide roll and FOV kick.
+	const UCameraComponent* Camera = bLocalView ? Character->GetFirstPersonCamera() : nullptr;
+	if (Camera)
+	{
+		FMinimalViewInfo View;
+		Character->CalcCamera(0.0f, View);
+		const FVector InView = View.Rotation.UnrotateVector(Muzzle - View.Location);
+		const float Scale = Camera->bEnableFirstPersonScale ? Camera->FirstPersonScale : 1.0f;
+		const float Lens = Camera->bEnableFirstPersonFieldOfView
+			? FMath::Tan(FMath::DegreesToRadians(FMath::Clamp(View.FOV, 1.0f, 170.0f) * 0.5f)) / FMath::Tan(FMath::DegreesToRadians(FMath::Clamp(Camera->FirstPersonFieldOfView, 1.0f, 170.0f) * 0.5f))
+			: 1.0f;
+		Muzzle = View.Location + View.Rotation.RotateVector(FVector(InView.X * Scale, InView.Y * Scale * Lens, InView.Z * Scale * Lens));
+	}
+	return Muzzle;
+}
+
+void UArenaDuelWeaponComponent::UpdateTracers()
+{
+	if (ActiveTracers.Num() == 0) return;
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	const FVector Start = GetTracerStart();
+	for (int32 Index = ActiveTracers.Num() - 1; Index >= 0; --Index)
+	{
+		FActiveTracer& Tracer = ActiveTracers[Index];
+		UStaticMeshComponent* Mesh = Tracer.Mesh.Get();
+		const FVector Delta = Tracer.End - Start;
+		const double Length = Delta.Size();
+		if (!Mesh || Now >= Tracer.ExpireWorldTime || Length < 1.0)
+		{
+			if (Mesh) Mesh->DestroyComponent();
+			ActiveTracers.RemoveAtSwap(Index);
+			continue;
+		}
+		Mesh->SetWorldTransform(FTransform(FRotationMatrix::MakeFromZ(Delta).ToQuat(), Start + Delta * 0.5, FVector(0.005, 0.005, Length / 100.0)));
+	}
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	if (ActiveTracers.Num() == 0 && !(Character && Character->IsLocallyControlled() && !Character->IsDead())) SetComponentTickEnabled(false);
 }
 
 bool UArenaDuelWeaponComponent::GetLeftHandGripWorldLocation(FVector& OutLocation) const
@@ -501,32 +564,8 @@ void UArenaDuelWeaponComponent::MulticastShotFired_Implementation(const TArray<F
 	UWorld* World = GetWorld();
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!World || !Character || World->GetNetMode() == NM_DedicatedServer) return;
-	// The shooter sees the viewmodel gun, everyone else the world gun.
-	const bool bLocalView = Character->IsLocallyControlled();
-	const UStaticMeshComponent* Gun = bLocalView ? FirstPersonWeaponMesh : ThirdPersonWeaponMesh;
-	FVector Muzzle = Character->GetPawnViewLocation();
-	if (Gun && Gun->GetStaticMesh())
-	{
-		if (Gun->DoesSocketExist(TEXT("Muzzle"))) Muzzle = Gun->GetSocketLocation(TEXT("Muzzle"));
-		else
-		{
-			// Meshes without the socket point +X at the muzzle.
-			const FBoxSphereBounds Bounds = Gun->GetStaticMesh()->GetBounds();
-			Muzzle = Gun->GetComponentTransform().TransformPosition(Bounds.Origin + FVector(Bounds.BoxExtent.X, 0.0f, 0.0f));
-		}
-	}
-	// The viewmodel is drawn through its own lens and scaled toward the eye, while tracers are world
-	// geometry. Map the muzzle to the world point that lands on the same pixel as the drawn barrel tip.
-	if (const UCameraComponent* Camera = bLocalView ? Character->GetFirstPersonCamera() : nullptr)
-	{
-		const FTransform View = Camera->GetComponentTransform();
-		const FVector InView = View.InverseTransformPositionNoScale(Muzzle);
-		const float Scale = Camera->bEnableFirstPersonScale ? Camera->FirstPersonScale : 1.0f;
-		const float Lens = Camera->bEnableFirstPersonFieldOfView
-			? FMath::Tan(FMath::DegreesToRadians(Camera->FieldOfView * 0.5f)) / FMath::Tan(FMath::DegreesToRadians(FMath::Clamp(Camera->FirstPersonFieldOfView, 1.0f, 170.0f) * 0.5f))
-			: 1.0f;
-		Muzzle = View.TransformPositionNoScale(FVector(InView.X * Scale, InView.Y * Scale * Lens, InView.Z * Scale * Lens));
-	}	const AArenaDuelPlayerState* PlayerState = Character->GetPlayerState<AArenaDuelPlayerState>();
+	const FVector Muzzle = GetTracerStart();
+	const AArenaDuelPlayerState* PlayerState = Character->GetPlayerState<AArenaDuelPlayerState>();
 	UMaterialInterface* Material = PlayerState && PlayerState->GetDuelSlot() == 1 ? WeaponAccentViolet.Get() : WeaponAccentCyan.Get();
 	auto ExpireAfter = [World](USceneComponent* Component, float Seconds)
 	{
@@ -546,8 +585,12 @@ void UArenaDuelWeaponComponent::MulticastShotFired_Implementation(const TArray<F
 		Tracer->SetCastShadow(false);
 		Tracer->SetWorldTransform(FTransform(FRotationMatrix::MakeFromZ(Delta).ToQuat(), Muzzle + Delta * 0.5, FVector(0.005, 0.005, Length / 100.0)));
 		Tracer->RegisterComponentWithWorld(World);
-		ExpireAfter(Tracer, CVarTracerSeconds.GetValueOnGameThread());
+		FActiveTracer& Active = ActiveTracers.AddDefaulted_GetRef();
+		Active.Mesh = Tracer;
+		Active.End = FVector(End);
+		Active.ExpireWorldTime = World->GetTimeSeconds() + CVarTracerSeconds.GetValueOnGameThread();
 	}
+	if (ActiveTracers.Num() > 0) SetComponentTickEnabled(true);
 	UPointLightComponent* Flash = NewObject<UPointLightComponent>(GetOwner());
 	Flash->SetWorldLocation(Muzzle);
 	Flash->SetIntensity(6000.0f);

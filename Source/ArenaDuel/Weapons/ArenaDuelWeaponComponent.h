@@ -259,6 +259,17 @@ protected:
 	UPROPERTY() TObjectPtr<UMaterialInterface> WeaponAccentViolet;
 	UPROPERTY() TObjectPtr<class USoundBase> FireSound;
 
+	// A tracer keeps its barrel end on the muzzle while it is visible, so it does not drift off a moving gun.
+	struct FActiveTracer
+	{
+		TWeakObjectPtr<UStaticMeshComponent> Mesh;
+		FVector End = FVector::ZeroVector;
+		float ExpireWorldTime = 0.0f;
+	};
+	TArray<FActiveTracer> ActiveTracers;
+	FVector GetTracerStart() const;
+	void UpdateTracers();
+
 	FTimerHandle ReloadTimerHandle;
 
 	EArenaDuelShotResult LastShotResult = EArenaDuelShotResult::Miss;
