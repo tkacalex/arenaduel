@@ -56,8 +56,8 @@ public:
 
 	/**
 	 * Source style air strafing for one step. Speed is only added along the wished direction, and only
-	 * while the velocity along that direction is below WishSpeedCap. The step is not clipped at that limit,
-	 * so the gain per second does not depend on the frame rate. Holding forward at speed therefore
+	 * while the velocity along that direction is below WishSpeedCap. The step is integrated in small slices,
+	 * so the gain per second is nearly the same at any frame rate that keeps one step inside the window. Holding forward at speed therefore
 	 * adds nothing; steering sideways while turning adds a little each step. The result never exceeds
 	 * MaxGainSpeed through gains, and speed that is already above it is left alone.
 	 */

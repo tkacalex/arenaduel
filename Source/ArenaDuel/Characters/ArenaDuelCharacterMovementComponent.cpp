@@ -602,10 +602,16 @@ FVector UArenaDuelCharacterMovementComponent::ComputeAirStrafe(const FVector& In
 	const FVector Direction = WishDirection.GetSafeNormal2D();
 	if (Direction.IsNearlyZero() || DeltaTime <= 0.0f) return Horizontal;
 	const double SpeedBefore = Horizontal.Size();
-	if (FVector::DotProduct(Horizontal, Direction) >= WishSpeedCap) return Horizontal;
-	// The whole step is added while the velocity along the wish is inside the window. Clipping the step at
-	// the window edge, as Source does, would tie the gain per second to the frame rate.
-	Horizontal += Direction * (AccelerationPerSecond * DeltaTime);
+	// The step is integrated in slices of at most 1/240 s. One big step would add its whole acceleration
+	// sideways and turn that into speed, so a low frame rate would gain more than a high one.
+	const int32 Slices = FMath::Clamp(FMath::CeilToInt32(DeltaTime * 240.0f), 1, 64);
+	const double SliceAcceleration = AccelerationPerSecond * DeltaTime / Slices;
+	for (int32 Slice = 0; Slice < Slices; ++Slice)
+	{
+		const double AddSpeed = WishSpeedCap - FVector::DotProduct(Horizontal, Direction);
+		if (AddSpeed <= 0.0) break;
+		Horizontal += Direction * FMath::Min(SliceAcceleration, AddSpeed);
+	}
 	const double Limit = FMath::Max(static_cast<double>(MaxGainSpeed), SpeedBefore);
 	if (Horizontal.Size() > Limit) Horizontal = Horizontal.GetSafeNormal() * Limit;
 	return Horizontal;
@@ -662,6 +668,7 @@ void UArenaDuelCharacterMovementComponent::TickComponent(float DeltaSeconds, ELe
 	if (AArenaDuelCharacter* DevCharacter = Cast<AArenaDuelCharacter>(CharacterOwner); DevCharacter && DevCharacter->IsLocallyControlled() && !DevCharacter->IsDead())
 	{
 		const bool bDevHop = CVarDevHop.GetValueOnGameThread() != 0;
+		if (bDevHop && !bDevHopWasOn) bDevFirstJumpDone = false;
 		if (bDevHop)
 		{
 			bWantsSprint = true;
