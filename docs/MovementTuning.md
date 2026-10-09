@@ -90,3 +90,9 @@ Aiming no longer stops at a sprint and starting a sprint no longer drops the aim
 The dash launches at `DashSpeed` 11000 in the movement direction (raised five times from 2200 on request; the distances below were written for 2200, so at 11000 the roughly 0.4 s of air time is about 45 m and in practice the next wall ends the dash). Before, it was limited to `GlobalMomentumCap` (1350), only half again as fast as a sprint, and the stronger ground braking from the movement pass stopped it almost at once. Started on the ground it now also lifts off with `DashLift` 200, a hop of about 20 cm that keeps the dash in the air for roughly 0.4 s, which is about 9 m of travel; in the air it keeps its vertical speed. Both values are properties of `UArenaDuelGA_ShadowStep`. The cooldown is still five seconds.
 
 `ArenaDuel.Shadow.StepStrength` checks the values. The distance is calculated, not measured in a play session.
+
+## Speed in the air
+
+A sprint jump keeps its speed. Two things took it away before: the strong ground braking friction (`GroundBrakingFriction`) was applied by the engine in every movement mode, and the speed limit in the air was walk speed, so anything faster was braked. Now the braking friction only applies while walking, and the limit in the air is the horizontal speed the player already has (never less than walk speed). Steering in the air turns the velocity without adding to it. Landing while still holding sprint continues at sprint speed. The same change lets Shadow Step and a slide jump carry their speed through the air.
+
+`ArenaDuel.Phase4.SprintJumpKeepsSpeed` checks that 900 stays 900 over a jump with forward held. A real sprint jump with key input was not tried in a play session.

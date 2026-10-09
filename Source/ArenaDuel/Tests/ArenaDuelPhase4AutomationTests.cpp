@@ -441,6 +441,21 @@ ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4SlideJumpTest, "ArenaDuel.Phase4.Sli
 	TestTrue(TEXT("Slide jump accepted"), bJumped); TestEqual(TEXT("Slide jump falls"), Move->MovementMode, MOVE_Falling); TestTrue(TEXT("Slide jump rises"), Move->Velocity.Z > 0.0f); return true;
 })
 
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4SprintJumpKeepsSpeedTest, "ArenaDuel.Phase4.SprintJumpKeepsSpeed", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World();
+	AArenaDuelCharacter* Jumper = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(0.0f, 0.0f, 400.0f), FVector(900.0f, 0.0f, 300.0f));
+	UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Jumper);
+	TestNotNull(TEXT("Jumping movement"), Move);
+	if (Move)
+	{
+		// Forward held through the whole jump, as in a sprint jump.
+		for (int32 Index = 0; Index < 25 && Move->IsFalling(); ++Index) { Jumper->AddMovementInput(FVector::XAxisVector, 1.0f); Move->TickComponent(0.016f, LEVELTICK_All, nullptr); }
+		TestTrue(TEXT("Sprint speed survives the time in the air"), Move->Velocity.Size2D() >= 890.0f);
+		TestTrue(TEXT("Holding forward in the air does not add speed"), Move->Velocity.Size2D() <= 905.0f);
+	}
+	return true;
+})
+
 ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4AirControlTrajectoryTest, "ArenaDuel.Phase4.AirControlTrajectory", {
 	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World();
 	AArenaDuelCharacter* NoInput = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(0.0f, 0.0f, 300.0f), FVector(900.0f, 0.0f, 0.0f));

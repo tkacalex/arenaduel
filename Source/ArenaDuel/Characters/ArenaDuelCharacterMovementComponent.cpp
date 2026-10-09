@@ -221,6 +221,9 @@ void UArenaDuelCharacterMovementComponent::CalcVelocity(float DeltaTime, float F
 	{
 		Velocity = ApplyCounterStrafe(Velocity, Acceleration, DeltaTime);
 	}
+	// The strong braking friction belongs to the ground. The engine would apply it in every mode, which
+	// stripped the speed off a sprint jump within a few frames; off the ground the mode's own friction is used.
+	TGuardValue<bool> GroundOnlyBrakingFriction(bUseSeparateBrakingFriction, bUseSeparateBrakingFriction && MovementMode == MOVE_Walking);
 	Super::CalcVelocity(DeltaTime, Friction, bFluid, BrakingDeceleration);
 }
 float UArenaDuelCharacterMovementComponent::GetMaxSpeed() const
@@ -228,6 +231,11 @@ float UArenaDuelCharacterMovementComponent::GetMaxSpeed() const
 	if (IsSliding())
 	{
 		return FMath::Max(SlideMinSpeed, Velocity.Size2D());
+	}
+	// In the air the speed the jump started with is kept: steering turns it, but neither adds to it nor brakes it.
+	if (IsFalling())
+	{
+		return FMath::Max(WalkSpeed, static_cast<float>(Velocity.Size2D()));
 	}
 	// Strafe and backpedal scales follow the held input, which is part of every saved move.
 	float DirectionScale = 1.0f;
