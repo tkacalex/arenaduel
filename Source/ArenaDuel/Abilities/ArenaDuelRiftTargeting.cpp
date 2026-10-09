@@ -1,4 +1,5 @@
 #include "ArenaDuelRiftTargeting.h"
+#include "EngineUtils.h"
 #include "ArenaDuelArcBarrier.h"
 #include "../Characters/ArenaDuelCharacter.h"
 #include "Components/CapsuleComponent.h"
@@ -36,7 +37,15 @@ bool ArenaDuelRiftTargeting::FindGrappleDestination(const AArenaDuelCharacter& C
 	const FVector Eye = Character.GetPawnViewLocation();
 	FHitResult Hit;
 	const FCollisionQueryParams Params(SCENE_QUERY_STAT(RiftAnchor), false, &Character);
-	if (!Character.GetWorld()->LineTraceSingleByChannel(Hit, Eye, Eye + Character.GetControlRotation().Vector() * GrappleRange, ECC_Visibility, Params)) return false;
+	const FVector Reach = Eye + Character.GetControlRotation().Vector() * GrappleRange;
+	const bool bWorldHit = Character.GetWorld()->LineTraceSingleByChannel(Hit, Eye, Reach, ECC_Visibility, Params);
+	// A player standing in the line still blocks the grapple, now tested on their per-bone hit zones.
+	for (TActorIterator<AArenaDuelCharacter> It(Character.GetWorld()); It; ++It)
+	{
+		FHitResult BodyHit;
+		if (*It != &Character && It->TraceHitZones(Eye, bWorldHit ? FVector(Hit.ImpactPoint) : Reach, BodyHit)) return false;
+	}
+	if (!bWorldHit) return false;
 	const UPrimitiveComponent* Component = Hit.GetComponent();
 	if (!Component || !Hit.GetActor() || Hit.GetActor()->IsA<ACharacter>() || Hit.GetActor()->IsA<AArenaDuelArcBarrier>()
 		|| Component->Mobility != EComponentMobility::Static || Hit.bStartPenetrating) return false;

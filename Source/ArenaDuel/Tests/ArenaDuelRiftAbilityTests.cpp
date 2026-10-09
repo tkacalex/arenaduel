@@ -237,7 +237,7 @@ NETWORK_TEST_CLASS(FArenaDuelRiftNetworkSmoke, "ArenaDuel.Rift.Network")
 			PC(S.World, false)->SetControlRotation((Other->GetPawnViewLocation() - Character->GetPawnViewLocation()).Rotation());
 			FHitResult PlayerHit;
 			FCollisionQueryParams Params(SCENE_QUERY_STAT(RiftPlayerAnchorTest), false, Character);
-			const bool bHitPlayer = S.World->LineTraceSingleByChannel(PlayerHit, Character->GetPawnViewLocation(), Character->GetPawnViewLocation() + Character->GetControlRotation().Vector() * 2200, ECC_Visibility, Params) && PlayerHit.GetActor() == Other;
+			const bool bHitPlayer = Other->TraceHitZones(Character->GetPawnViewLocation(), Character->GetPawnViewLocation() + Character->GetControlRotation().Vector() * 2200, PlayerHit);
 			if (!bHitPlayer || ArenaDuelRiftTargeting::FindGrappleDestination(*Character, Destination, Anchor)) TestRunner->AddError(TEXT("Player hit-zone anchor rejection failed"));
 			PC(S.World, false)->SetControlRotation(FRotator::ZeroRotator);
 			FActorSpawnParameters BarrierParams;
