@@ -50,6 +50,16 @@ namespace
 			if (!Pawn || !Pawn->GetWeaponComponent() || Args.Num() == 0) return;
 			if (FCString::Atoi(*Args[0]) != 0) Pawn->GetWeaponComponent()->StartAim(); else Pawn->GetWeaponComponent()->StopAim();
 		}));
+	// ArenaDuel.Weapon <index>: put any firearm in the local player's hands, whatever the loadout (0 Arc Rifle, 1 Shade SMG, 2 Rune DMR, 3 Hex Shotgun).
+	FAutoConsoleCommandWithWorldAndArgs CmdWeapon(TEXT("ArenaDuel.Weapon"), TEXT("Equip a firearm by index for the local player, ignoring the loadout"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+			const AArenaDuelCharacter* Pawn = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
+			if (!Pawn || !Pawn->GetWeaponComponent() || Args.Num() == 0) return;
+			Pawn->GetWeaponComponent()->GrantAllWeaponsForDevelopment();
+			Pawn->GetWeaponComponent()->EquipWeapon(FCString::Atoi(*Args[0]));
+		}));
 	FAutoConsoleCommandWithWorldAndArgs CmdPitch(TEXT("ArenaDuel.Pitch"), TEXT("Set the view pitch of the local player in degrees"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
 		{
@@ -90,6 +100,7 @@ namespace
 		DMR.AimFOV = 68.0f; DMR.AimSensitivityMultiplier = 0.65f; DMR.AimSpreadMultiplier = 0.35f; DMR.AimViewmodelLocation = FVector(58.0f, 1.0f, -11.0f);
 		// A head shot with the marksman rifle kills from full health: 42 x 2.5 = 105.
 		DMR.BodyDamage = 42.0f; DMR.HeadshotMultiplier = 2.5f;
+		DMR.bHasScope = true;
 		FArenaDuelWeaponDefinition Shotgun = Arc;
 		Shotgun.Id = EArenaDuelWeaponId::HexShotgun; Shotgun.DisplayName = TEXT("Hex Shotgun"); Shotgun.MagazineCapacity = 6; Shotgun.ReserveCapacity = 30; Shotgun.RoundsPerMinute = 75.0f; Shotgun.BaseSpreadDegrees = 5.0f; Shotgun.MovementSpreadDegrees = 2.0f; Shotgun.Pellets = 8; Shotgun.bAutomatic = false;
 		Shotgun.AimFOV = 82.0f; Shotgun.AimSensitivityMultiplier = 0.80f; Shotgun.AimSpreadMultiplier = 0.85f; Shotgun.AimViewmodelLocation = FVector(45.0f, 4.0f, -15.0f);
@@ -423,6 +434,13 @@ void UArenaDuelWeaponComponent::StartAim()
 		if (GetOwnerRole() == ROLE_Authority) ServerUseEquipment_Implementation(true); else ServerUseEquipment(true);
 		return;
 	}
+	if (GetCurrentDefinition().bHasScope)
+	{
+		// A scope is stepped with presses: first zoom, second zoom, out.
+		if (ScopeLevel == 0 && !CanAimNow()) return;
+		ScopeLevel = static_cast<uint8>((ScopeLevel + 1) % 3);
+		if (ScopeLevel == 0) { StopAim(); return; }
+	}
 	// The held key is remembered. A reload or a weapon switch only pauses the aim; it comes back by itself.
 	bAimHeld = true;
 	UpdateAimFromIntent();
@@ -433,8 +451,42 @@ void UArenaDuelWeaponComponent::StopAim()
 	bAimHeld = false;
 	SuspendAim();
 }
+void UArenaDuelWeaponComponent::ReleaseAim()
+{
+	if (GetCurrentDefinition().bHasScope && GetActiveSlot() == EArenaDuelLoadoutSlot::Primary) return;
+	StopAim();
+}
+float UArenaDuelWeaponComponent::GetActiveAimFOV() const
+{
+	const FArenaDuelWeaponDefinition& Definition = GetCurrentDefinition();
+	return Definition.bHasScope && ScopeLevel > 0 ? (ScopeLevel == 1 ? Definition.ScopeFOVFirst : Definition.ScopeFOVSecond) : Definition.AimFOV;
+}
+float UArenaDuelWeaponComponent::GetAimSensitivityMultiplier() const
+{
+	const FArenaDuelWeaponDefinition& Definition = GetCurrentDefinition();
+	if (Definition.bHasScope && ScopeLevel > 0)
+	{
+		// The ratio of the two view tangents keeps the on-screen distance per hand movement the same as at the hip.
+		const float Zoomed = FMath::Tan(FMath::DegreesToRadians(GetActiveAimFOV() * 0.5f));
+		const float Hip = FMath::Tan(FMath::DegreesToRadians(FMath::Clamp(HipFOV, 10.0f, 170.0f) * 0.5f));
+		return Zoomed / FMath::Max(Hip, KINDA_SMALL_NUMBER) * Definition.ScopeSensitivityScale;
+	}
+	return Definition.AimSensitivityMultiplier * AimSensitivityScale;
+}
+float UArenaDuelWeaponComponent::GetScopeOverlayAlpha() const
+{
+	if (!GetCurrentDefinition().bHasScope || ScopeLevel == 0 || !bAiming) return 0.0f;
+	// The picture comes in over the last quarter of the weapon coming up to the eye.
+	return FMath::Clamp((AimBlend - 0.75f) / 0.25f, 0.0f, 1.0f);
+}
+float UArenaDuelWeaponComponent::GetAimMoveSpeedScale() const
+{
+	return bAiming && GetActiveSlot() == EArenaDuelLoadoutSlot::Primary && GetCurrentDefinition().bHasScope ? GetCurrentDefinition().ScopedMoveSpeedScale : 1.0f;
+}
 void UArenaDuelWeaponComponent::SuspendAim()
 {
+	// A scope does not come back by itself after a reload, a switch, death or a menu: it starts from outside again.
+	if (ScopeLevel != 0) { ScopeLevel = 0; bAimHeld = false; }
 	// Short local block, so the aim does not flick back before the reload or switch has replicated.
 	if (GetWorld()) AimBlockedUntilWorldTime = GetWorld()->GetTimeSeconds() + 0.25f;
 	bAiming = false;
@@ -766,6 +818,10 @@ void UArenaDuelWeaponComponent::LocalCosmeticShot()
 {
 	if (!bFireHeld || bReloading || (GetCurrentMagazineAmmo() <= 0 && !HasInfiniteAmmoForDevelopment()) || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	LastCosmeticShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
+	if (const FArenaDuelWeaponDefinition& Fired = GetCurrentDefinition(); Fired.bHasScope && ScopeLevel > 0 && Fired.ScopeRezoomSeconds > 0.0f && GetWorld())
+	{
+		ScopeSuppressedUntilWorldTime = GetWorld()->GetTimeSeconds() + Fired.ScopeRezoomSeconds;
+	}
 	const float Kick = WeaponVisualDefinitions.IsValidIndex(EquippedWeaponIndex) ? WeaponVisualDefinitions[EquippedWeaponIndex].VisualRecoilKick : 1.0f;
 	LocalWeaponKick = FMath::Min(LocalWeaponKick + Kick, 3.0f);
 	VisualYawKick = FMath::Clamp(VisualYawKick + ((LastShotSequence & 1) ? 0.35f : -0.35f) * Kick, -1.5f, 1.5f);
@@ -867,6 +923,8 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 		}
 	}
 	FirstPersonWeaponMesh->SetVisibility(Character->IsLocallyControlled() && !Character->IsDead());
+	if (bViewmodelHiddenByScope && Character->GetFirstPersonArms()) Character->GetFirstPersonArms()->SetVisibility(true);
+	bViewmodelHiddenByScope = false;
 	ThirdPersonWeaponMesh->SetVisibility(true);
 	SetComponentTickEnabled(Character->IsLocallyControlled() && !Character->IsDead());
 	// Initialize once. The local presentation tick owns this root after possession.
@@ -913,12 +971,24 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 	// Aiming wins over the sprint pose: the weapon comes up to the eye even at a run.
 	const bool bSprint = Movement && Movement->IsSprinting() && !bAiming;
 	const bool bFalling = Movement && Movement->IsFalling();
-	const float AimTarget = bAiming ? 1.0f : 0.0f;
+	// After a scoped shot the weapon drops out of the scope for a moment and returns to the same zoom level.
+	const bool bScopeDropped = ScopeLevel > 0 && GetWorld()->GetTimeSeconds() < ScopeSuppressedUntilWorldTime;
+	const float AimTarget = bAiming && !bScopeDropped ? 1.0f : 0.0f;
 	const float AimDecay = FMath::Exp(-FMath::Max(ViewmodelFeel.AimResponse, 0.01f) * DeltaSeconds);
 	const float MotionDecay = FMath::Exp(-FMath::Max(ViewmodelFeel.MotionResponse, 0.01f) * DeltaSeconds);
 	AimBlend = AimTarget + (AimBlend - AimTarget) * AimDecay;
 	SprintBlend = (bSprint ? 1.0f : 0.0f) + (SprintBlend - (bSprint ? 1.0f : 0.0f)) * MotionDecay;
-	Character->GetFirstPersonCamera()->SetFieldOfView(FMath::Lerp(HipFOV, GetCurrentDefinition().AimFOV, AimBlend));
+	// Changing zoom level glides quickly instead of cutting.
+	const float TargetAimFOV = GetActiveAimFOV();
+	ScopeFOVSmoothed = ScopeFOVSmoothed <= 0.0f ? TargetAimFOV : FMath::FInterpTo(ScopeFOVSmoothed, TargetAimFOV, DeltaSeconds, 22.0f);
+	Character->GetFirstPersonCamera()->SetFieldOfView(FMath::Lerp(HipFOV, ScopeFOVSmoothed, AimBlend));
+	// Inside the scope picture the weapon and arms are not drawn.
+	if (const bool bHideViewmodel = GetScopeOverlayAlpha() > 0.5f; bHideViewmodel != bViewmodelHiddenByScope)
+	{
+		bViewmodelHiddenByScope = bHideViewmodel;
+		FirstPersonWeaponMesh->SetVisibility(!bHideViewmodel);
+		if (Character->GetFirstPersonArms()) Character->GetFirstPersonArms()->SetVisibility(!bHideViewmodel);
+	}
 
 	const FRotator ControlRotation = Character->GetControlRotation();
 	const float YawRate = bHadControlRotation ? FMath::Clamp(FRotator::NormalizeAxis(ControlRotation.Yaw - PreviousControlRotation.Yaw) / DeltaSeconds, -720.0f, 720.0f) : 0.0f;

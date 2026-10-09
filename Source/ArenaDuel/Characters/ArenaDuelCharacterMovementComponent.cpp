@@ -280,19 +280,21 @@ float UArenaDuelCharacterMovementComponent::GetMaxSpeed() const
 		const FVector LocalInput = UpdatedComponent->GetComponentQuat().UnrotateVector(Acceleration.GetSafeNormal2D());
 		DirectionScale = 1.0f + FMath::Abs(LocalInput.Y) * (StrafeSpeedScale - 1.0f) + FMath::Max(-LocalInput.X, 0.0f) * (BackwardSpeedScale - 1.0f);
 	}
+	// The aim state is replicated by the weapon component, so the owner and the server use the same
+	// value except for the moment it changes. Looking through a scope slows every ground speed.
+	const AArenaDuelCharacter* ArenaCharacter = Cast<AArenaDuelCharacter>(CharacterOwner);
+	const UArenaDuelWeaponComponent* Weapon = ArenaCharacter ? ArenaCharacter->GetWeaponComponent() : nullptr;
+	const float ScopeScale = Weapon ? Weapon->GetAimMoveSpeedScale() : 1.0f;
 	if (IsCrouching())
 	{
-		return CrouchSpeed * DirectionScale;
+		return CrouchSpeed * DirectionScale * ScopeScale;
 	}
 	if (bWantsSprint && IsMovingOnGround())
 	{
-		// Sprinting with the weapon at the eye costs a little speed. The aim state is replicated by the
-		// weapon component, so the owner and the server use the same value except for the moment it changes.
-		const AArenaDuelCharacter* ArenaCharacter = Cast<AArenaDuelCharacter>(CharacterOwner);
-		const bool bAimingWeapon = ArenaCharacter && ArenaCharacter->GetWeaponComponent() && ArenaCharacter->GetWeaponComponent()->IsAiming();
-		return SprintSpeed * (bAimingWeapon ? AimSprintSpeedScale : 1.0f) * DirectionScale;
+		// Sprinting with the weapon at the eye costs a little speed.
+		return SprintSpeed * (Weapon && Weapon->IsAiming() ? AimSprintSpeedScale : 1.0f) * DirectionScale * ScopeScale;
 	}
-	return WalkSpeed * DirectionScale;
+	return WalkSpeed * DirectionScale * ScopeScale;
 }
 
 bool UArenaDuelCharacterMovementComponent::CanCrouchInCurrentState() const

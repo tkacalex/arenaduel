@@ -87,4 +87,26 @@ bool FArenaDuelSniperHeadshotTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("A body shot does not"), Sniper->BodyDamage < MaxHealth);
 	return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelSniperScopeTest, "ArenaDuel.Loadout.SniperScope", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FArenaDuelSniperScopeTest::RunTest(const FString& Parameters)
+{
+	const UClass* CharacterClass = LoadClass<AArenaDuelCharacter>(nullptr, TEXT("/Game/ArenaDuel/Characters/BP_ArenaDuelCharacter.BP_ArenaDuelCharacter_C"));
+	const AArenaDuelCharacter* Defaults = CharacterClass ? Cast<AArenaDuelCharacter>(CharacterClass->GetDefaultObject()) : nullptr;
+	const UArenaDuelWeaponComponent* Weapons = Defaults ? Defaults->GetWeaponComponent() : nullptr;
+	if (!TestNotNull(TEXT("Weapon component of the player Blueprint"), Weapons)) return false;
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		const FArenaDuelWeaponDefinition* Definition = Weapons->GetWeaponDefinition(Index);
+		if (!TestNotNull(TEXT("Weapon definition"), Definition)) return false;
+		TestEqual(FString::Printf(TEXT("Only the Rune DMR has a scope (weapon %d)"), Index), Definition->bHasScope, Definition->Id == EArenaDuelWeaponId::RuneDMR);
+	}
+	const FArenaDuelWeaponDefinition* Sniper = Weapons->GetWeaponDefinition(static_cast<int32>(EArenaDuelWeaponId::RuneDMR));
+	TestTrue(TEXT("The second zoom is stronger than the first, and both are stronger than plain aiming"), Sniper->ScopeFOVSecond < Sniper->ScopeFOVFirst && Sniper->ScopeFOVFirst < Sniper->AimFOV);
+	TestTrue(TEXT("Moving in the scope is slower but possible"), Sniper->ScopedMoveSpeedScale > 0.2f && Sniper->ScopedMoveSpeedScale < 1.0f);
+	TestTrue(TEXT("The scope comes back quickly after a shot"), Sniper->ScopeRezoomSeconds >= 0.0f && Sniper->ScopeRezoomSeconds <= 0.5f);
+	TestEqual(TEXT("A weapon starts outside the scope"), Weapons->GetScopeLevel(), 0);
+	TestEqual(TEXT("And shows no scope picture"), Weapons->GetScopeOverlayAlpha(), 0.0f);
+	TestEqual(TEXT("And moves at full speed"), Weapons->GetAimMoveSpeedScale(), 1.0f);
+	return true;
+}
 #endif

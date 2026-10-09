@@ -153,7 +153,7 @@ NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 				const FVector GripView=CameraTransform.InverseTransformPosition(Gun->GetComponentLocation());
 				const FVector MuzzleView=CameraTransform.InverseTransformPosition(Gun->GetSocketLocation(TEXT("Muzzle")));
 				return C->GetWeaponComponent()->IsAiming()
-					&& FMath::IsNearlyEqual(C->GetFirstPersonCamera()->FieldOfView,C->GetWeaponComponent()->GetCurrentDefinition().AimFOV,0.1f)
+					&& FMath::IsNearlyEqual(C->GetFirstPersonCamera()->FieldOfView,C->GetWeaponComponent()->GetActiveAimFOV(),0.1f)
 					&& FVector::DotProduct(Gun->GetForwardVector(),CameraTransform.GetUnitAxis(EAxis::X))>0.98f
 					&& MuzzleView.X>GripView.X+10.0f;
 			},FTimespan::FromSeconds(4))
@@ -199,7 +199,7 @@ NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 		.ThenClient(TEXT("ADS keeps connected arm and gun hierarchy"),0,[](auto& S){ Pawn(S.World,true)->GetWeaponComponent()->StartAim(); })
 		.UntilClient(TEXT("ADS FOV and visual alignment settle"),0,[](auto& S){
 			const auto* C=Pawn(S.World,true); const auto* W=C->GetWeaponComponent();
-			return W->IsAiming() && FMath::IsNearlyEqual(C->GetFirstPersonCamera()->FieldOfView,W->GetCurrentDefinition().AimFOV,0.1f)
+			return W->IsAiming() && FMath::IsNearlyEqual(C->GetFirstPersonCamera()->FieldOfView,W->GetActiveAimFOV(),0.1f)
 				&& C->GetFirstPersonViewmodelRoot()->GetRelativeLocation().Equals(W->GetCurrentDefinition().AimViewmodelLocation,0.1f);
 		},FTimespan::FromSeconds(4))
 		.ThenClient(TEXT("Leave ADS"),0,[](auto& S){ Pawn(S.World,true)->GetWeaponComponent()->StopAim(); })

@@ -983,7 +983,7 @@ void AArenaDuelCharacter::SlideCompleted()
 void AArenaDuelCharacter::WeaponFireStarted() { if (WeaponComponent) WeaponComponent->StartFire(); }
 void AArenaDuelCharacter::WeaponFireCompleted() { if (WeaponComponent) WeaponComponent->StopFire(); }
 void AArenaDuelCharacter::AimStarted() { if (WeaponComponent) WeaponComponent->StartAim(); }
-void AArenaDuelCharacter::AimCompleted() { if (WeaponComponent) WeaponComponent->StopAim(); }
+void AArenaDuelCharacter::AimCompleted() { if (WeaponComponent) WeaponComponent->ReleaseAim(); }
 void AArenaDuelCharacter::WeaponReloadStarted() { if (WeaponComponent) WeaponComponent->Reload(); }
 // 1 firearm, 2 flashbang, 3 knife. 4 and a second press of 1 swap the two firearms of the marksman loadout.
 void AArenaDuelCharacter::Weapon1Started() { if (WeaponComponent && CanProcessGameplayInput()) WeaponComponent->SelectSlot(EArenaDuelLoadoutSlot::Primary); }

@@ -60,6 +60,56 @@ namespace
 	}
 }
 
+namespace
+{
+	/**
+	 * Telescopic sight picture: everything outside a round field of view is black, the edge of the lens is
+	 * shaded, and a fine black reticle with three heavier posts crosses it. Sizes follow the viewport
+	 * height, so it looks the same at every resolution and aspect ratio.
+	 */
+	void DrawScopePicture(UCanvas* Canvas, float Alpha)
+	{
+		const float Width = Canvas->SizeX, Height = Canvas->SizeY;
+		const FVector2D Center(Width * 0.5f, Height * 0.5f);
+		const float Radius = 0.47f * FMath::Min(Width, Height);
+		const float Far = FVector2D(Width, Height).Size();
+		const FLinearColor Solid(0.0f, 0.0f, 0.0f, Alpha), Clear(0.0f, 0.0f, 0.0f, 0.0f), Shade(0.0f, 0.0f, 0.0f, 0.82f * Alpha);
+		const int32 Segments = 128;
+		TArray<FCanvasUVTri> Triangles;
+		Triangles.Reserve(Segments * 4);
+		const auto AddTriangle = [&Triangles](const FVector2D& A, const FVector2D& B, const FVector2D& C, const FLinearColor& ColorA, const FLinearColor& ColorB, const FLinearColor& ColorC)
+		{
+			FCanvasUVTri Triangle;
+			Triangle.V0_Pos = A; Triangle.V1_Pos = B; Triangle.V2_Pos = C;
+			Triangle.V0_Color = ColorA; Triangle.V1_Color = ColorB; Triangle.V2_Color = ColorC;
+			Triangles.Add(Triangle);
+		};
+		for (int32 Index = 0; Index < Segments; ++Index)
+		{
+			const float A0 = UE_TWO_PI * Index / Segments, A1 = UE_TWO_PI * (Index + 1) / Segments;
+			const FVector2D D0(FMath::Cos(A0), FMath::Sin(A0)), D1(FMath::Cos(A1), FMath::Sin(A1));
+			// Black from the lens edge to beyond the screen corners.
+			AddTriangle(Center + D0 * Radius, Center + D0 * Far, Center + D1 * Far, Solid, Solid, Solid);
+			AddTriangle(Center + D0 * Radius, Center + D1 * Far, Center + D1 * Radius, Solid, Solid, Solid);
+			// Shaded rim inside the edge, fading to clear.
+			AddTriangle(Center + D0 * Radius * 0.88f, Center + D0 * Radius, Center + D1 * Radius, Clear, Shade, Shade);
+			AddTriangle(Center + D0 * Radius * 0.88f, Center + D1 * Radius, Center + D1 * Radius * 0.88f, Clear, Shade, Clear);
+		}
+		Canvas->K2_DrawTriangle(nullptr, Triangles);
+
+		const float Unit = FMath::Max(Height / 1080.0f, 0.5f);
+		const FLinearColor Line(0.0f, 0.0f, 0.0f, Alpha);
+		const float Fine = FMath::Max(1.0f, 1.2f * Unit), Post = 4.0f * Unit, PostStart = 0.36f * Radius;
+		// Fine cross through the centre.
+		Canvas->K2_DrawLine(Center - FVector2D(Radius, 0.0f), Center + FVector2D(Radius, 0.0f), Fine, Line);
+		Canvas->K2_DrawLine(Center - FVector2D(0.0f, Radius), Center + FVector2D(0.0f, Radius), Fine, Line);
+		// Heavy posts left, right and below; the upper half stays open.
+		Canvas->K2_DrawLine(Center - FVector2D(Radius, 0.0f), Center - FVector2D(PostStart, 0.0f), Post, Line);
+		Canvas->K2_DrawLine(Center + FVector2D(PostStart, 0.0f), Center + FVector2D(Radius, 0.0f), Post, Line);
+		Canvas->K2_DrawLine(Center + FVector2D(0.0f, PostStart), Center + FVector2D(0.0f, Radius), Post, Line);
+	}
+}
+
 void AArenaDuelMovementDebugHUD::DrawHUD()
 {
 	Super::DrawHUD();
@@ -90,15 +140,21 @@ void AArenaDuelMovementDebugHUD::DrawHUD()
 		DrawRect(Edge, 0.0f, Band, Band, Height - 2.0f * Band);
 		DrawRect(Edge, Width - Band, Band, Band, Height - 2.0f * Band);
 	}
+	const float ScopePicture = Weapon && Character && !Character->IsDead() ? Weapon->GetScopeOverlayAlpha() : 0.0f;
+	if (ScopePicture > 0.0f) DrawScopePicture(Canvas, ScopePicture);
 	const float Kick = Weapon ? Weapon->GetCrosshairKick() : 0.0f;
 	const float Gap = FMath::Clamp(5.0f + Spread * 3.0f + Kick * 9.0f, 4.0f, 34.0f);
 	const FLinearColor Crosshair = Weapon && Weapon->IsAiming() ? FLinearColor(0.75f, 0.95f, 1.0f, 1.0f) : FLinearColor::White;
 	if (Character && Movement && !Character->IsDead())
 	{
+	// The scope has its own reticle; the hip crosshair gives way to it.
+	if (ScopePicture < 0.3f)
+	{
 	Canvas->K2_DrawLine(Center + FVector2D(-Gap - 7.0f, 0.0f), Center + FVector2D(-Gap, 0.0f), 1.5f, Crosshair);
 	Canvas->K2_DrawLine(Center + FVector2D(Gap, 0.0f), Center + FVector2D(Gap + 7.0f, 0.0f), 1.5f, Crosshair);
 	Canvas->K2_DrawLine(Center + FVector2D(0.0f, -Gap - 7.0f), Center + FVector2D(0.0f, -Gap), 1.5f, Crosshair);
 	Canvas->K2_DrawLine(Center + FVector2D(0.0f, Gap), Center + FVector2D(0.0f, Gap + 7.0f), 1.5f, Crosshair);
+	}
 	if (Weapon && Weapon->GetLastShotAge() < 0.16f && Weapon->GetLastShotResult() != EArenaDuelShotResult::Miss && Weapon->GetLastShotResult() != EArenaDuelShotResult::World)
 	{
 		const FLinearColor Marker = Weapon->GetLastShotResult() == EArenaDuelShotResult::Head ? FLinearColor(0.89f, 0.78f, 0.49f, 1.0f) : FLinearColor(0.85f, 0.96f, 1.0f, 1.0f);

@@ -122,6 +122,28 @@ struct ARENADUEL_API FArenaDuelWeaponDefinition
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float AimSensitivityMultiplier = 0.8f;
 
+	/** Telescopic sight. Right mouse then steps through two zoom levels and out again instead of aiming while held. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scope")
+	bool bHasScope = false;
+
+	/** Field of view of the first and of the second zoom level, in degrees. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scope", meta = (ClampMin = "2", ClampMax = "90"))
+	float ScopeFOVFirst = 40.0f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scope", meta = (ClampMin = "2", ClampMax = "90"))
+	float ScopeFOVSecond = 15.0f;
+
+	/** Mouse sensitivity in the scope follows the zoom, so the same hand movement covers the same distance on screen. This scales that. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scope", meta = (ClampMin = "0.05", ClampMax = "4"))
+	float ScopeSensitivityScale = 1.0f;
+
+	/** Ground speed multiplier while looking through the scope. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scope", meta = (ClampMin = "0.1", ClampMax = "1"))
+	float ScopedMoveSpeedScale = 0.6f;
+
+	/** After a shot the scope drops for this long and comes back to the same zoom level. 0 keeps it up. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scope", meta = (ClampMin = "0"))
+	float ScopeRezoomSeconds = 0.16f;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float BodyDamage = 0.0f;
 
@@ -261,7 +283,17 @@ public:
 	bool IsReloading() const { return bReloading; }
 	bool IsFireHeld() const { return bFireHeld; }
 	bool IsAiming() const { return bAiming; }
-	float GetAimSensitivityMultiplier() const { return GetCurrentDefinition().AimSensitivityMultiplier * AimSensitivityScale; }
+	float GetAimSensitivityMultiplier() const;
+	/** 0 none, 1 first zoom, 2 second zoom. Local to the owning player. */
+	int32 GetScopeLevel() const { return ScopeLevel; }
+	/** Field of view the current aim state settles at: the scope level's for a scoped weapon, else the weapon's aim FOV. */
+	float GetActiveAimFOV() const;
+	/** 0 to 1: how much of the scope picture, mask and reticle, is shown. Follows the weapon coming up. */
+	float GetScopeOverlayAlpha() const;
+	/** Ground speed multiplier from looking through a scope, 1 otherwise. */
+	float GetAimMoveSpeedScale() const;
+	/** The aim key was let go. A held aim stops; a scope stays, since it is stepped with presses. */
+	void ReleaseAim();
 	EArenaDuelShotResult GetLastShotResult() const { return LastShotResult; }
 	float GetLastShotDistance() const { return LastShotDistance; }
 	float GetLastShotAge() const;
@@ -343,6 +375,10 @@ protected:
 	float AimStartWorldTime = -1000.0f;
 	float AimBlockedUntilWorldTime = 0.0f;
 	double LastLandingWorldTime = -1000.0;
+	uint8 ScopeLevel = 0;
+	float ScopeFOVSmoothed = 0.0f;
+	double ScopeSuppressedUntilWorldTime = 0.0;
+	bool bViewmodelHiddenByScope = false;
 	/** Applied on top of every weapon's own aim sensitivity. Below 1 the mouse turns slower while zoomed. */
 	UPROPERTY(EditDefaultsOnly, Category = "Weapon|Aim", meta = (ClampMin = "0.1", ClampMax = "2"))
 	float AimSensitivityScale = 0.85f;
