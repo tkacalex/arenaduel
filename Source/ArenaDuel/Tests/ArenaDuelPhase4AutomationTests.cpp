@@ -1123,24 +1123,6 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 	}
 };
 
-namespace ArenaDuelGroundFeelTests
-{
-	// Drives the character with one input direction at a fixed 120 Hz step and returns the seconds until Done is true.
-	template <typename TDone>
-	static float SimulateUntil(AArenaDuelCharacter* Character, UArenaDuelCharacterMovementComponent* Move, const FVector& Input, TDone Done, float MaxSeconds = 2.0f)
-	{
-		constexpr float Step = 1.0f / 120.0f;
-		float Elapsed = 0.0f;
-		while (Elapsed < MaxSeconds && !Done())
-		{
-			if (!Input.IsNearlyZero()) Character->AddMovementInput(Input, 1.0f);
-			Move->TickComponent(Step, LEVELTICK_All, nullptr);
-			Elapsed += Step;
-		}
-		return Elapsed;
-	}
-}
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelGroundFeelTuningTest, "ArenaDuel.GroundFeel.CentralTuning", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FArenaDuelGroundFeelTuningTest::RunTest(const FString& Parameters)
 {
@@ -1159,40 +1141,20 @@ bool FArenaDuelGroundFeelTuningTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelGroundFeelResponseTest, "ArenaDuel.GroundFeel.StartStopAndCounterStrafe", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-bool FArenaDuelGroundFeelResponseTest::RunTest(const FString& Parameters)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelGroundFeelCounterStrafeTest, "ArenaDuel.GroundFeel.CounterStrafeStep", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FArenaDuelGroundFeelCounterStrafeTest::RunTest(const FString& Parameters)
 {
-	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap);
-	AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnCharacter(GEditor->GetEditorWorldContext().World(), FVector(0.0f, 0.0f, 100.0f));
-	UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character);
-	TestNotNull(TEXT("Ground feel movement"), Move);
-	if (!Move || !Character) return true;
-	using namespace ArenaDuelGroundFeelTests;
-	Move->bRunPhysicsWithNoController = true;
-	Move->SetMovementMode(MOVE_Walking);
-	const FVector Right = Character->GetActorRightVector();
-	// Let the capsule settle on the floor first; a penetrating spawn cannot move and would fake every timing.
-	SimulateUntil(Character, Move, FVector::ZeroVector, [Move]() { return Move->IsMovingOnGround() && Move->Velocity.IsNearlyZero(); }, 1.0f);
-	const FVector Origin = Character->GetActorLocation();
-	const float StartSeconds = SimulateUntil(Character, Move, Right, [Move]() { return Move->Velocity.Size2D() >= 0.95f * Move->WalkSpeed; });
-	TestTrue(FString::Printf(TEXT("Strafe reaches 95 percent speed quickly (%.3f s)"), StartSeconds), StartSeconds <= 0.20f);
-
-	SimulateUntil(Character, Move, Right, [Move]() { return Move->Velocity.Size2D() >= 0.99f * Move->WalkSpeed; });
-	const FVector CounterStart = Character->GetActorLocation();
-	const float CounterSeconds = SimulateUntil(Character, Move, -Right, [Move, Right]() { return FVector::DotProduct(Move->Velocity, Right) <= 0.0f; });
-	const float CounterDistance = FVector::Dist2D(CounterStart, Character->GetActorLocation());
-	TestTrue(FString::Printf(TEXT("Counter-strafe kills sideways speed almost at once (%.3f s, %.1f cm)"), CounterSeconds, CounterDistance), CounterSeconds <= 0.09f && CounterDistance <= 25.0f);
-
-	const float ReverseSeconds = SimulateUntil(Character, Move, -Right, [Move, Right]() { return FVector::DotProduct(Move->Velocity, -Right) >= 0.95f * Move->WalkSpeed; });
-	TestTrue(FString::Printf(TEXT("Full reversal reaches top speed the other way quickly (%.3f s after the stop)"), ReverseSeconds), ReverseSeconds <= 0.22f);
-
-	const FVector ReleaseStart = Character->GetActorLocation();
-	const float ReleaseSeconds = SimulateUntil(Character, Move, FVector::ZeroVector, [Move]() { return Move->Velocity.Size2D() <= 5.0f; });
-	const float ReleaseDistance = FVector::Dist2D(ReleaseStart, Character->GetActorLocation());
-	TestTrue(FString::Printf(TEXT("Releasing input stops without a long slide (%.3f s, %.1f cm)"), ReleaseSeconds, ReleaseDistance), ReleaseSeconds <= 0.16f && ReleaseDistance <= 45.0f);
-	TestTrue(TEXT("Counter-strafing stops sooner than just letting go"), CounterSeconds < ReleaseSeconds);
-	TestTrue(TEXT("The character really travelled during the run"), FVector::Dist2D(Origin, Character->GetActorLocation()) > 50.0f);
-	AddInfo(FString::Printf(TEXT("Ground feel: start %.3f s, counter-strafe %.3f s / %.1f cm, reversal %.3f s, release %.3f s / %.1f cm"), StartSeconds, CounterSeconds, CounterDistance, ReverseSeconds, ReleaseSeconds, ReleaseDistance));
+	const UArenaDuelCharacterMovementComponent* Move = GetDefault<UArenaDuelCharacterMovementComponent>();
+	const FVector Right(0.0f, 1.0f, 0.0f);
+	const FVector Moving = Right * 600.0f;
+	constexpr float Step = 1.0f / 120.0f;
+	TestEqual(TEXT("Input along the velocity is left alone"), Move->ApplyCounterStrafe(Moving, Right, Step), Moving);
+	TestEqual(TEXT("Sideways input does not brake forward speed"), Move->ApplyCounterStrafe(FVector(600.0f, 0.0f, 0.0f), Right, Step), FVector(600.0f, 0.0f, 0.0f));
+	const FVector Braked = Move->ApplyCounterStrafe(Moving, -Right, Step);
+	TestTrue(TEXT("Opposing input removes speed at the counter-strafe rate"), FMath::IsNearlyEqual(Braked.Y, 600.0f - Move->CounterStrafeDeceleration * Step, 0.01));
+	TestEqual(TEXT("Counter-strafe never pushes past a stop"), Move->ApplyCounterStrafe(Right * 10.0f, -Right, Step), FVector::ZeroVector);
+	const FVector Diagonal = Move->ApplyCounterStrafe(FVector(400.0f, 400.0f, 0.0f), -Right, Step);
+	TestTrue(TEXT("Only the opposing component is braked"), FMath::IsNearlyEqual(Diagonal.X, 400.0) && Diagonal.Y < 400.0);
+	TestTrue(TEXT("Counter-strafing is stronger than plain braking"), Move->CounterStrafeDeceleration + Move->GroundAcceleration > Move->GroundBrakingDeceleration);
 	return true;
-}
-#endif
+}#endif

@@ -58,6 +58,8 @@ public:
 	virtual void CalcVelocity(float DeltaTime, float Friction, bool bFluid, float BrakingDeceleration) override;
 	/** Copies the ground and smoothing tunables below onto the engine movement properties. */
 	void ApplyGroundTuning();
+	/** Counter-strafing step: returns InVelocity with the part that opposes InputDirection reduced for DeltaTime. Pure, so it can be tested directly. */
+	FVector ApplyCounterStrafe(const FVector& InVelocity, const FVector& InputDirection, float DeltaTime) const;
 	virtual bool CanCrouchInCurrentState() const override;
 	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
 	virtual void UpdateFromCompressedFlags(uint8 Flags) override;
@@ -83,7 +85,7 @@ public:
 
 	/** Deceleration on the ground with no input. Higher stops sooner. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Ground", meta = (ClampMin = "0"))
-	float GroundBrakingDeceleration = 3400.0f;
+	float GroundBrakingDeceleration = 6000.0f;
 
 	/** How quickly velocity turns toward the input direction while moving. Higher removes sideways drift. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Ground", meta = (ClampMin = "0"))
@@ -91,7 +93,7 @@ public:
 
 	/** Friction applied while stopping with no input. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Ground", meta = (ClampMin = "0"))
-	float GroundBrakingFriction = 9.0f;
+	float GroundBrakingFriction = 12.0f;
 
 	/** Counter-strafing: extra deceleration applied to the part of the velocity that opposes the held input. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Ground", meta = (ClampMin = "0"))

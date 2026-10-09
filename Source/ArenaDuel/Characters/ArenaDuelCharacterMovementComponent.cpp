@@ -203,23 +203,25 @@ float UArenaDuelCharacterMovementComponent::GetMaxAcceleration() const
 	return MovementMode == MOVE_Walking ? GroundAcceleration : AirAcceleration;
 }
 
+FVector UArenaDuelCharacterMovementComponent::ApplyCounterStrafe(const FVector& InVelocity, const FVector& InputDirection, float DeltaTime) const
+{
+	const FVector Direction = InputDirection.GetSafeNormal2D();
+	const float OpposingSpeed = -FVector::DotProduct(FVector(InVelocity.X, InVelocity.Y, 0.0f), Direction);
+	if (Direction.IsNearlyZero() || OpposingSpeed <= 0.0f || DeltaTime <= 0.0f) return InVelocity;
+	return InVelocity + Direction * FMath::Min(OpposingSpeed, CounterStrafeDeceleration * DeltaTime);
+}
+
 void UArenaDuelCharacterMovementComponent::CalcVelocity(float DeltaTime, float Friction, bool bFluid, float BrakingDeceleration)
 {
 	// Counter-strafing: velocity that runs against the held input is removed much faster than normal
 	// braking, so tapping the opposite key stops the player almost at once. It depends only on the
 	// velocity and acceleration of the move being simulated, so prediction and server replay agree.
-	if (MovementMode == MOVE_Walking && DeltaTime > 0.0f && !Acceleration.IsNearlyZero())
+	if (MovementMode == MOVE_Walking && !Acceleration.IsNearlyZero())
 	{
-		const FVector InputDirection = Acceleration.GetSafeNormal2D();
-		const float OpposingSpeed = -FVector::DotProduct(FVector(Velocity.X, Velocity.Y, 0.0f), InputDirection);
-		if (OpposingSpeed > 0.0f)
-		{
-			Velocity += InputDirection * FMath::Min(OpposingSpeed, CounterStrafeDeceleration * DeltaTime);
-		}
+		Velocity = ApplyCounterStrafe(Velocity, Acceleration, DeltaTime);
 	}
 	Super::CalcVelocity(DeltaTime, Friction, bFluid, BrakingDeceleration);
 }
-
 float UArenaDuelCharacterMovementComponent::GetMaxSpeed() const
 {
 	if (IsSliding())
