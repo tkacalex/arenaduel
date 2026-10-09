@@ -79,7 +79,8 @@ bool FArenaDuelHitZoneTraceTest::RunTest(const FString& Parameters)
 	const FVector BesideThigh = Center + Right * 34.0f + FVector(0, 0, -45.0f);
 	TestFalse(TEXT("Beside the thigh inside the old body box is a miss"), Character->TraceHitZones(BesideThigh + Forward * 300.0f, BesideThigh - Forward * 300.0f, Hit));
 	TestFalse(TEXT("Above the head is a miss"), Character->TraceHitZones(Center + FVector(0, 0, 110.0f) + Forward * 300.0f, Center + FVector(0, 0, 110.0f) - Forward * 300.0f, Hit));
-	TestFalse(TEXT("Between the feet is a miss"), Character->TraceHitZones(Center + FVector(0, 0, -80.0f) + Forward * 300.0f, Center + FVector(0, 0, -80.0f) - Forward * 300.0f, Hit));
+	const FVector BesideShin = Center + Right * 36.0f + FVector(0, 0, -80.0f);
+	TestFalse(TEXT("Beside the shin inside the old body box is a miss"), Character->TraceHitZones(BesideShin + Forward * 300.0f, BesideShin - Forward * 300.0f, Hit));
 	Character->Destroy();
 	return true;
 }
