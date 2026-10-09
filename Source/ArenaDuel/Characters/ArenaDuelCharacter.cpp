@@ -232,8 +232,9 @@ void AArenaDuelCharacter::RefreshCharacterVisuals()
 	const EArenaDuelCharacterArchetype Archetype = State ? State->GetCharacterArchetype() : EArenaDuelCharacterArchetype::Shadow;
 	const int32 Index = static_cast<int32>(Archetype);
 	UMaterialInterface* Accent = Archetype == EArenaDuelCharacterArchetype::Warden ? CyanVisualMaterial.Get() : VioletVisualMaterial.Get();
-	LeftShoulderArmor->SetVisibility(Archetype == EArenaDuelCharacterArchetype::Warden);
-	RightShoulderArmor->SetVisibility(Archetype != EArenaDuelCharacterArchetype::Shadow);
+	// The shoulder plates read as stray boxes on the body, so they stay hidden for every archetype.
+	LeftShoulderArmor->SetVisibility(false);
+	RightShoulderArmor->SetVisibility(false);
 	for (auto* Plate : {LeftShoulderArmor.Get(), RightShoulderArmor.Get()}) Plate->SetMaterial(0, Accent);
 	// Keep the local arms' authored skin/glove materials. Archetype armor belongs
 	// to the world character; applying it to every arm section made hands read as
