@@ -40,6 +40,25 @@ namespace
 			const AArenaDuelCharacter* Pawn = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
 			if (Pawn && Pawn->GetWeaponComponent() && Args.Num() > 0) Pawn->GetWeaponComponent()->SelectSlot(static_cast<EArenaDuelLoadoutSlot>(FMath::Clamp(FCString::Atoi(*Args[0]), 0, 2)));
 		}));
+	// Development helpers for looking at the stance from the other player's window without holding keys:
+	// ArenaDuel.Aim 0|1 aims or stops aiming, ArenaDuel.Pitch <degrees> sets the view pitch of the local player.
+	FAutoConsoleCommandWithWorldAndArgs CmdAim(TEXT("ArenaDuel.Aim"), TEXT("Aim (1) or stop aiming (0) for the local player"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+			const AArenaDuelCharacter* Pawn = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
+			if (!Pawn || !Pawn->GetWeaponComponent() || Args.Num() == 0) return;
+			if (FCString::Atoi(*Args[0]) != 0) Pawn->GetWeaponComponent()->StartAim(); else Pawn->GetWeaponComponent()->StopAim();
+		}));
+	FAutoConsoleCommandWithWorldAndArgs CmdPitch(TEXT("ArenaDuel.Pitch"), TEXT("Set the view pitch of the local player in degrees"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+			if (!Controller || Args.Num() == 0) return;
+			FRotator Rotation = Controller->GetControlRotation();
+			Rotation.Pitch = FMath::Clamp(FCString::Atof(*Args[0]), -85.0f, 85.0f);
+			Controller->SetControlRotation(Rotation);
+		}));
 	// Exact critically damped step. Its response does not depend on the frame rate.
 	static void StepSpring(float& Position, float& Velocity, float Target, float Response, float DeltaSeconds)
 	{
