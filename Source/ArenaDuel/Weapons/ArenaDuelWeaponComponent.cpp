@@ -104,13 +104,15 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 		FArenaDuelWeaponVisualDefinition Visual;
 		Visual.Mesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(Path));
 		Visual.ThirdPersonScale = FVector::OneVector;
+		Visual.LeftHandGripLocation = FVector(0.0f, 24.0f, -4.0f);
 		WeaponVisualDefinitions.Add(Visual);
-	}	// Epic's warp rig places the weapon; the viewmodel root only adds cosmetic motion on top.
-	WeaponVisualDefinitions[0].HipViewmodelLocation=FVector::ZeroVector;
-	WeaponVisualDefinitions[1].HipViewmodelLocation=FVector::ZeroVector;
+	}	// Epic's warp rig places the weapon on the eye line, which is the aimed pose. Hip fire slides the
+	// local body right and down from there, and the root also carries the cosmetic motion.
+	WeaponVisualDefinitions[0].HipViewmodelLocation=FVector(2,7,-5);
+	WeaponVisualDefinitions[1].HipViewmodelLocation=FVector(2,7,-5);
 	WeaponVisualDefinitions[1].HipViewmodelRotation = FRotator(0, 0, -2);
-	WeaponVisualDefinitions[2].HipViewmodelLocation = FVector::ZeroVector;
-	WeaponVisualDefinitions[3].HipViewmodelLocation = FVector::ZeroVector;
+	WeaponVisualDefinitions[2].HipViewmodelLocation = FVector(2,7,-5);
+	WeaponVisualDefinitions[3].HipViewmodelLocation = FVector(2,7,-5);
 	WeaponVisualDefinitions[3].HipViewmodelRotation = FRotator(0, 0, 2);
 	WeaponVisualDefinitions[0].FirstPersonScale=FVector(0.40f);
 	WeaponVisualDefinitions[1].FirstPersonScale=FVector(0.38f);

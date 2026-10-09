@@ -16,8 +16,8 @@ namespace
 	// Where the support hand holds the equipped firearm, in HandGrip_R socket space. Console variables
 	// so the fit can be tuned in a running session before the values are baked in.
 	static TAutoConsoleVariable<float> CVarLeftGripX(TEXT("ArenaDuel.Debug.LeftGripX"), 0.0f, TEXT("Support hand grip X in HandGrip_R space."));
-	static TAutoConsoleVariable<float> CVarLeftGripY(TEXT("ArenaDuel.Debug.LeftGripY"), 34.0f, TEXT("Support hand grip Y in HandGrip_R space."));
-	static TAutoConsoleVariable<float> CVarLeftGripZ(TEXT("ArenaDuel.Debug.LeftGripZ"), 6.0f, TEXT("Support hand grip Z in HandGrip_R space."));
+	static TAutoConsoleVariable<float> CVarLeftGripY(TEXT("ArenaDuel.Debug.LeftGripY"), 24.0f, TEXT("Support hand grip Y in HandGrip_R space."));
+	static TAutoConsoleVariable<float> CVarLeftGripZ(TEXT("ArenaDuel.Debug.LeftGripZ"), -4.0f, TEXT("Support hand grip Z in HandGrip_R space."));
 
 	struct FArenaDuelVisualPoseProxy : FAnimSingleNodeInstanceProxy
 	{

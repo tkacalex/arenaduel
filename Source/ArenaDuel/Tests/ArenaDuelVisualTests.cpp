@@ -64,11 +64,11 @@ namespace VisualSmoke
 			&& Arms->IsVisible() == Character->IsLocallyControlled() && FP->IsVisible() == Character->IsLocallyControlled()
 			&& TP->IsVisible() && FP->GetAttachParent() == Arms && TP->GetAttachParent() == Character->GetMesh()
 			&& Arms->GetCollisionEnabled() == ECollisionEnabled::NoCollision && TP->GetCollisionEnabled() == ECollisionEnabled::NoCollision
-			&& Cast<UArenaDuelVisualAnimInstance>(Arms->GetAnimInstance()) && Cast<UArenaDuelVisualAnimInstance>(Character->GetMesh()->GetAnimInstance());
+			&& Arms->GetAnimInstance() && Cast<UArenaDuelVisualAnimInstance>(Character->GetMesh()->GetAnimInstance());
 	}
 	bool Equipped(AArenaDuelCharacter* Character, int32 Index)
 	{
-		const TCHAR* Names[] = {TEXT("SM_ArcRifle"), TEXT("SM_ShadeSMG"), TEXT("SM_RuneDMR"), TEXT("SM_HexShotgun")};
+		const TCHAR* Names[] = {TEXT("SM_Rifle"), TEXT("SM_Rifle"), TEXT("SM_Rifle"), TEXT("SM_GrenadeLauncher")};
 		return Valid(Character) && static_cast<int32>(Character->GetWeaponComponent()->GetCurrentWeaponId()) == Index
 			&& Character->GetWeaponComponent()->GetThirdPersonWeaponMesh()->GetStaticMesh()->GetName() == Names[Index];
 	}
