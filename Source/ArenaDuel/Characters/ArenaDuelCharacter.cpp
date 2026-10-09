@@ -33,26 +33,6 @@
 #include "Net/UnrealNetwork.h"
 #include "UObject/ConstructorHelpers.h"
 
-namespace
-{
-	// Epic's first person setup: the local body is a second copy of the world body attached to it.
-	// ABP_FP_Copy copies the world pose and CtrlRig_FPWarp bends arms and weapon toward the camera.
-	// Also applied at BeginPlay so a Blueprint saved against an older viewmodel cannot undo it.
-	void ConfigureFirstPersonBody(USkeletalMeshComponent* Body, USkeletalMeshComponent* WorldBody, bool bAttach)
-	{
-		if (!Body || !WorldBody) return;
-		if (bAttach) Body->AttachToComponent(WorldBody, FAttachmentTransformRules::KeepRelativeTransform);
-		if (WorldBody->GetSkeletalMeshAsset() && Body->GetSkeletalMeshAsset() != WorldBody->GetSkeletalMeshAsset()) Body->SetSkeletalMesh(WorldBody->GetSkeletalMeshAsset());
-		Body->SetRelativeTransform(FTransform::Identity);
-		Body->SetBoundsScale(2.0f);
-		if (UClass* FirstPersonAnim = LoadClass<UAnimInstance>(nullptr, TEXT("/Game/FirstPerson/Anims/ABP_FP_Copy.ABP_FP_Copy_C")))
-		{
-			if (Body->GetAnimClass() != FirstPersonAnim) Body->SetAnimInstanceClass(FirstPersonAnim);
-		}
-		// The owner never sees the world body, but the first person copy reads its pose every frame.
-		WorldBody->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
-	}
-}
 AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<UArenaDuelCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
@@ -63,11 +43,17 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	FirstPersonViewmodelRoot = CreateDefaultSubobject<USceneComponent>(TEXT("FirstPersonViewmodelRoot"));
 	FirstPersonViewmodelRoot->SetupAttachment(FirstPersonCamera);
 	FirstPersonArms = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonArms"));
-	FirstPersonArms->SetupAttachment(GetMesh());
+	FirstPersonArms->SetupAttachment(FirstPersonViewmodelRoot);
 	FirstPersonArms->SetOnlyOwnerSee(true);
 	FirstPersonArms->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::FirstPerson;
 	FirstPersonArms->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FirstPersonArms->SetCastShadow(false);
+	// Use forearms and hands only, with the elbow cut kept outside the viewmodel frame.
+	FirstPersonArms->SetRelativeLocation(FVector(20.0f, 0.0f, -90.0f));
+	// Match Manny's measured +Y body basis to the camera's +X forward axis.
+	FirstPersonArms->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
+	// Keep both gloved hands and the forearms prominent in the first-person view.
+	FirstPersonArms->SetRelativeScale3D(FVector(0.70f));
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> Manny(TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"));
 	GetMesh()->SetSkeletalMesh(Manny.Object);
 	GetMesh()->SetRelativeLocation(FVector(0, 0, -GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()));
@@ -77,14 +63,13 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	GetMesh()->SetOwnerNoSee(true);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GetMesh()->SetAnimInstanceClass(UArenaDuelVisualAnimInstance::StaticClass());
-	// The local view is the same full humanoid body, so arms, shoulders and torso are closed geometry.
-	FirstPersonArms->SetSkeletalMesh(Manny.Object);
-	ConfigureFirstPersonBody(FirstPersonArms, GetMesh(), false);
+	static ConstructorHelpers::FObjectFinder<USkeletalMesh> Arms(TEXT("/Game/ArenaDuel/Characters/Common/SKM_ArenaDuelFPSArms"));
+	if (Arms.Succeeded()) FirstPersonArms->SetSkeletalMesh(Arms.Object);
+	FirstPersonArms->SetAnimInstanceClass(UArenaDuelVisualAnimInstance::StaticClass());
 	FirstPersonCamera->bEnableFirstPersonFieldOfView = true;
 	FirstPersonCamera->bEnableFirstPersonScale = true;
-	// Epic's first person template values: a 70 degree viewmodel lens and a body shrunk toward the eye.
-	FirstPersonCamera->FirstPersonFieldOfView = 70.0f;
-	FirstPersonCamera->FirstPersonScale = 0.6f;
+	FirstPersonCamera->FirstPersonFieldOfView = 94.0f;
+	FirstPersonCamera->FirstPersonScale = 0.82f;
 	for (const TCHAR* Path : { TEXT("/Game/ArenaDuel/Characters/Common/M_ShadowArmor"), TEXT("/Game/ArenaDuel/Characters/Common/M_WardenArmor"), TEXT("/Game/ArenaDuel/Characters/Common/M_RiftArmor") })
 		ArchetypeArmorMaterials.Add(LoadObject<UMaterialInterface>(nullptr, Path));
 	CyanVisualMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneCyan"));
@@ -156,9 +141,6 @@ void AArenaDuelCharacter::BeginPlay()
 	{
 		CameraBaseRelativeLocation = FirstPersonCamera->GetRelativeLocation();
 	}
-	ConfigureFirstPersonBody(FirstPersonArms, GetMesh(), true);
-	FirstPersonCamera->FirstPersonFieldOfView = 70.0f;
-	FirstPersonCamera->FirstPersonScale = 0.6f;
 	RefreshCharacterVisuals();
 	// A duel has two pawns, so each must replicate shots and death to the other from any position.
 	if (HasAuthority()) bAlwaysRelevant = true;
@@ -215,17 +197,6 @@ void AArenaDuelCharacter::UpdateLocalMovementCamera(float DeltaSeconds)
 	FVector CameraLocation = CameraBaseRelativeLocation;
 	CameraLocation.Z += CrouchEyeOffset - SlideCameraExtraDrop * SlideCameraBlend;
 	FirstPersonCamera->SetRelativeLocation(CameraLocation);
-
-	// Epic's warp rig assumes the eye sits on the first person head socket at the template's camera
-	// offset. The gameplay camera stays on the capsule, so the local body is slid under it instead,
-	// carrying the cosmetic viewmodel motion (recoil push, bob, landing) with it.
-	if (FirstPersonArms && FirstPersonArms->DoesSocketExist(TEXT("head")))
-	{
-		const FVector SocketEye = FirstPersonArms->GetSocketTransform(TEXT("head")).TransformPosition(FVector(-2.8f, 5.89f, 0.0f));
-		FVector Delta = FirstPersonCamera->GetComponentLocation() - SocketEye;
-		if (FirstPersonViewmodelRoot) Delta += FirstPersonCamera->GetComponentTransform().TransformVectorNoScale(FirstPersonViewmodelRoot->GetRelativeLocation());
-		if (!Delta.ContainsNaN() && Delta.SizeSquared() < FMath::Square(300.0f)) FirstPersonArms->AddWorldOffset(Delta);
-	}
 }
 
 void AArenaDuelCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
@@ -514,7 +485,6 @@ void AArenaDuelCharacter::UpdateLocalDeathCamera()
 void AArenaDuelCharacter::ApplyDevelopmentDeathPose()
 {
 	// The anim instance plays the authored death clip on the world body and holds its last frame.
-	// The mesh keeps its living offset, so movement corrections can no longer stand a corpse up.
 	FirstPersonArms->SetVisibility(false);
 	if (bDeathPresentationLatched) return;
 	bDeathPresentationLatched = true;

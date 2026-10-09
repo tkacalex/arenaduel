@@ -64,11 +64,11 @@ namespace VisualSmoke
 			&& Arms->IsVisible() == Character->IsLocallyControlled() && FP->IsVisible() == Character->IsLocallyControlled()
 			&& TP->IsVisible() && FP->GetAttachParent() == Arms && TP->GetAttachParent() == Character->GetMesh()
 			&& Arms->GetCollisionEnabled() == ECollisionEnabled::NoCollision && TP->GetCollisionEnabled() == ECollisionEnabled::NoCollision
-			&& Arms->GetAnimInstance() && Cast<UArenaDuelVisualAnimInstance>(Character->GetMesh()->GetAnimInstance());
+			&& Cast<UArenaDuelVisualAnimInstance>(Arms->GetAnimInstance()) && Cast<UArenaDuelVisualAnimInstance>(Character->GetMesh()->GetAnimInstance());
 	}
 	bool Equipped(AArenaDuelCharacter* Character, int32 Index)
 	{
-		const TCHAR* Names[] = {TEXT("SM_Rifle"), TEXT("SM_Rifle"), TEXT("SM_Rifle"), TEXT("SM_GrenadeLauncher")};
+		const TCHAR* Names[] = {TEXT("SM_ArcRifle"), TEXT("SM_ShadeSMG"), TEXT("SM_RuneDMR"), TEXT("SM_HexShotgun")};
 		return Valid(Character) && static_cast<int32>(Character->GetWeaponComponent()->GetCurrentWeaponId()) == Index
 			&& Character->GetWeaponComponent()->GetThirdPersonWeaponMesh()->GetStaticMesh()->GetName() == Names[Index];
 	}
@@ -83,7 +83,7 @@ bool FArenaDuelVisualContract::RunTest(const FString& Parameters)
 	const auto* BlueprintDefaults = BlueprintClass ? BlueprintClass->GetDefaultObject<AArenaDuelCharacter>() : nullptr;
 	TestTrue(TEXT("Saved Blueprint inherits body and first-person mesh"), BlueprintDefaults && BlueprintDefaults->GetMesh()->GetSkeletalMeshAsset() && BlueprintDefaults->GetFirstPersonArms()->GetSkeletalMeshAsset());
 	TestNotNull(TEXT("Compatible skeletal first-person mesh"), Character->GetFirstPersonArms()->GetSkeletalMeshAsset());
-	TestTrue(TEXT("First person uses the full humanoid body"), Character->GetFirstPersonArms()->GetSkeletalMeshAsset() && Character->GetFirstPersonArms()->GetSkeletalMeshAsset() == Character->GetMesh()->GetSkeletalMeshAsset());
+	TestTrue(TEXT("First person uses the dedicated forearm and hand mesh"), Character->GetFirstPersonArms()->GetSkeletalMeshAsset() && Character->GetFirstPersonArms()->GetSkeletalMeshAsset()->GetName() == TEXT("SKM_ArenaDuelFPSArms"));
 	TestTrue(TEXT("Primitives no longer render"), Character->BodyVisual->bHiddenInGame && Character->HeadVisual->bHiddenInGame);
 	TestTrue(TEXT("Body/arms visibility separated"), VisualSmoke::Flag(Character->GetMesh(), TEXT("bOwnerNoSee")) && VisualSmoke::Flag(Character->GetFirstPersonArms(), TEXT("bOnlyOwnerSee")));
 	TestEqual(TEXT("Body hit extent unchanged"), Character->BodyHitZone->GetUnscaledBoxExtent(), FVector(38,38,70));
@@ -150,18 +150,14 @@ NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 			.UntilClient(TEXT("Each weapon ADS keeps muzzle in front and aligned"),0,[](auto& S){
 				const auto* C=Pawn(S.World,true);
 				const auto* Gun=C ? C->GetWeaponComponent()->GetFirstPersonWeaponMesh() : nullptr;
-				if(!C || !Gun || !Gun->GetStaticMesh()) return false;
-				// Epic's firearms carry no muzzle socket, so the barrel is the mesh's longest local axis.
+				if(!C || !Gun || !Gun->GetStaticMesh() || !Gun->GetStaticMesh()->FindSocket(TEXT("Muzzle"))) return false;
 				const FTransform CameraTransform=C->GetFirstPersonCamera()->GetComponentTransform();
 				const FVector GripView=CameraTransform.InverseTransformPosition(Gun->GetComponentLocation());
-				const FVector Extent=Gun->GetStaticMesh()->GetBounds().BoxExtent;
-				const EAxis::Type BarrelAxis=Extent.X>=Extent.Y && Extent.X>=Extent.Z ? EAxis::X : Extent.Y>=Extent.Z ? EAxis::Y : EAxis::Z;
-				const FVector Barrel=Gun->GetComponentTransform().GetUnitAxis(BarrelAxis);
+				const FVector MuzzleView=CameraTransform.InverseTransformPosition(Gun->GetSocketLocation(TEXT("Muzzle")));
 				return C->GetWeaponComponent()->IsAiming()
 					&& FMath::IsNearlyEqual(C->GetFirstPersonCamera()->FieldOfView,C->GetWeaponComponent()->GetCurrentDefinition().AimFOV,0.1f)
-					// The warp rig angles the rifle toward the screen centre, so allow a wide cone.
-					&& FMath::Abs(FVector::DotProduct(Barrel,CameraTransform.GetUnitAxis(EAxis::X)))>0.75f
-					&& GripView.X>0.0f;
+					&& FVector::DotProduct(Gun->GetForwardVector(),CameraTransform.GetUnitAxis(EAxis::X))>0.98f
+					&& MuzzleView.X>GripView.X+10.0f;
 			},FTimespan::FromSeconds(4))
 			.ThenClient(TEXT("Return this weapon from ADS to its exact hip transform"),0,[](auto& S){ Pawn(S.World,true)->GetWeaponComponent()->StopAim(); })
 			.UntilClient(TEXT("Hip transform and FOV restore without drift"),0,[](auto& S){
@@ -194,15 +190,12 @@ NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 		.UntilClient(TEXT("Fresh client arms and opponent weapon without manual switch"),0,[](auto& S){return Pawn(S.World,true)!=S.PreviousPawn.Get() && Equipped(Pawn(S.World,true),0) && Equipped(Pawn(S.World,false),0);},FTimespan::FromSeconds(8))
 		.ThenClient(TEXT("Report evaluated pose and attachment"),0,[this](auto& S){
 			const auto* C=Pawn(S.World,true);
-			// The first person body copies the world body's clip through Epic's copy pose graph.
-			auto* Anim=Cast<UArenaDuelVisualAnimInstance>(C->GetMesh()->GetAnimInstance());
-			if (!C->GetFirstPersonArms()->GetAnimInstance() || !Anim || !Anim->GetAnimationAsset()) TestRunner->AddError(TEXT("First person pose did not evaluate"));
+			const auto* Anim=Cast<UArenaDuelVisualAnimInstance>(C->GetFirstPersonArms()->GetAnimInstance());
+			if (!Anim || !Anim->GetAnimationAsset()) TestRunner->AddError(TEXT("First person pose did not evaluate"));
 			const auto* Gun=C->GetWeaponComponent()->GetFirstPersonWeaponMesh();
 			const FVector ViewLocation = C->GetFirstPersonCamera()->GetComponentTransform().InverseTransformPosition(Gun->GetComponentLocation());
-			const FVector Extent=Gun->GetStaticMesh() ? Gun->GetStaticMesh()->GetBounds().BoxExtent : FVector(1,0,0);
-			const EAxis::Type BarrelAxis=Extent.X>=Extent.Y && Extent.X>=Extent.Z ? EAxis::X : Extent.Y>=Extent.Z ? EAxis::Y : EAxis::Z;
-			const float ForwardDot = FMath::Abs(FVector::DotProduct(Gun->GetComponentTransform().GetUnitAxis(BarrelAxis),C->GetFirstPersonCamera()->GetForwardVector()));
-			if (ForwardDot < 0.75f || ViewLocation.X < 10 || ViewLocation.X > 100 || FMath::Abs(ViewLocation.Y) > 40)
+			const float ForwardDot = FVector::DotProduct(Gun->GetForwardVector(),C->GetFirstPersonCamera()->GetForwardVector());
+			if (ForwardDot < 0.98f || ViewLocation.X < 10 || ViewLocation.X > 100 || FMath::Abs(ViewLocation.Y) > 40)
 				TestRunner->AddError(FString::Printf(TEXT("Evaluated viewmodel is not in front of camera: forwardDot=%.3f viewLocation=(%.1f, %.1f, %.1f) gunYaw=%.1f cameraYaw=%.1f"), ForwardDot, ViewLocation.X, ViewLocation.Y, ViewLocation.Z, Gun->GetComponentRotation().Yaw, C->GetFirstPersonCamera()->GetComponentRotation().Yaw));
 		})
 		.ThenClient(TEXT("ADS keeps connected arm and gun hierarchy"),0,[](auto& S){ Pawn(S.World,true)->GetWeaponComponent()->StartAim(); })

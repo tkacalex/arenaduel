@@ -12,7 +12,6 @@
 #include "Components/PointLightComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundBase.h"
-#include "HAL/IConsoleManager.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/SceneComponent.h"
 #include "Camera/CameraComponent.h"
@@ -38,11 +37,6 @@ namespace
 		Velocity = (Velocity - Response * Step) * Decay;
 	}
 
-#if !UE_BUILD_SHIPPING
-	// Lets automation and tooling capture the aimed viewmodel without holding the aim input.
-	static TAutoConsoleVariable<int32> CVarForceAimPresentation(TEXT("ArenaDuel.Debug.ForceAimPresentation"), 0, TEXT("1 shows the local viewmodel in its aimed pose. Cosmetic only."));
-#endif
-
 	static TArray<FArenaDuelWeaponDefinition> MakeDefinitions()
 	{
 		FArenaDuelWeaponDefinition Arc;
@@ -50,18 +44,17 @@ namespace
 		Arc.DisplayName = TEXT("Arc Rifle");
 		Arc.AimSensitivityMultiplier = 0.75f;
 		Arc.BodyDamage = 27.0f; Arc.HeadshotMultiplier = 1.5f;
-		Arc.AimViewmodelLocation = FVector(0.0f, 0.0f, 0.0f);
 		FArenaDuelWeaponDefinition SMG = Arc;
 		SMG.Id = EArenaDuelWeaponId::ShadeSMG; SMG.DisplayName = TEXT("Shade SMG"); SMG.MagazineCapacity = 32; SMG.ReserveCapacity = 128; SMG.RoundsPerMinute = 900.0f; SMG.BaseSpreadDegrees = 0.65f; SMG.MovementSpreadDegrees = 1.8f;
-		SMG.AimFOV = 80.0f; SMG.AimSensitivityMultiplier = 0.80f; SMG.AimSpreadMultiplier = 0.75f; SMG.AimViewmodelLocation = FVector(0.0f, 0.0f, 0.0f);
+		SMG.AimFOV = 80.0f; SMG.AimSensitivityMultiplier = 0.80f; SMG.AimSpreadMultiplier = 0.75f; SMG.AimViewmodelLocation = FVector(48.0f, 3.0f, -13.0f);
 		SMG.BodyDamage = 20.0f; SMG.HeadshotMultiplier = 1.4f;
 		FArenaDuelWeaponDefinition DMR = Arc;
 		DMR.Id = EArenaDuelWeaponId::RuneDMR; DMR.DisplayName = TEXT("Rune DMR"); DMR.MagazineCapacity = 12; DMR.ReserveCapacity = 48; DMR.RoundsPerMinute = 280.0f; DMR.BaseSpreadDegrees = 0.08f; DMR.MovementSpreadDegrees = 0.55f; DMR.bAutomatic = false;
-		DMR.AimFOV = 68.0f; DMR.AimSensitivityMultiplier = 0.65f; DMR.AimSpreadMultiplier = 0.35f; DMR.AimViewmodelLocation = FVector(0.0f, 0.0f, 0.0f);
+		DMR.AimFOV = 68.0f; DMR.AimSensitivityMultiplier = 0.65f; DMR.AimSpreadMultiplier = 0.35f; DMR.AimViewmodelLocation = FVector(58.0f, 1.0f, -11.0f);
 		DMR.BodyDamage = 42.0f; DMR.HeadshotMultiplier = 1.6f;
 		FArenaDuelWeaponDefinition Shotgun = Arc;
 		Shotgun.Id = EArenaDuelWeaponId::HexShotgun; Shotgun.DisplayName = TEXT("Hex Shotgun"); Shotgun.MagazineCapacity = 6; Shotgun.ReserveCapacity = 30; Shotgun.RoundsPerMinute = 75.0f; Shotgun.BaseSpreadDegrees = 5.0f; Shotgun.MovementSpreadDegrees = 2.0f; Shotgun.Pellets = 8; Shotgun.bAutomatic = false;
-		Shotgun.AimFOV = 82.0f; Shotgun.AimSensitivityMultiplier = 0.80f; Shotgun.AimSpreadMultiplier = 0.85f; Shotgun.AimViewmodelLocation = FVector(0.0f, 0.0f, 0.0f);
+		Shotgun.AimFOV = 82.0f; Shotgun.AimSensitivityMultiplier = 0.80f; Shotgun.AimSpreadMultiplier = 0.85f; Shotgun.AimViewmodelLocation = FVector(45.0f, 4.0f, -15.0f);
 		Shotgun.BodyDamage = 11.0f; Shotgun.HeadshotMultiplier = 1.25f;
 		return { Arc, SMG, DMR, Shotgun };
 	}
@@ -95,24 +88,23 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 	ThirdPersonWeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	ThirdPersonWeaponMesh->SetOwnerNoSee(true);
 	ThirdPersonWeaponMesh->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::WorldSpaceRepresentation;
-	// Epic's template firearms are authored for Manny's HandGrip_R socket, so they snap on with no
-	// offset at full scale and line up with the rifle clips and the first person warp rig. Three
-	// weapons share the rifle model until each has its own mesh.
-	for (const TCHAR* Path : {TEXT("/Game/Weapons/Rifle/Meshes/SM_Rifle.SM_Rifle"), TEXT("/Game/Weapons/Rifle/Meshes/SM_Rifle.SM_Rifle"),
-		TEXT("/Game/Weapons/Rifle/Meshes/SM_Rifle.SM_Rifle"), TEXT("/Game/Weapons/GrenadeLauncher/Meshes/SM_GrenadeLauncher.SM_GrenadeLauncher")})
+	for (const TCHAR* Name : {TEXT("ArcRifle"), TEXT("ShadeSMG"), TEXT("RuneDMR"), TEXT("HexShotgun")})
 	{
 		FArenaDuelWeaponVisualDefinition Visual;
-		Visual.Mesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(Path));
-		Visual.ThirdPersonScale = FVector::OneVector;
-		Visual.LeftHandGripLocation = FVector(0.0f, 24.0f, -4.0f);
+		Visual.Mesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(FString::Printf(TEXT("/Game/ArenaDuel/Weapons/%s/SM_%s.SM_%s"), Name, Name, Name)));
+		// Generated firearm meshes use +X for muzzle forward. The measured rifle
+		// idle pose rotates HandGrip_R to -78.4 degrees after Manny's mesh basis
+		// correction, so this local yaw brings the muzzle back onto actor/camera +X.
+		// Keep FP and TP values independent because they use different parents.
+		Visual.FirstPersonGripRotation = FRotator(0.0f, 78.4f, 0.0f);
+		Visual.ThirdPersonGripRotation = FRotator(0.0f, 78.4f, 0.0f);
 		WeaponVisualDefinitions.Add(Visual);
-	}	// Epic's warp rig places the weapon on the eye line, which is the aimed pose. Hip fire slides the
-	// local body right and down from there, and the root also carries the cosmetic motion.
-	WeaponVisualDefinitions[0].HipViewmodelLocation=FVector(2,7,-5);
-	WeaponVisualDefinitions[1].HipViewmodelLocation=FVector(2,7,-5);
+	}
+	WeaponVisualDefinitions[0].HipViewmodelLocation=FVector(28,16,-40);
+	WeaponVisualDefinitions[1].HipViewmodelLocation=FVector(34,17,-39);
 	WeaponVisualDefinitions[1].HipViewmodelRotation = FRotator(0, 0, -2);
-	WeaponVisualDefinitions[2].HipViewmodelLocation = FVector(2,7,-5);
-	WeaponVisualDefinitions[3].HipViewmodelLocation = FVector(2,7,-5);
+	WeaponVisualDefinitions[2].HipViewmodelLocation = FVector(44,16,-39);
+	WeaponVisualDefinitions[3].HipViewmodelLocation = FVector(30,19,-42);
 	WeaponVisualDefinitions[3].HipViewmodelRotation = FRotator(0, 0, 2);
 	WeaponVisualDefinitions[0].FirstPersonScale=FVector(0.40f);
 	WeaponVisualDefinitions[1].FirstPersonScale=FVector(0.38f);
@@ -124,7 +116,7 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 	WeaponVisualDefinitions[1].LeftHandGripLocation=FVector(11,-5,-3);
 	WeaponVisualDefinitions[2].LeftHandGripLocation=FVector(27,-5,-3);
 	WeaponVisualDefinitions[3].LeftHandGripLocation=FVector(17,-6,-3);
-
+	for (FArenaDuelWeaponVisualDefinition& Visual : WeaponVisualDefinitions) Visual.ThirdPersonScale = FVector(0.75f);
 	// Visual alignment only; approved FOV, sensitivity, spread and recoil are unchanged.
 	for (auto& Definition : WeaponDefinitions) Definition.AimViewmodelLocation.Z -= 19.0f;
 }
@@ -457,8 +449,7 @@ void UArenaDuelWeaponComponent::MulticastShotFired_Implementation(const TArray<F
 	// The shooter sees the viewmodel gun, everyone else the world gun. Weapon meshes point +X at the muzzle.
 	const UStaticMeshComponent* Gun = Character->IsLocallyControlled() ? FirstPersonWeaponMesh : ThirdPersonWeaponMesh;
 	FVector Muzzle = Character->GetPawnViewLocation();
-	if (Gun && Gun->DoesSocketExist(TEXT("Muzzle"))) Muzzle = Gun->GetSocketLocation(TEXT("Muzzle"));
-	else if (Gun && Gun->GetStaticMesh())
+	if (Gun && Gun->GetStaticMesh())
 	{
 		const FBoxSphereBounds Bounds = Gun->GetStaticMesh()->GetBounds();
 		Muzzle = Gun->GetComponentTransform().TransformPosition(Bounds.Origin + FVector(Bounds.BoxExtent.X, 0.0f, 0.0f));
@@ -506,8 +497,7 @@ void UArenaDuelWeaponComponent::MulticastShotFired_Implementation(const TArray<F
 	}
 	if (FireSound) UGameplayStatics::PlaySoundAtLocation(this, FireSound, Muzzle, Character->IsLocallyControlled() ? 0.55f : 0.9f);
 }
-void UArenaDuelWeaponComponent::CompleteReload()
-{
+void UArenaDuelWeaponComponent::CompleteReload(){
 	FArenaDuelWeaponRuntimeState* State = GetMutableCurrentRuntimeState();
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress()) { bReloading = false; return; }
 	if (!State || !bReloading) return;
@@ -581,8 +571,9 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 	const auto& Visual = WeaponVisualDefinitions[EquippedWeaponIndex];
 	UStaticMesh* Mesh = Visual.Mesh.LoadSynchronous();
 	FirstPersonWeaponMesh->AttachToComponent(Character->GetFirstPersonArms(), FAttachmentTransformRules::KeepRelativeTransform, TEXT("HandGrip_R"));
-	// The first-person body is the same full-scale rig as the world body, so both guns share one grip fit.
-	FirstPersonWeaponMesh->SetAbsolute(false, false, false);
+	// Arm geometry is intentionally scaled independently from the weapon model.
+	// Preserve the per-weapon first-person scale instead of inheriting the arm scale.
+	FirstPersonWeaponMesh->SetAbsolute(false, false, true);
 	ThirdPersonWeaponMesh->AttachToComponent(Character->GetMesh(), FAttachmentTransformRules::KeepRelativeTransform, TEXT("HandGrip_R"));
 	for (auto* WeaponMesh : { FirstPersonWeaponMesh.Get(), ThirdPersonWeaponMesh.Get() })
 	{
@@ -591,11 +582,19 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 		if (!WeaponMesh->IsRegistered() && GetWorld() && !Character->HasAnyFlags(RF_ClassDefaultObject)) WeaponMesh->RegisterComponent();
 		WeaponMesh->SetStaticMesh(Mesh);
 		const bool bFirstPerson = WeaponMesh == FirstPersonWeaponMesh.Get();
-		WeaponMesh->SetRelativeLocation(Visual.ThirdPersonGripLocation);
-		WeaponMesh->SetRelativeRotation(Visual.ThirdPersonGripRotation);
-		WeaponMesh->SetRelativeScale3D(Visual.ThirdPersonScale);
+		WeaponMesh->SetRelativeLocation(bFirstPerson ? Visual.FirstPersonGripLocation : Visual.ThirdPersonGripLocation);
+		WeaponMesh->SetRelativeRotation(bFirstPerson ? Visual.FirstPersonGripRotation : Visual.ThirdPersonGripRotation);
+		WeaponMesh->SetRelativeScale3D(bFirstPerson ? Visual.FirstPersonScale : Visual.ThirdPersonScale);
+		if (WeaponBodyMaterial) for (int32 I=0;I<WeaponMesh->GetNumMaterials();++I) WeaponMesh->SetMaterial(I,WeaponBodyMaterial);
 	}
-	FirstPersonWeaponMesh->SetRelativeScale3D(Visual.ThirdPersonScale);
+	const AArenaDuelPlayerState* Player=Character->GetPlayerState<AArenaDuelPlayerState>();
+	UMaterialInterface* Accent=Player && Player->GetCharacterArchetype()==EArenaDuelCharacterArchetype::Warden?WeaponAccentCyan.Get():WeaponAccentViolet.Get();
+	if(Accent)
+	{
+		if(FirstPersonWeaponMesh->GetNumMaterials()>1)FirstPersonWeaponMesh->SetMaterial(1,Accent);
+		if(ThirdPersonWeaponMesh->GetNumMaterials()>1)ThirdPersonWeaponMesh->SetMaterial(1,Accent);
+	}
+	FirstPersonWeaponMesh->SetRelativeScale3D(Visual.FirstPersonScale);
 	ThirdPersonWeaponMesh->SetRelativeScale3D(Visual.ThirdPersonScale);
 	FirstPersonWeaponMesh->SetVisibility(Character->IsLocallyControlled() && !Character->IsDead());
 	ThirdPersonWeaponMesh->SetVisibility(true);
@@ -641,11 +640,7 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 	const UArenaDuelCharacterMovementComponent* Movement = Character->GetArenaDuelMovementComponent();
 	const bool bSprint = Movement && Movement->IsSprinting();
 	const bool bFalling = Movement && Movement->IsFalling();
-	bool bAimPresented = bAiming;
-#if !UE_BUILD_SHIPPING
-	bAimPresented |= CVarForceAimPresentation.GetValueOnGameThread() != 0;
-#endif
-	const float AimTarget = bAimPresented && !bSprint ? 1.0f : 0.0f;
+	const float AimTarget = bAiming && !bSprint ? 1.0f : 0.0f;
 	const float AimDecay = FMath::Exp(-FMath::Max(ViewmodelFeel.AimResponse, 0.01f) * DeltaSeconds);
 	const float MotionDecay = FMath::Exp(-FMath::Max(ViewmodelFeel.MotionResponse, 0.01f) * DeltaSeconds);
 	AimBlend = AimTarget + (AimBlend - AimTarget) * AimDecay;
