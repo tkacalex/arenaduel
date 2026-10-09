@@ -92,3 +92,5 @@ The weapon panel shows the item in hand (name, mode, ammo or flashbang count). A
 - The aim accuracy bonus fades in over `AimSettleSeconds` (0.12 s) after aiming begins, on the server too, instead of applying on the click. The spread values themselves (`BaseSpreadDegrees`, `MovementSpreadDegrees`, `AimSpreadMultiplier`) are unchanged.
 
 `ArenaDuel.Loadout.AimRules` checks the defaults. Holding the key through a reload or a switch was not tried with real input in a play session.
+
+- Mouse sensitivity while zoomed is each weapon's `AimSensitivityMultiplier` times `AimSensitivityScale` (0.85), so every weapon turns 15 percent slower in the zoom than before. The player's own ADS setting still applies on top.

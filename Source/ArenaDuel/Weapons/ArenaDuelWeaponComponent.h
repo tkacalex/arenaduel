@@ -261,7 +261,7 @@ public:
 	bool IsReloading() const { return bReloading; }
 	bool IsFireHeld() const { return bFireHeld; }
 	bool IsAiming() const { return bAiming; }
-	float GetAimSensitivityMultiplier() const { return GetCurrentDefinition().AimSensitivityMultiplier; }
+	float GetAimSensitivityMultiplier() const { return GetCurrentDefinition().AimSensitivityMultiplier * AimSensitivityScale; }
 	EArenaDuelShotResult GetLastShotResult() const { return LastShotResult; }
 	float GetLastShotDistance() const { return LastShotDistance; }
 	float GetLastShotAge() const;
@@ -342,6 +342,9 @@ protected:
 	bool bAimHeld = false;
 	float AimStartWorldTime = -1000.0f;
 	float AimBlockedUntilWorldTime = 0.0f;
+	/** Applied on top of every weapon's own aim sensitivity. Below 1 the mouse turns slower while zoomed. */
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon|Aim", meta = (ClampMin = "0.1", ClampMax = "2"))
+	float AimSensitivityScale = 0.85f;
 	/** Seconds until the aim accuracy bonus is fully in after aiming begins. */
 	UPROPERTY(EditDefaultsOnly, Category = "Weapon|Aim", meta = (ClampMin = "0"))
 	float AimSettleSeconds = 0.12f;
