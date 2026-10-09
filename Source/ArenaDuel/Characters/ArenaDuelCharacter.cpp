@@ -216,7 +216,8 @@ void AArenaDuelCharacter::RefreshCharacterVisuals()
 	HeadVisual->SetHiddenInGame(true);
 	GetMesh()->SetOwnerNoSee(true);
 	GetMesh()->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::WorldSpaceRepresentation;
-	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	// A corpse keeps the ragdoll collision it was given at death.
+	if (!bDead) GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FirstPersonArms->SetVisibility(IsLocallyControlled() && !bDead);
 	// Derived arm-only geometry retains the Epic skeleton, animation and grip socket.
 	const auto* State = GetPlayerState<AArenaDuelPlayerState>();
@@ -482,23 +483,54 @@ void AArenaDuelCharacter::UpdateLocalDeathCamera()
 	}
 }
 
+void AArenaDuelCharacter::RecordServerHit(const FVector& WorldLocation, const FVector& Direction)
+{
+	if (!HasAuthority() || bDead) return;
+	DeathHitLocation = WorldLocation;
+	DeathHitDirection = Direction.GetSafeNormal();
+}
+
 void AArenaDuelCharacter::ApplyDevelopmentDeathPose()
 {
-	// The anim instance plays the authored death clip on the world body and holds its last frame.
 	FirstPersonArms->SetVisibility(false);
 	if (bDeathPresentationLatched) return;
 	bDeathPresentationLatched = true;
-	GetMesh()->bPauseAnims = false;
 	if (WeaponComponent) WeaponComponent->RefreshWeaponVisual();
-	// Proxies may die mid network smoothing; hold the corpse on its living mesh offset from then on.
-	UpdateDevelopmentDeathPose();
-	if (GetWorld()) GetWorldTimerManager().SetTimer(DeathPoseTimer, this, &AArenaDuelCharacter::UpdateDevelopmentDeathPose, 0.05f, true);
+	StartDeathRagdoll();
 }
 
-void AArenaDuelCharacter::UpdateDevelopmentDeathPose()
+void AArenaDuelCharacter::StartDeathRagdoll()
 {
-	if (!GetMesh()) return;
-	GetMesh()->SetRelativeLocationAndRotation(LivingMeshRelativeLocation, LivingMeshRelativeRotation);
+	// The upright capsule and hit boxes would block the survivor and keep taking hits for a body on the floor.
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	BodyHitZone->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	HeadHitZone->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// Cosmetic and simulated locally on every machine that draws the body. The pawn is destroyed and
+	// respawned at the next round, which is the only reset the corpse needs.
+	USkeletalMeshComponent* Body = GetMesh();
+	if (!Body || !Body->GetPhysicsAsset() || GetNetMode() == NM_DedicatedServer) return;
+	const FVector CarriedVelocity = GetVelocity().GetClampedToMaxSize(600.0f);
+	Body->bPauseAnims = false;
+	Body->SetCollisionProfileName(TEXT("Ragdoll"));
+	Body->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	Body->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	Body->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+	Body->SetAllBodiesSimulatePhysics(true);
+	Body->SetSimulatePhysics(true);
+	Body->WakeAllRigidBodies();
+	Body->bBlendPhysics = true;
+	Body->SetAllPhysicsLinearVelocity(CarriedVelocity);
+	// One push at the wound in the shot direction. Kills without a recorded hit simply collapse.
+	constexpr float HitImpulse = 3500.0f;
+	if (!FVector(DeathHitDirection).IsNearlyZero()) Body->AddImpulseAtLocation(FVector(DeathHitDirection) * HitImpulse, FVector(DeathHitLocation));
+	if (GetWorld()) GetWorldTimerManager().SetTimer(DeathPoseTimer, this, &AArenaDuelCharacter::SettleDeathRagdoll, 4.0f, false);
+}
+
+void AArenaDuelCharacter::SettleDeathRagdoll()
+{
+	// Whatever is still twitching after the fall is put to rest so the body lies still.
+	if (USkeletalMeshComponent* Body = GetMesh()) Body->PutAllRigidBodiesToSleep();
 }
 void AArenaDuelCharacter::OnRep_Dead() { if (bDead) SetDeadState(); }
 
@@ -506,6 +538,8 @@ void AArenaDuelCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AArenaDuelCharacter, bDead);
+	DOREPLIFETIME(AArenaDuelCharacter, DeathHitLocation);
+	DOREPLIFETIME(AArenaDuelCharacter, DeathHitDirection);
 }
 
 UArenaDuelCharacterMovementComponent* AArenaDuelCharacter::GetArenaDuelMovementComponent() const

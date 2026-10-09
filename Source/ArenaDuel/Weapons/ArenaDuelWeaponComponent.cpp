@@ -430,6 +430,7 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 			if (AArenaDuelCharacter* Victim = Cast<AArenaDuelCharacter>(Hit.GetActor()))
 			{
 				const float Damage = Definition.BodyDamage * (Result == EArenaDuelShotResult::Head ? Definition.HeadshotMultiplier : 1.0f);
+				Victim->RecordServerHit(Hit.ImpactPoint, PelletDirection);
 				Victim->ApplyServerDamage(Damage);
 			}
 		}

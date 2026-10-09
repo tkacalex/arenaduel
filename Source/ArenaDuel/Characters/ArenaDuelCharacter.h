@@ -6,6 +6,7 @@
 #include "GameFramework/Character.h"
 #include "AbilitySystemInterface.h"
 #include "TimerManager.h"
+#include "Engine/NetSerialization.h"
 #include "ArenaDuelCharacter.generated.h"
 
 class UCameraComponent;
@@ -48,6 +49,8 @@ public:
 	float GetHealth() const;
 	float GetMaxHealth() const;
 	void ApplyServerDamage(float DamageAmount);
+	// Server only. Remembers where and from which direction the latest hit landed, for the death ragdoll push.
+	void RecordServerHit(const FVector& WorldLocation, const FVector& Direction);
 	void AdminSetHealth(float NewHealth);
 	void AdminKill();
 	void AdminResetPlayer();
@@ -120,7 +123,8 @@ protected:
 	void StartLocalDeathCamera();
 	void UpdateLocalDeathCamera();
 	void UpdateShadowStepCameraImpulse();
-	void UpdateDevelopmentDeathPose();
+	void StartDeathRagdoll();
+	void SettleDeathRagdoll();
 	FRotator GetThirdPersonMeshBaseRotation() const;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
@@ -186,6 +190,9 @@ protected:
 	bool bDead = false;
 
 	UFUNCTION() void OnRep_Dead();
+	// Replicated with bDead so every machine pushes its local ragdoll the same way.
+	UPROPERTY(Replicated) FVector_NetQuantize DeathHitLocation;
+	UPROPERTY(Replicated) FVector_NetQuantizeNormal DeathHitDirection;
 	void SetDeadState();
 
 	FTimerHandle LocalDeathCameraTimer;

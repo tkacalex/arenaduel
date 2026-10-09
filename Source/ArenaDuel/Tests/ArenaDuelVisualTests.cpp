@@ -22,13 +22,11 @@
 
 namespace VisualSmoke
 {
-	// The corpse plays the authored death clip on the unpaused world body.
+	// The corpse is a physics ragdoll on the world body.
 	bool PlaysDeath(const AArenaDuelCharacter* Character)
 	{
-		auto* Anim = Character ? Cast<UAnimSingleNodeInstance>(Character->GetMesh()->GetAnimInstance()) : nullptr;
-		return Anim && Anim->GetCurrentAsset() && Anim->GetCurrentAsset()->GetName().StartsWith(TEXT("MM_Death")) && !Character->GetMesh()->bPauseAnims;
-	}
-	bool Flag(const UPrimitiveComponent* Component, const TCHAR* Name)
+		return Character && Character->GetMesh()->IsSimulatingPhysics() && Character->GetMesh()->GetCollisionEnabled() != ECollisionEnabled::NoCollision;
+	}	bool Flag(const UPrimitiveComponent* Component, const TCHAR* Name)
 	{
 		const auto* Property = FindFProperty<FBoolProperty>(UPrimitiveComponent::StaticClass(), Name);
 		return Property && Property->GetPropertyValue_InContainer(Component);
@@ -207,20 +205,19 @@ NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 		.ThenClient(TEXT("Leave ADS"),0,[](auto& S){ Pawn(S.World,true)->GetWeaponComponent()->StopAim(); })
 		.UntilClient(TEXT("User-selected hip FOV restored"),0,[](auto& S){const auto* C=Pawn(S.World,true);const auto* Controller=VisualSmoke::PC(S.World);return C&&Controller&&FMath::IsNearlyEqual(C->GetFirstPersonCamera()->FieldOfView,Controller->GetLocalSettings().FOV,0.1f);},FTimespan::FromSeconds(4))
 		.ThenServer(TEXT("Death keeps skeletal presentation cosmetic"),[](auto& S){ S.DeathObservedAt=-1.0f; S.bDeathTransformCaptured=false; Pawn(S.World,false)->AdminKill(); })
-		.UntilClient(TEXT("Death hides own arms and plays the world death clip"),0,[](auto& S){
+		.UntilClient(TEXT("Death hides own arms and ragdolls the world body"),0,[](auto& S){
 			const auto* C=Pawn(S.World,true);
 			if(C && C->IsDead() && S.DeathObservedAt<0.0f)
 				S.DeathObservedAt=S.World->GetTimeSeconds();
 			const bool bFallen=C && C->IsDead() && VisualSmoke::PlaysDeath(C);
 			if(bFallen && !S.bDeathTransformCaptured) { S.DeathMeshRelativeTransform=C->GetMesh()->GetRelativeTransform(); S.bDeathTransformCaptured=true; }
 			return C && C->IsDead() && !C->GetFirstPersonArms()->IsVisible() && !C->GetWeaponComponent()->GetFirstPersonWeaponMesh()->IsVisible()
-				&& VisualSmoke::PlaysDeath(C) && bFallen && C->GetMesh()->GetCollisionEnabled()==ECollisionEnabled::NoCollision;
+				&& VisualSmoke::PlaysDeath(C) && bFallen;
 		},FTimespan::FromSeconds(2))
-		.UntilClient(TEXT("Client corpse remains dead and pose-latched for 2.8 seconds"),0,[](auto& S){
+		.UntilClient(TEXT("Client corpse remains a ragdoll for 2.8 seconds"),0,[](auto& S){
 			const auto* C=Pawn(S.World,true);
 			return C && C->IsDead() && VisualSmoke::PlaysDeath(C) && S.DeathObservedAt>=0.0f && S.bDeathTransformCaptured
-				&& S.World->GetTimeSeconds()-S.DeathObservedAt>=2.8f
-				&& C->GetMesh()->GetRelativeTransform().Equals(S.DeathMeshRelativeTransform,0.1f);
+				&& S.World->GetTimeSeconds()-S.DeathObservedAt>=2.8f;
 		},FTimespan::FromSeconds(3.0))
 		.UntilClient(TEXT("Automatic next round restores own and opponent visuals"),0,[](auto& S){return Valid(Pawn(S.World,true)) && !Pawn(S.World,true)->IsDead() && Valid(Pawn(S.World,false));},FTimespan::FromSeconds(6))
 		.ThenServer(TEXT("Reverse the death direction by killing the listen-server pawn"),[](auto& S){ S.DeathObservedAt=-1.0f; S.bDeathTransformCaptured=false; Pawn(S.World,true)->AdminKill(); })
@@ -232,11 +229,10 @@ NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 			if(bFallen && !S.bDeathTransformCaptured) { S.DeathMeshRelativeTransform=C->GetMesh()->GetRelativeTransform(); S.bDeathTransformCaptured=true; }
 			return C && C->IsDead() && VisualSmoke::PlaysDeath(C) && bFallen;
 		},FTimespan::FromSeconds(2))
-		.UntilClient(TEXT("Remote host corpse remains pose-latched for 2.8 seconds"),0,[](auto& S){
+		.UntilClient(TEXT("Remote host corpse remains a ragdoll for 2.8 seconds"),0,[](auto& S){
 			const auto* C=Pawn(S.World,false);
 			return C && C->IsDead() && VisualSmoke::PlaysDeath(C) && S.DeathObservedAt>=0.0f && S.bDeathTransformCaptured
-				&& S.World->GetTimeSeconds()-S.DeathObservedAt>=2.8f
-				&& C->GetMesh()->GetRelativeTransform().Equals(S.DeathMeshRelativeTransform,0.1f);
+				&& S.World->GetTimeSeconds()-S.DeathObservedAt>=2.8f;
 		},FTimespan::FromSeconds(3.0))
 		.UntilClient(TEXT("Final round restart replaces the reverse-direction corpse"),0,[](auto& S){return Valid(Pawn(S.World,true)) && !Pawn(S.World,true)->IsDead() && Valid(Pawn(S.World,false)) && !Pawn(S.World,false)->IsDead();},FTimespan::FromSeconds(6));
 	}

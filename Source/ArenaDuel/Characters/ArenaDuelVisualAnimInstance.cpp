@@ -137,29 +137,16 @@ UArenaDuelVisualAnimInstance::UArenaDuelVisualAnimInstance()
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> RunAsset(TEXT("/Game/Characters/Mannequins/Anims/Rifle/Jog/MF_Rifle_Jog_Fwd"));
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> FallAsset(TEXT("/Game/Characters/Mannequins/Anims/Rifle/Jump/MM_Rifle_Jump_Fall_Loop"));
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> ReloadAsset(TEXT("/Game/Characters/Mannequins/Anims/Rifle/MM_Rifle_Reload"));
-	static ConstructorHelpers::FObjectFinder<UAnimSequence> DeathAsset(TEXT("/Game/Characters/Mannequins/Anims/Death/MM_Death_Front_01"));
-	Idle = IdleAsset.Object; Walk = WalkAsset.Object; Run = RunAsset.Object; Fall = FallAsset.Object; Reload = ReloadAsset.Object; Death = DeathAsset.Object;
+	Idle = IdleAsset.Object; Walk = WalkAsset.Object; Run = RunAsset.Object; Fall = FallAsset.Object; Reload = ReloadAsset.Object;
 	SetRootMotionMode(ERootMotionMode::IgnoreRootMotion);
 }
 
 void UArenaDuelVisualAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 {
 	const auto* Character = Cast<AArenaDuelCharacter>(GetOwningActor());
-	if (!Character) { SetPlaying(false); return; }
-	// Death is latched: the world body plays one authored fall and holds its last frame.
-	// Normal clip selection must never restart locomotion on a corpse.
-	if (Character->IsDead())
-	{
-		if (Death && GetSkelMeshComponent() == Character->GetMesh())
-		{
-			if (GetCurrentAsset() != Death) { SetAnimationAsset(Death, false); SetPlayRate(1.0f); SetPlaying(true); }
-			Super::NativeUpdateAnimation(DeltaSeconds);
-		}
-		else SetPlaying(false);
-		return;
-	}
-	Super::NativeUpdateAnimation(DeltaSeconds);
-	const bool bFirstPerson = GetSkelMeshComponent() == Character->GetFirstPersonArms();
+	// Death hands the world body to ragdoll physics. Clip selection must never restart on a corpse.
+	if (!Character || Character->IsDead()) { SetPlaying(false); return; }
+	Super::NativeUpdateAnimation(DeltaSeconds);	const bool bFirstPerson = GetSkelMeshComponent() == Character->GetFirstPersonArms();
 	const float Speed = Character->GetVelocity().Size2D();
 	UAnimSequence* Desired = Idle;
 	if (!bFirstPerson && Character->GetArenaDuelMovementComponent() && Character->GetArenaDuelMovementComponent()->IsSliding()) Desired = Idle;
