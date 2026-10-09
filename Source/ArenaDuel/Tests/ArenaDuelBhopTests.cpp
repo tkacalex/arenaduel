@@ -46,7 +46,12 @@ bool FArenaDuelBhopAirStrafeTest::RunTest(const FString& Parameters)
 	// Sloppy strafing: sideways held without turning the view.
 	Velocity = Running;
 	for (int32 Index = 0; Index < 60 * 5; ++Index) Velocity = Strafe(Velocity, FVector::YAxisVector);
-	TestTrue(TEXT("Holding a strafe key without turning gains almost nothing"), Velocity.Size() < 905.0);
+	TestTrue(TEXT("Holding a strafe key without turning gains almost nothing"), Velocity.Size() < 910.0);
+	// The gain per second must not depend on the frame rate: the same second at 30 and at 120 steps.
+	FVector Slow = Running, Fast = Running;
+	for (int32 Index = 0; Index < 30; ++Index) Slow = UArenaDuelCharacterMovementComponent::ComputeAirStrafe(Slow, FVector(-Slow.Y, Slow.X, 0.0), Cap, Accel, Max, 1.0f / 30.0f);
+	for (int32 Index = 0; Index < 120; ++Index) Fast = UArenaDuelCharacterMovementComponent::ComputeAirStrafe(Fast, FVector(-Fast.Y, Fast.X, 0.0), Cap, Accel, Max, 1.0f / 120.0f);
+	TestTrue(TEXT("A second of strafing gains about the same at 30 and at 120 steps"), FMath::Abs(Slow.Size() - Fast.Size()) < 3.0);
 	// Speed from somewhere else, above the limit, is not cut by the strafe step.
 	const FVector Dashing(3000.0, 0.0, 0.0);
 	TestTrue(TEXT("Speed above the limit is not reduced by strafing"), Strafe(Dashing, FVector::YAxisVector).Size() >= 3000.0 - 0.01);

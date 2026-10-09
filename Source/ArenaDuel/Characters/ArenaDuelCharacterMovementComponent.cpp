@@ -602,9 +602,10 @@ FVector UArenaDuelCharacterMovementComponent::ComputeAirStrafe(const FVector& In
 	const FVector Direction = WishDirection.GetSafeNormal2D();
 	if (Direction.IsNearlyZero() || DeltaTime <= 0.0f) return Horizontal;
 	const double SpeedBefore = Horizontal.Size();
-	const double AddSpeed = WishSpeedCap - FVector::DotProduct(Horizontal, Direction);
-	if (AddSpeed <= 0.0) return Horizontal;
-	Horizontal += Direction * FMath::Min(static_cast<double>(AccelerationPerSecond * DeltaTime), AddSpeed);
+	if (FVector::DotProduct(Horizontal, Direction) >= WishSpeedCap) return Horizontal;
+	// The whole step is added while the velocity along the wish is inside the window. Clipping the step at
+	// the window edge, as Source does, would tie the gain per second to the frame rate.
+	Horizontal += Direction * (AccelerationPerSecond * DeltaTime);
 	const double Limit = FMath::Max(static_cast<double>(MaxGainSpeed), SpeedBefore);
 	if (Horizontal.Size() > Limit) Horizontal = Horizontal.GetSafeNormal() * Limit;
 	return Horizontal;

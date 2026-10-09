@@ -35,7 +35,7 @@ All are `EditDefaultsOnly` properties of the movement component.
 
 Jump height and gravity are the engine properties `JumpZVelocity` and `GravityScale` on the same component. They were not changed.
 
-With these values a strafe at the best angle gains roughly 100 per second at sprint speed and needs the view to turn at about 95 degrees per second; a strafe held exactly sideways to the travel direction gains about 20 per second. Those figures are calculated from the step.
+Unlike Source, the step is not clipped at the edge of the strafe window, so the gain per second does not depend on the frame rate. With these values a strafe at a good angle gains roughly 60 per second at sprint speed and needs the view to turn at about 95 degrees per second. Those figures are calculated from the step; the measured ones are under Tests.
 
 ## Camera and animation
 
