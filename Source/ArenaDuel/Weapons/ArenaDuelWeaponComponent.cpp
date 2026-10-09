@@ -88,7 +88,8 @@ namespace
 		FArenaDuelWeaponDefinition DMR = Arc;
 		DMR.Id = EArenaDuelWeaponId::RuneDMR; DMR.DisplayName = TEXT("Rune DMR"); DMR.MagazineCapacity = 12; DMR.ReserveCapacity = 48; DMR.RoundsPerMinute = 280.0f; DMR.BaseSpreadDegrees = 0.08f; DMR.MovementSpreadDegrees = 0.55f; DMR.bAutomatic = false;
 		DMR.AimFOV = 68.0f; DMR.AimSensitivityMultiplier = 0.65f; DMR.AimSpreadMultiplier = 0.35f; DMR.AimViewmodelLocation = FVector(58.0f, 1.0f, -11.0f);
-		DMR.BodyDamage = 42.0f; DMR.HeadshotMultiplier = 1.6f;
+		// A head shot with the marksman rifle kills from full health: 42 x 2.5 = 105.
+		DMR.BodyDamage = 42.0f; DMR.HeadshotMultiplier = 2.5f;
 		FArenaDuelWeaponDefinition Shotgun = Arc;
 		Shotgun.Id = EArenaDuelWeaponId::HexShotgun; Shotgun.DisplayName = TEXT("Hex Shotgun"); Shotgun.MagazineCapacity = 6; Shotgun.ReserveCapacity = 30; Shotgun.RoundsPerMinute = 75.0f; Shotgun.BaseSpreadDegrees = 5.0f; Shotgun.MovementSpreadDegrees = 2.0f; Shotgun.Pellets = 8; Shotgun.bAutomatic = false;
 		Shotgun.AimFOV = 82.0f; Shotgun.AimSensitivityMultiplier = 0.80f; Shotgun.AimSpreadMultiplier = 0.85f; Shotgun.AimViewmodelLocation = FVector(45.0f, 4.0f, -15.0f);

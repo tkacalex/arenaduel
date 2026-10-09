@@ -1,6 +1,7 @@
 #if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS
 
 #include "Misc/AutomationTest.h"
+#include "ArenaDuel/Characters/ArenaDuelCharacter.h"
 #include "ArenaDuel/Weapons/ArenaDuelFlashbang.h"
 #include "ArenaDuel/Weapons/ArenaDuelWeaponComponent.h"
 #include "ArenaDuel/Player/ArenaDuelPlayerState.h"
@@ -69,6 +70,21 @@ bool FArenaDuelAimRulesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("The aim bonus comes in over a short, non-zero time"), Settle && *Settle > 0.0f && *Settle <= 0.3f);
 	TestEqual(TEXT("Not aiming gives no aim bonus"), Weapons->GetAimAccuracyAlpha(), 0.0f);
 	TestFalse(TEXT("No aim key is held by default"), Weapons->IsAimHeld());
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelSniperHeadshotTest, "ArenaDuel.Loadout.SniperHeadshotKills", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FArenaDuelSniperHeadshotTest::RunTest(const FString& Parameters)
+{
+	// Read from the player Blueprint, not the native class, so a saved override in the asset cannot hide a wrong value.
+	const UClass* CharacterClass = LoadClass<AArenaDuelCharacter>(nullptr, TEXT("/Game/ArenaDuel/Characters/BP_ArenaDuelCharacter.BP_ArenaDuelCharacter_C"));
+	const AArenaDuelCharacter* Defaults = CharacterClass ? Cast<AArenaDuelCharacter>(CharacterClass->GetDefaultObject()) : nullptr;
+	const UArenaDuelWeaponComponent* Weapons = Defaults ? Defaults->GetWeaponComponent() : nullptr;
+	if (!TestNotNull(TEXT("Weapon component of the player Blueprint"), Weapons)) return false;
+	const FArenaDuelWeaponDefinition* Sniper = Weapons->GetWeaponDefinition(static_cast<int32>(EArenaDuelWeaponId::RuneDMR));
+	if (!TestNotNull(TEXT("Rune DMR definition"), Sniper)) return false;
+	const float MaxHealth = 100.0f;
+	TestTrue(FString::Printf(TEXT("A Rune DMR head shot kills from full health (%.0f damage)"), Sniper->BodyDamage * Sniper->HeadshotMultiplier), Sniper->BodyDamage * Sniper->HeadshotMultiplier >= MaxHealth);
+	TestTrue(TEXT("A body shot does not"), Sniper->BodyDamage < MaxHealth);
 	return true;
 }
 #endif

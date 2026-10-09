@@ -94,3 +94,5 @@ The weapon panel shows the item in hand (name, mode, ammo or flashbang count). A
 `ArenaDuel.Loadout.AimRules` checks the defaults. Holding the key through a reload or a switch was not tried with real input in a play session.
 
 - Mouse sensitivity while zoomed is each weapon's `AimSensitivityMultiplier` times `AimSensitivityScale` (0.85), so every weapon turns 15 percent slower in the zoom than before. The player's own ADS setting still applies on top.
+
+- The Rune DMR's `HeadshotMultiplier` is 2.5 (was 1.6): a head shot does 105 and kills from full health; body 42 and limb 34 are unchanged. `ArenaDuel.Loadout.SniperHeadshotKills` checks it on the player Blueprint.
