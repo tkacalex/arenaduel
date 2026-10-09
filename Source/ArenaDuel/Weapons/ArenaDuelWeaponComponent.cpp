@@ -205,11 +205,46 @@ FVector UArenaDuelWeaponComponent::GetTracerStart() const
 	return Muzzle;
 }
 
+UStaticMeshComponent* UArenaDuelWeaponComponent::AcquireTracerMesh(UMaterialInterface* Material)
+{
+	for (UStaticMeshComponent* Pooled : TracerPool)
+	{
+		if (Pooled && !Pooled->IsVisible())
+		{
+			if (Material && Pooled->GetMaterial(0) != Material) Pooled->SetMaterial(0, Material);
+			return Pooled;
+		}
+	}
+	// A shotgun shows eight at once; beyond that extra tracers are simply skipped.
+	constexpr int32 MaxPooledTracers = 16;
+	UStaticMesh* Cylinder = TracerPool.Num() < MaxPooledTracers ? LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder")) : nullptr;
+	if (!Cylinder || !GetWorld()) return nullptr;
+	UStaticMeshComponent* Created = NewObject<UStaticMeshComponent>(GetOwner());
+	Created->SetStaticMesh(Cylinder);
+	if (Material) Created->SetMaterial(0, Material);
+	Created->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Created->SetGenerateOverlapEvents(false);
+	Created->SetCastShadow(false);
+	Created->bAffectDynamicIndirectLighting = false;
+	Created->bAffectDistanceFieldLighting = false;
+	Created->SetVisibility(false);
+	Created->RegisterComponentWithWorld(GetWorld());
+	TracerPool.Add(Created);
+	return Created;
+}
+
 void UArenaDuelWeaponComponent::UpdateTracers()
 {
-	if (ActiveTracers.Num() == 0) return;
 	const UWorld* World = GetWorld();
 	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	if (MuzzleFlashLight && MuzzleFlashLight->IsVisible() && Now >= MuzzleFlashOffWorldTime) MuzzleFlashLight->SetVisibility(false);
+	const bool bFlashOn = MuzzleFlashLight && MuzzleFlashLight->IsVisible();
+	if (ActiveTracers.Num() == 0)
+	{
+		const AArenaDuelCharacter* IdleOwner = Cast<AArenaDuelCharacter>(GetOwner());
+		if (!bFlashOn && !(IdleOwner && IdleOwner->IsLocallyControlled() && !IdleOwner->IsDead())) SetComponentTickEnabled(false);
+		return;
+	}
 	const FVector Start = GetTracerStart();
 	for (int32 Index = ActiveTracers.Num() - 1; Index >= 0; --Index)
 	{
@@ -219,14 +254,14 @@ void UArenaDuelWeaponComponent::UpdateTracers()
 		const double Length = Delta.Size();
 		if (!Mesh || Now >= Tracer.ExpireWorldTime || Length < 1.0)
 		{
-			if (Mesh) Mesh->DestroyComponent();
+			if (Mesh) Mesh->SetVisibility(false);
 			ActiveTracers.RemoveAtSwap(Index);
 			continue;
 		}
 		Mesh->SetWorldTransform(FTransform(FRotationMatrix::MakeFromZ(Delta).ToQuat(), Start + Delta * 0.5, FVector(0.005, 0.005, Length / 100.0)));
 	}
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
-	if (ActiveTracers.Num() == 0 && !(Character && Character->IsLocallyControlled() && !Character->IsDead())) SetComponentTickEnabled(false);
+	if (ActiveTracers.Num() == 0 && !bFlashOn && !(Character && Character->IsLocallyControlled() && !Character->IsDead())) SetComponentTickEnabled(false);
 }
 
 bool UArenaDuelWeaponComponent::GetLeftHandGripWorldLocation(FVector& OutLocation) const
@@ -588,39 +623,36 @@ void UArenaDuelWeaponComponent::MulticastShotFired_Implementation(const TArray<F
 	const FVector Muzzle = GetTracerStart();
 	const AArenaDuelPlayerState* PlayerState = Character->GetPlayerState<AArenaDuelPlayerState>();
 	UMaterialInterface* Material = PlayerState && PlayerState->GetDuelSlot() == 1 ? WeaponAccentViolet.Get() : WeaponAccentCyan.Get();
-	auto ExpireAfter = [World](USceneComponent* Component, float Seconds)
-	{
-		FTimerHandle Handle;
-		World->GetTimerManager().SetTimer(Handle, FTimerDelegate::CreateWeakLambda(Component, [Component]() { Component->DestroyComponent(); }), Seconds, false);
-	};
-	UStaticMesh* Cylinder = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 	for (const FVector_NetQuantize& End : TraceEnds)
 	{
 		const FVector Delta = FVector(End) - Muzzle;
 		const double Length = Delta.Size();
-		if (!Cylinder || Length < 40.0) continue;
-		UStaticMeshComponent* Tracer = NewObject<UStaticMeshComponent>(GetOwner());
-		Tracer->SetStaticMesh(Cylinder);
-		if (Material) Tracer->SetMaterial(0, Material);
-		Tracer->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		Tracer->SetCastShadow(false);
+		UStaticMeshComponent* Tracer = Length >= 40.0 ? AcquireTracerMesh(Material) : nullptr;
+		if (!Tracer) continue;
 		Tracer->SetWorldTransform(FTransform(FRotationMatrix::MakeFromZ(Delta).ToQuat(), Muzzle + Delta * 0.5, FVector(0.005, 0.005, Length / 100.0)));
-		Tracer->RegisterComponentWithWorld(World);
+		Tracer->SetVisibility(true);
 		FActiveTracer& NewTracer = ActiveTracers.AddDefaulted_GetRef();
 		NewTracer.Mesh = Tracer;
 		NewTracer.End = FVector(End);
 		NewTracer.ExpireWorldTime = World->GetTimeSeconds() + CVarTracerSeconds.GetValueOnGameThread();
 	}
-	if (ActiveTracers.Num() > 0) SetComponentTickEnabled(true);
-	UPointLightComponent* Flash = NewObject<UPointLightComponent>(GetOwner());
-	Flash->SetWorldLocation(Muzzle);
-	Flash->SetIntensity(6000.0f);
-	Flash->SetAttenuationRadius(300.0f);
-	Flash->SetLightColor(FLinearColor(1.0f, 0.82f, 0.55f));
-	Flash->SetCastShadows(false);
-	Flash->RegisterComponentWithWorld(World);
-	ExpireAfter(Flash, 0.07f);
-	if (FireSound) UGameplayStatics::PlaySoundAtLocation(this, FireSound, Muzzle, Character->IsLocallyControlled() ? 0.55f : 0.9f);
+	// One reusable muzzle light per weapon: no shadows, no bounce lighting, just a blink.
+	if (!MuzzleFlashLight)
+	{
+		MuzzleFlashLight = NewObject<UPointLightComponent>(GetOwner());
+		MuzzleFlashLight->SetIntensity(6000.0f);
+		MuzzleFlashLight->SetAttenuationRadius(300.0f);
+		MuzzleFlashLight->SetLightColor(FLinearColor(1.0f, 0.82f, 0.55f));
+		MuzzleFlashLight->SetCastShadows(false);
+		MuzzleFlashLight->SetIndirectLightingIntensity(0.0f);
+		MuzzleFlashLight->SetVolumetricScatteringIntensity(0.0f);
+		MuzzleFlashLight->bAffectTranslucentLighting = false;
+		MuzzleFlashLight->RegisterComponentWithWorld(World);
+	}
+	MuzzleFlashLight->SetWorldLocation(Muzzle);
+	MuzzleFlashLight->SetVisibility(true);
+	MuzzleFlashOffWorldTime = World->GetTimeSeconds() + 0.07f;
+	SetComponentTickEnabled(true);	if (FireSound) UGameplayStatics::PlaySoundAtLocation(this, FireSound, Muzzle, Character->IsLocallyControlled() ? 0.55f : 0.9f);
 }
 void UArenaDuelWeaponComponent::CompleteReload(){
 	FArenaDuelWeaponRuntimeState* State = GetMutableCurrentRuntimeState();

@@ -374,6 +374,12 @@ protected:
 		float ExpireWorldTime = 0.0f;
 	};
 	TArray<FActiveTracer> ActiveTracers;
+	// Shot effects are created once and reused. Spawning and destroying render components per shot
+	// at automatic fire rates caused frame time spikes.
+	UPROPERTY(Transient) TArray<TObjectPtr<UStaticMeshComponent>> TracerPool;
+	UPROPERTY(Transient) TObjectPtr<class UPointLightComponent> MuzzleFlashLight;
+	float MuzzleFlashOffWorldTime = 0.0f;
+	UStaticMeshComponent* AcquireTracerMesh(UMaterialInterface* Material);
 	FVector GetTracerStart() const;
 	void UpdateTracers();
 

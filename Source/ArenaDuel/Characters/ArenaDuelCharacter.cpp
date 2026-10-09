@@ -545,6 +545,10 @@ void AArenaDuelCharacter::UpdateEnemyGlow()
 			Light->SetIntensity(EnemyGlowIntensity);
 			Light->SetAttenuationRadius(220.0f);
 			Light->SetCastShadows(false);
+			// Direct light on the body only: nothing for bounce lighting, fog or translucency to compute.
+			Light->SetIndirectLightingIntensity(0.0f);
+			Light->SetVolumetricScatteringIntensity(0.0f);
+			Light->bAffectTranslucentLighting = false;
 			Light->RegisterComponent();
 			EnemyGlowLights.Add(Light);
 		}
@@ -563,10 +567,16 @@ void AArenaDuelCharacter::ConfigureHitZoneCollision()
 	USkeletalMeshComponent* Body = GetMesh();
 	BodyHitZone->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	HeadHitZone->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Body->SetGenerateOverlapEvents(false);
+	if (!HasAuthority())
+	{
+		// Only the server resolves hits. Clients skip the physics bodies and the off-screen pose updates.
+		Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		return;
+	}
 	Body->SetCollisionObjectType(ECC_Pawn);
 	Body->SetCollisionResponseToAllChannels(ECR_Ignore);
 	Body->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	Body->SetGenerateOverlapEvents(false);
 	Body->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 	Body->bEnableUpdateRateOptimizations = false;
 }

@@ -106,7 +106,10 @@ void AArenaDuelFlashbang::MulticastDetonate_Implementation(FVector_NetQuantize L
 	Burst->SetIntensity(400000.0f);
 	Burst->SetAttenuationRadius(2600.0f);
 	Burst->SetLightColor(FLinearColor::White);
-	Burst->SetCastShadows(true);
+	// No shadow pass: a freshly spawned shadow-casting light costs a visible hitch for a 0.12 second blink.
+	Burst->SetCastShadows(false);
+	Burst->SetIndirectLightingIntensity(0.0f);
+	Burst->SetVolumetricScatteringIntensity(0.0f);
 	Burst->RegisterComponentWithWorld(World);
 	FTimerHandle Handle;
 	World->GetTimerManager().SetTimer(Handle, FTimerDelegate::CreateWeakLambda(Burst, [Burst]() { Burst->DestroyComponent(); }), 0.12f, false);
