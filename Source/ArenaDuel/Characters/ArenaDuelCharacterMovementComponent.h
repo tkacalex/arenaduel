@@ -54,6 +54,10 @@ public:
 	bool WantsWallJumpIntent() const { return bAdvancedWallJump; }
 
 	virtual float GetMaxSpeed() const override;
+	virtual float GetMaxAcceleration() const override;
+	virtual void CalcVelocity(float DeltaTime, float Friction, bool bFluid, float BrakingDeceleration) override;
+	/** Copies the ground and smoothing tunables below onto the engine movement properties. */
+	void ApplyGroundTuning();
 	virtual bool CanCrouchInCurrentState() const override;
 	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
 	virtual void UpdateFromCompressedFlags(uint8 Flags) override;
@@ -72,6 +76,45 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Ground")
 	float CrouchSpeed = 350.0f;
+
+	/** Acceleration on the ground while input is held. Higher reaches top speed sooner. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Ground", meta = (ClampMin = "0"))
+	float GroundAcceleration = 4200.0f;
+
+	/** Deceleration on the ground with no input. Higher stops sooner. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Ground", meta = (ClampMin = "0"))
+	float GroundBrakingDeceleration = 3400.0f;
+
+	/** How quickly velocity turns toward the input direction while moving. Higher removes sideways drift. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Ground", meta = (ClampMin = "0"))
+	float GroundTurnFriction = 11.0f;
+
+	/** Friction applied while stopping with no input. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Ground", meta = (ClampMin = "0"))
+	float GroundBrakingFriction = 9.0f;
+
+	/** Counter-strafing: extra deceleration applied to the part of the velocity that opposes the held input. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Ground", meta = (ClampMin = "0"))
+	float CounterStrafeDeceleration = 5200.0f;
+
+	/** Top speed multiplier while moving purely sideways. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Ground", meta = (ClampMin = "0.1", ClampMax = "1.5"))
+	float StrafeSpeedScale = 1.0f;
+
+	/** Top speed multiplier while moving purely backwards. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Ground", meta = (ClampMin = "0.1", ClampMax = "1.5"))
+	float BackwardSpeedScale = 1.0f;
+
+	/** Acceleration used for air control and every non-ground mode. Kept at the engine default so air tuning is unchanged. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Air", meta = (ClampMin = "0"))
+	float AirAcceleration = 2048.0f;
+
+	/** Seconds over which a remote player's position correction is blended. Lower shows fast strafes sooner, higher hides jitter. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Network", meta = (ClampMin = "0"))
+	float RemoteSmoothLocationTime = 0.07f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Network", meta = (ClampMin = "0"))
+	float RemoteSmoothRotationTime = 0.05f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
 	float SlideMinSpeed = 700.0f;

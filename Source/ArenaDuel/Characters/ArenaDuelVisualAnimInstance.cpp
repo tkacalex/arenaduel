@@ -20,6 +20,7 @@ namespace
 		float LeftHandIKBlend = 0;
 		FVector LeftGripInRightHand = FVector::ZeroVector;
 		bool bHasLeftGrip = false;
+		bool bAlignHead = false;
 		virtual void PreUpdate(UAnimInstance* Instance, float DeltaSeconds) override
 		{
 			FAnimSingleNodeInstanceProxy::PreUpdate(Instance, DeltaSeconds);
@@ -31,6 +32,7 @@ namespace
 			CrouchBlend = (bCrouchingBody ? 1.0f : 0.0f) + (CrouchBlend - (bCrouchingBody ? 1.0f : 0.0f)) * Decay;
 			SlideBlend = (bSlidingBody ? 1.0f : 0.0f) + (SlideBlend - (bSlidingBody ? 1.0f : 0.0f)) * Decay;
 			bHasLeftGrip = false;
+			bAlignHead = bThirdPersonBody && !Character->IsDead();
 			const USkeletalMeshComponent* Arms = Character ? Character->GetFirstPersonArms() : nullptr;
 			const UArenaDuelWeaponComponent* Weapon = Character ? Character->GetWeaponComponent() : nullptr;
 			if (Character && !Character->IsDead() && Arms && Instance->GetSkelMeshComponent() == Arms && Weapon)
@@ -49,6 +51,22 @@ namespace
 		virtual bool Evaluate(FPoseContext& Output) override
 		{
 			const bool bResult = FAnimSingleNodeInstanceProxy::Evaluate(Output);
+			// Peek fairness: the rifle clips lean the head ahead of the capsule, while the camera sits on
+			// the capsule axis. Sliding the world body back so the head stays over that axis means an
+			// opponent can see and hit a head only where its owner's camera can already see out.
+			if (bAlignHead)
+			{
+				const FBoneContainer& AlignBones = Output.Pose.GetBoneContainer();
+				const int32 HeadSkeletonIndex = AlignBones.GetReferenceSkeleton().FindBoneIndex(TEXT("head"));
+				const FCompactPoseBoneIndex HeadIndex = HeadSkeletonIndex == INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : AlignBones.MakeCompactPoseIndex(FMeshPoseBoneIndex(HeadSkeletonIndex));
+				if (HeadIndex.GetInt() != INDEX_NONE)
+				{
+					FCSPose<FCompactPose> AlignPose;
+					AlignPose.InitPose(Output.Pose);
+					const FVector Head = AlignPose.GetComponentSpaceTransform(HeadIndex).GetLocation();
+					if (!Head.ContainsNaN()) Output.Pose[FCompactPoseBoneIndex(0)].AddToTranslation(FVector(-Head.X, -Head.Y, 0.0f));
+				}
+			}
 			// Small visual crouch overlay, since the installed pack has no crouch clips.
 			// This never moves the capsule, changes hitboxes, or produces root motion.
 			if (CrouchBlend > KINDA_SMALL_NUMBER)
@@ -138,6 +156,15 @@ UArenaDuelVisualAnimInstance::UArenaDuelVisualAnimInstance()
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> FallAsset(TEXT("/Game/Characters/Mannequins/Anims/Rifle/Jump/MM_Rifle_Jump_Fall_Loop"));
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> ReloadAsset(TEXT("/Game/Characters/Mannequins/Anims/Rifle/MM_Rifle_Reload"));
 	Idle = IdleAsset.Object; Walk = WalkAsset.Object; Run = RunAsset.Object; Fall = FallAsset.Object; Reload = ReloadAsset.Object;
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> WalkBwd(TEXT("/Game/Characters/Mannequins/Anims/Rifle/Walk/MF_Rifle_Walk_Bwd"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> WalkLeft(TEXT("/Game/Characters/Mannequins/Anims/Rifle/Walk/MF_Rifle_Walk_Left"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> WalkRight(TEXT("/Game/Characters/Mannequins/Anims/Rifle/Walk/MF_Rifle_Walk_Right"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> RunBwd(TEXT("/Game/Characters/Mannequins/Anims/Rifle/Jog/MF_Rifle_Jog_Bwd"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> RunLeft(TEXT("/Game/Characters/Mannequins/Anims/Rifle/Jog/MF_Rifle_Jog_Left"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> RunRight(TEXT("/Game/Characters/Mannequins/Anims/Rifle/Jog/MF_Rifle_Jog_Right"));
+	// A missing directional clip falls back to the forward clip.
+	WalkClips[0] = Walk; WalkClips[1] = WalkBwd.Object ? WalkBwd.Object : Walk.Get(); WalkClips[2] = WalkLeft.Object ? WalkLeft.Object : Walk.Get(); WalkClips[3] = WalkRight.Object ? WalkRight.Object : Walk.Get();
+	RunClips[0] = Run; RunClips[1] = RunBwd.Object ? RunBwd.Object : Run.Get(); RunClips[2] = RunLeft.Object ? RunLeft.Object : Run.Get(); RunClips[3] = RunRight.Object ? RunRight.Object : Run.Get();
 	SetRootMotionMode(ERootMotionMode::IgnoreRootMotion);
 }
 
@@ -149,17 +176,41 @@ void UArenaDuelVisualAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	Super::NativeUpdateAnimation(DeltaSeconds);	const bool bFirstPerson = GetSkelMeshComponent() == Character->GetFirstPersonArms();
 	const float Speed = Character->GetVelocity().Size2D();
 	UAnimSequence* Desired = Idle;
+	bool bLocomotion = false;
+	bool bRunning = false;
 	if (!bFirstPerson && Character->GetArenaDuelMovementComponent() && Character->GetArenaDuelMovementComponent()->IsSliding()) Desired = Idle;
 	else if (Character->GetWeaponComponent() && Character->GetWeaponComponent()->IsReloading()) Desired = Reload;
 	else if (!bFirstPerson)
 	{
 		if (Character->GetCharacterMovement()->IsFalling()) Desired = Fall;
-		else if (Speed > 380.0f) Desired = Run;
-		else if (Speed > 10.0f) Desired = Walk;
+		else if (Speed > 10.0f)
+		{
+			// Pick the clip that matches the travel direction relative to the facing. The current
+			// direction gets a small bonus so diagonal movement does not flicker between two clips.
+			const FVector Local = Character->GetActorRotation().UnrotateVector(Character->GetVelocity());
+			const float Scores[4] = { static_cast<float>(Local.X), static_cast<float>(-Local.X), static_cast<float>(-Local.Y), static_cast<float>(Local.Y) };
+			int32 Best = MoveDirection;
+			for (int32 Direction = 0; Direction < 4; ++Direction)
+			{
+				if (Scores[Direction] > Scores[Best] + (Best == MoveDirection ? 0.15f * Speed : 0.0f)) Best = Direction;
+			}
+			MoveDirection = Best;
+			bLocomotion = true;
+			bRunning = Speed > 380.0f;
+			Desired = bRunning ? RunClips[MoveDirection].Get() : WalkClips[MoveDirection].Get();
+		}
 	}
-	if (Desired && GetCurrentAsset() != Desired) SetAnimationAsset(Desired, Desired != Reload);
-	SetPlaying(true);
-	// Slower stride for crouch, animation only. No movement tuning is changed.
+	if (Desired && GetCurrentAsset() != Desired)
+	{
+		// Switching between locomotion clips keeps the stride phase so a direction change does not restart the step.
+		const UAnimSequenceBase* Previous = Cast<UAnimSequenceBase>(GetCurrentAsset());
+		const bool bWasLocomotion = Previous && (WalkClips[0] == Previous || WalkClips[1] == Previous || WalkClips[2] == Previous || WalkClips[3] == Previous
+			|| RunClips[0] == Previous || RunClips[1] == Previous || RunClips[2] == Previous || RunClips[3] == Previous);
+		const float Phase = bWasLocomotion && Previous->GetPlayLength() > 0.0f ? FMath::Frac(GetCurrentTime() / Previous->GetPlayLength()) : 0.0f;
+		SetAnimationAsset(Desired, Desired != Reload);
+		if (bLocomotion && bWasLocomotion) SetPosition(Phase * Desired->GetPlayLength(), false);
+	}
+	SetPlaying(true);	// Slower stride for crouch, animation only. No movement tuning is changed.
 	const float ReloadRate = Reload && Character->GetWeaponComponent() ? Reload->GetPlayLength() / FMath::Max(Character->GetWeaponComponent()->GetCurrentDefinition().ReloadDuration, 0.1f) : 1.0f;
-	SetPlayRate(Desired == Reload ? ReloadRate : Desired == Walk || Desired == Run ? FMath::Clamp(Speed / (Desired == Run ? 600.0f : 200.0f), 0.4f, 1.8f) : 1.0f);
+	SetPlayRate(Desired == Reload ? ReloadRate : bLocomotion ? FMath::Clamp(Speed / (bRunning ? 600.0f : 200.0f), 0.4f, 1.8f) : 1.0f);
 }

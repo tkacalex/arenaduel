@@ -22,4 +22,8 @@ private:
 	UPROPERTY() TObjectPtr<UAnimSequence> Run;
 	UPROPERTY() TObjectPtr<UAnimSequence> Fall;
 	UPROPERTY() TObjectPtr<UAnimSequence> Reload;
+	// Directional locomotion: forward, backward, left, right.
+	UPROPERTY() TObjectPtr<UAnimSequence> WalkClips[4];
+	UPROPERTY() TObjectPtr<UAnimSequence> RunClips[4];
+	int32 MoveDirection = 0;
 };

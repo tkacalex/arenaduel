@@ -1123,4 +1123,69 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 	}
 };
 
+namespace ArenaDuelGroundFeelTests
+{
+	// Drives the character with one input direction at a fixed 120 Hz step and returns the seconds until Done is true.
+	template <typename TDone>
+	static float SimulateUntil(AArenaDuelCharacter* Character, UArenaDuelCharacterMovementComponent* Move, const FVector& Input, TDone Done, float MaxSeconds = 2.0f)
+	{
+		constexpr float Step = 1.0f / 120.0f;
+		float Elapsed = 0.0f;
+		while (Elapsed < MaxSeconds && !Done())
+		{
+			if (!Input.IsNearlyZero()) Character->AddMovementInput(Input, 1.0f);
+			Move->TickComponent(Step, LEVELTICK_All, nullptr);
+			Elapsed += Step;
+		}
+		return Elapsed;
+	}
+}
+
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelGroundFeelTuningTest, "ArenaDuel.GroundFeel.CentralTuning", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap);
+	AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnCharacter(GEditor->GetEditorWorldContext().World(), FVector::ZeroVector);
+	UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character);
+	TestNotNull(TEXT("Ground feel movement"), Move);
+	if (!Move) return true;
+	Move->SetMovementMode(MOVE_Walking);
+	TestEqual(TEXT("Walking uses the ground acceleration tunable"), Move->GetMaxAcceleration(), Move->GroundAcceleration);
+	TestEqual(TEXT("Braking deceleration follows its tunable"), Move->BrakingDecelerationWalking, Move->GroundBrakingDeceleration);
+	TestEqual(TEXT("Turn friction follows its tunable"), Move->GroundFriction, Move->GroundTurnFriction);
+	Move->SetMovementMode(MOVE_Falling);
+	TestEqual(TEXT("Air control keeps its own acceleration"), Move->GetMaxAcceleration(), Move->AirAcceleration);
+	TestEqual(TEXT("Remote smoothing follows its tunable"), Move->NetworkSimulatedSmoothLocationTime, Move->RemoteSmoothLocationTime);
+	return true;
+})
+
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelGroundFeelResponseTest, "ArenaDuel.GroundFeel.StartStopAndCounterStrafe", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap);
+	AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnCharacter(GEditor->GetEditorWorldContext().World(), FVector::ZeroVector);
+	UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character);
+	TestNotNull(TEXT("Ground feel movement"), Move);
+	if (!Move || !Character) return true;
+	using namespace ArenaDuelGroundFeelTests;
+	Move->bRunPhysicsWithNoController = true;
+	Move->SetMovementMode(MOVE_Walking);
+	const FVector Right = Character->GetActorRightVector();
+
+	const float StartSeconds = SimulateUntil(Character, Move, Right, [Move]() { return Move->Velocity.Size2D() >= 0.95f * Move->WalkSpeed; });
+	TestTrue(FString::Printf(TEXT("Strafe reaches 95 percent speed quickly (%.3f s)"), StartSeconds), StartSeconds <= 0.20f);
+
+	SimulateUntil(Character, Move, Right, [Move]() { return Move->Velocity.Size2D() >= 0.99f * Move->WalkSpeed; });
+	const FVector CounterStart = Character->GetActorLocation();
+	const float CounterSeconds = SimulateUntil(Character, Move, -Right, [Move, Right]() { return FVector::DotProduct(Move->Velocity, Right) <= 0.0f; });
+	const float CounterDistance = FVector::Dist2D(CounterStart, Character->GetActorLocation());
+	TestTrue(FString::Printf(TEXT("Counter-strafe kills sideways speed almost at once (%.3f s, %.1f cm)"), CounterSeconds, CounterDistance), CounterSeconds <= 0.09f && CounterDistance <= 25.0f);
+
+	const float ReverseSeconds = SimulateUntil(Character, Move, -Right, [Move, Right]() { return FVector::DotProduct(Move->Velocity, -Right) >= 0.95f * Move->WalkSpeed; });
+	TestTrue(FString::Printf(TEXT("Full reversal reaches top speed the other way quickly (%.3f s after the stop)"), ReverseSeconds), ReverseSeconds <= 0.22f);
+
+	const FVector ReleaseStart = Character->GetActorLocation();
+	const float ReleaseSeconds = SimulateUntil(Character, Move, FVector::ZeroVector, [Move]() { return Move->Velocity.Size2D() <= 5.0f; });
+	const float ReleaseDistance = FVector::Dist2D(ReleaseStart, Character->GetActorLocation());
+	TestTrue(FString::Printf(TEXT("Releasing input stops without a long slide (%.3f s, %.1f cm)"), ReleaseSeconds, ReleaseDistance), ReleaseSeconds <= 0.16f && ReleaseDistance <= 45.0f);
+	TestTrue(TEXT("Counter-strafing stops sooner than just letting go"), CounterSeconds < ReleaseSeconds);
+	AddInfo(FString::Printf(TEXT("Ground feel: start %.3f s, counter-strafe %.3f s / %.1f cm, reversal %.3f s, release %.3f s / %.1f cm"), StartSeconds, CounterSeconds, CounterDistance, ReverseSeconds, ReleaseSeconds, ReleaseDistance));
+	return true;
+})
 #endif

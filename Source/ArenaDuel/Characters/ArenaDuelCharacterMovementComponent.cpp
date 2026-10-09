@@ -122,6 +122,7 @@ UArenaDuelCharacterMovementComponent::UArenaDuelCharacterMovementComponent(const
 	MaxWalkSpeed = WalkSpeed;
 	MaxWalkSpeedCrouched = CrouchSpeed;
 	AirControl = AirControlTuning;
+	ApplyGroundTuning();
 	bCanWalkOffLedgesWhenCrouching = true;
 	NavAgentProps.bCanCrouch = true;
 	SetIsReplicatedByDefault(true);
@@ -183,21 +184,64 @@ void UArenaDuelCharacterMovementComponent::StopSlide()
 	}
 }
 
+void UArenaDuelCharacterMovementComponent::ApplyGroundTuning()
+{
+	BrakingDecelerationWalking = GroundBrakingDeceleration;
+	GroundFriction = GroundTurnFriction;
+	bUseSeparateBrakingFriction = true;
+	BrakingFriction = GroundBrakingFriction;
+	BrakingFrictionFactor = 1.0f;
+	NetworkSimulatedSmoothLocationTime = RemoteSmoothLocationTime;
+	NetworkSimulatedSmoothRotationTime = RemoteSmoothRotationTime;
+	ListenServerNetworkSimulatedSmoothLocationTime = RemoteSmoothLocationTime;
+	ListenServerNetworkSimulatedSmoothRotationTime = RemoteSmoothRotationTime;
+}
+
+float UArenaDuelCharacterMovementComponent::GetMaxAcceleration() const
+{
+	// Only walking gets the snappy ground value. Air control and custom modes keep their tuned feel.
+	return MovementMode == MOVE_Walking ? GroundAcceleration : AirAcceleration;
+}
+
+void UArenaDuelCharacterMovementComponent::CalcVelocity(float DeltaTime, float Friction, bool bFluid, float BrakingDeceleration)
+{
+	// Counter-strafing: velocity that runs against the held input is removed much faster than normal
+	// braking, so tapping the opposite key stops the player almost at once. It depends only on the
+	// velocity and acceleration of the move being simulated, so prediction and server replay agree.
+	if (MovementMode == MOVE_Walking && DeltaTime > 0.0f && !Acceleration.IsNearlyZero())
+	{
+		const FVector InputDirection = Acceleration.GetSafeNormal2D();
+		const float OpposingSpeed = -FVector::DotProduct(FVector(Velocity.X, Velocity.Y, 0.0f), InputDirection);
+		if (OpposingSpeed > 0.0f)
+		{
+			Velocity += InputDirection * FMath::Min(OpposingSpeed, CounterStrafeDeceleration * DeltaTime);
+		}
+	}
+	Super::CalcVelocity(DeltaTime, Friction, bFluid, BrakingDeceleration);
+}
+
 float UArenaDuelCharacterMovementComponent::GetMaxSpeed() const
 {
 	if (IsSliding())
 	{
 		return FMath::Max(SlideMinSpeed, Velocity.Size2D());
 	}
+	// Strafe and backpedal scales follow the held input, which is part of every saved move.
+	float DirectionScale = 1.0f;
+	if (UpdatedComponent && !Acceleration.IsNearlyZero() && IsMovingOnGround())
+	{
+		const FVector LocalInput = UpdatedComponent->GetComponentQuat().UnrotateVector(Acceleration.GetSafeNormal2D());
+		DirectionScale = 1.0f + FMath::Abs(LocalInput.Y) * (StrafeSpeedScale - 1.0f) + FMath::Max(-LocalInput.X, 0.0f) * (BackwardSpeedScale - 1.0f);
+	}
 	if (IsCrouching())
 	{
-		return CrouchSpeed;
+		return CrouchSpeed * DirectionScale;
 	}
 	if (bWantsSprint && IsMovingOnGround())
 	{
-		return SprintSpeed;
+		return SprintSpeed * DirectionScale;
 	}
-	return WalkSpeed;
+	return WalkSpeed * DirectionScale;
 }
 
 bool UArenaDuelCharacterMovementComponent::CanCrouchInCurrentState() const
@@ -293,6 +337,7 @@ void UArenaDuelCharacterMovementComponent::UpdateCharacterStateBeforeMovement(fl
 	MaxWalkSpeed = WalkSpeed;
 	MaxWalkSpeedCrouched = CrouchSpeed;
 	AirControl = AirControlTuning;
+	ApplyGroundTuning();
 	if (bSlideQueued)
 	{
 		SlideInputBufferRemaining = FMath::Max(0.0f, SlideInputBufferRemaining - DeltaSeconds);

@@ -131,6 +131,9 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
 	bReplicates = true;
 	bAlwaysRelevant = true;
+	// Two pawns cost almost nothing to send, and steady updates keep fast strafes in sync.
+	SetNetUpdateFrequency(100.0f);
+	SetMinNetUpdateFrequency(60.0f);
 }
 
 void AArenaDuelCharacter::BeginPlay()
