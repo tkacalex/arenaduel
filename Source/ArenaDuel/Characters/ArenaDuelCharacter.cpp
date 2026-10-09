@@ -35,23 +35,24 @@
 
 namespace
 {
-	// The animation pins the head joint to the component origin, so this offset is where that
-	// joint sits relative to the eye when aiming: it lines the rifle's sight up with the screen
-	// centre and keeps the torso behind the camera. Hip fire adds the per-weapon viewmodel offset.
-	// Full scale, with Manny's +Y forward turned onto the camera's +X. Also applied at BeginPlay
-	// so a Blueprint saved against the old forearm-only viewmodel cannot bring its transform back.
-	void ConfigureFirstPersonBody(USkeletalMeshComponent* Body, USkeletalMesh* Mesh)
+	// Epic's first person setup: the local body is a second copy of the world body attached to it.
+	// ABP_FP_Copy copies the world pose and CtrlRig_FPWarp bends arms and weapon toward the camera.
+	// Also applied at BeginPlay so a Blueprint saved against an older viewmodel cannot undo it.
+	void ConfigureFirstPersonBody(USkeletalMeshComponent* Body, USkeletalMeshComponent* WorldBody, bool bAttach)
 	{
-		if (!Body) return;
-		if (Mesh && Body->GetSkeletalMeshAsset() != Mesh) Body->SetSkeletalMesh(Mesh);
-		Body->SetRelativeLocation(FVector(4.0f, -2.2f, -3.5f));
-		Body->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
-		Body->SetRelativeScale3D(FVector::OneVector);
-		// The pinned pose sits a body height below the reference bounds, so widen them against culling.
-		Body->SetBoundsScale(4.0f);
+		if (!Body || !WorldBody) return;
+		if (bAttach) Body->AttachToComponent(WorldBody, FAttachmentTransformRules::KeepRelativeTransform);
+		if (WorldBody->GetSkeletalMeshAsset() && Body->GetSkeletalMeshAsset() != WorldBody->GetSkeletalMeshAsset()) Body->SetSkeletalMesh(WorldBody->GetSkeletalMeshAsset());
+		Body->SetRelativeTransform(FTransform::Identity);
+		Body->SetBoundsScale(2.0f);
+		if (UClass* FirstPersonAnim = LoadClass<UAnimInstance>(nullptr, TEXT("/Game/FirstPerson/Anims/ABP_FP_Copy.ABP_FP_Copy_C")))
+		{
+			if (Body->GetAnimClass() != FirstPersonAnim) Body->SetAnimInstanceClass(FirstPersonAnim);
+		}
+		// The owner never sees the world body, but the first person copy reads its pose every frame.
+		WorldBody->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 	}
 }
-
 AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<UArenaDuelCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
@@ -62,12 +63,11 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	FirstPersonViewmodelRoot = CreateDefaultSubobject<USceneComponent>(TEXT("FirstPersonViewmodelRoot"));
 	FirstPersonViewmodelRoot->SetupAttachment(FirstPersonCamera);
 	FirstPersonArms = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonArms"));
-	FirstPersonArms->SetupAttachment(FirstPersonViewmodelRoot);
+	FirstPersonArms->SetupAttachment(GetMesh());
 	FirstPersonArms->SetOnlyOwnerSee(true);
 	FirstPersonArms->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::FirstPerson;
 	FirstPersonArms->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FirstPersonArms->SetCastShadow(false);
-	ConfigureFirstPersonBody(FirstPersonArms, nullptr);
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> Manny(TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"));
 	GetMesh()->SetSkeletalMesh(Manny.Object);
 	GetMesh()->SetRelativeLocation(FVector(0, 0, -GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()));
@@ -79,12 +79,12 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	GetMesh()->SetAnimInstanceClass(UArenaDuelVisualAnimInstance::StaticClass());
 	// The local view is the same full humanoid body, so arms, shoulders and torso are closed geometry.
 	FirstPersonArms->SetSkeletalMesh(Manny.Object);
-	FirstPersonArms->SetAnimInstanceClass(UArenaDuelVisualAnimInstance::StaticClass());
+	ConfigureFirstPersonBody(FirstPersonArms, GetMesh(), false);
 	FirstPersonCamera->bEnableFirstPersonFieldOfView = true;
 	FirstPersonCamera->bEnableFirstPersonScale = true;
-	// A narrow viewmodel lens keeps the full-scale arms and rifle from stretching at the screen edge.
-	FirstPersonCamera->FirstPersonFieldOfView = 55.0f;
-	FirstPersonCamera->FirstPersonScale = 1.0f;
+	// Epic's first person template values: a 70 degree viewmodel lens and a body shrunk toward the eye.
+	FirstPersonCamera->FirstPersonFieldOfView = 70.0f;
+	FirstPersonCamera->FirstPersonScale = 0.6f;
 	for (const TCHAR* Path : { TEXT("/Game/ArenaDuel/Characters/Common/M_ShadowArmor"), TEXT("/Game/ArenaDuel/Characters/Common/M_WardenArmor"), TEXT("/Game/ArenaDuel/Characters/Common/M_RiftArmor") })
 		ArchetypeArmorMaterials.Add(LoadObject<UMaterialInterface>(nullptr, Path));
 	CyanVisualMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneCyan"));
@@ -156,9 +156,9 @@ void AArenaDuelCharacter::BeginPlay()
 	{
 		CameraBaseRelativeLocation = FirstPersonCamera->GetRelativeLocation();
 	}
-	ConfigureFirstPersonBody(FirstPersonArms, GetMesh()->GetSkeletalMeshAsset());
-	FirstPersonCamera->FirstPersonFieldOfView = 55.0f;
-	FirstPersonCamera->FirstPersonScale = 1.0f;
+	ConfigureFirstPersonBody(FirstPersonArms, GetMesh(), true);
+	FirstPersonCamera->FirstPersonFieldOfView = 70.0f;
+	FirstPersonCamera->FirstPersonScale = 0.6f;
 	RefreshCharacterVisuals();
 	// A duel has two pawns, so each must replicate shots and death to the other from any position.
 	if (HasAuthority()) bAlwaysRelevant = true;
