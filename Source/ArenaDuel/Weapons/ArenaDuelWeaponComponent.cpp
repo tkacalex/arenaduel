@@ -105,12 +105,12 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 		Visual.Mesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(Path));
 		Visual.ThirdPersonScale = FVector::OneVector;
 		WeaponVisualDefinitions.Add(Visual);
-	}	// Offsets of the whole first-person body from its aimed rest pose: forward, lowered and to the right for hip fire.
-	WeaponVisualDefinitions[0].HipViewmodelLocation=FVector(10,8.2,-4);
-	WeaponVisualDefinitions[1].HipViewmodelLocation=FVector(10,8.5,-4);
+	}	// Epic's warp rig places the weapon; the viewmodel root only adds cosmetic motion on top.
+	WeaponVisualDefinitions[0].HipViewmodelLocation=FVector::ZeroVector;
+	WeaponVisualDefinitions[1].HipViewmodelLocation=FVector::ZeroVector;
 	WeaponVisualDefinitions[1].HipViewmodelRotation = FRotator(0, 0, -2);
-	WeaponVisualDefinitions[2].HipViewmodelLocation = FVector(11,8,-4);
-	WeaponVisualDefinitions[3].HipViewmodelLocation = FVector(10,9,-4.5);
+	WeaponVisualDefinitions[2].HipViewmodelLocation = FVector::ZeroVector;
+	WeaponVisualDefinitions[3].HipViewmodelLocation = FVector::ZeroVector;
 	WeaponVisualDefinitions[3].HipViewmodelRotation = FRotator(0, 0, 2);
 	WeaponVisualDefinitions[0].FirstPersonScale=FVector(0.40f);
 	WeaponVisualDefinitions[1].FirstPersonScale=FVector(0.38f);

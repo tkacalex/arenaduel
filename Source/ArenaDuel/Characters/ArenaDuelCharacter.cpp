@@ -215,6 +215,17 @@ void AArenaDuelCharacter::UpdateLocalMovementCamera(float DeltaSeconds)
 	FVector CameraLocation = CameraBaseRelativeLocation;
 	CameraLocation.Z += CrouchEyeOffset - SlideCameraExtraDrop * SlideCameraBlend;
 	FirstPersonCamera->SetRelativeLocation(CameraLocation);
+
+	// Epic's warp rig assumes the eye sits on the first person head socket at the template's camera
+	// offset. The gameplay camera stays on the capsule, so the local body is slid under it instead,
+	// carrying the cosmetic viewmodel motion (recoil push, bob, landing) with it.
+	if (FirstPersonArms && FirstPersonArms->DoesSocketExist(TEXT("head")))
+	{
+		const FVector SocketEye = FirstPersonArms->GetSocketTransform(TEXT("head")).TransformPosition(FVector(-2.8f, 5.89f, 0.0f));
+		FVector Delta = FirstPersonCamera->GetComponentLocation() - SocketEye;
+		if (FirstPersonViewmodelRoot) Delta += FirstPersonCamera->GetComponentTransform().TransformVectorNoScale(FirstPersonViewmodelRoot->GetRelativeLocation());
+		if (!Delta.ContainsNaN() && Delta.SizeSquared() < FMath::Square(300.0f)) FirstPersonArms->AddWorldOffset(Delta);
+	}
 }
 
 void AArenaDuelCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)

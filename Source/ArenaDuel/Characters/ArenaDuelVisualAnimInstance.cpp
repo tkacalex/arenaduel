@@ -4,6 +4,7 @@
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimSingleNodeInstanceProxy.h"
 #include "TwoBoneIK.h"
+#include "HAL/IConsoleManager.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -12,6 +13,12 @@
 
 namespace
 {
+	// Where the support hand holds the equipped firearm, in HandGrip_R socket space. Console variables
+	// so the fit can be tuned in a running session before the values are baked in.
+	static TAutoConsoleVariable<float> CVarLeftGripX(TEXT("ArenaDuel.Debug.LeftGripX"), 0.0f, TEXT("Support hand grip X in HandGrip_R space."));
+	static TAutoConsoleVariable<float> CVarLeftGripY(TEXT("ArenaDuel.Debug.LeftGripY"), 34.0f, TEXT("Support hand grip Y in HandGrip_R space."));
+	static TAutoConsoleVariable<float> CVarLeftGripZ(TEXT("ArenaDuel.Debug.LeftGripZ"), 6.0f, TEXT("Support hand grip Z in HandGrip_R space."));
+
 	struct FArenaDuelVisualPoseProxy : FAnimSingleNodeInstanceProxy
 	{
 		using FAnimSingleNodeInstanceProxy::FAnimSingleNodeInstanceProxy;
@@ -32,20 +39,23 @@ namespace
 			CrouchBlend = (bCrouchingBody ? 1.0f : 0.0f) + (CrouchBlend - (bCrouchingBody ? 1.0f : 0.0f)) * Decay;
 			SlideBlend = (bSlidingBody ? 1.0f : 0.0f) + (SlideBlend - (bSlidingBody ? 1.0f : 0.0f)) * Decay;
 			bHasLeftGrip = false;
-			const USkeletalMeshComponent* Arms = Character ? Character->GetFirstPersonArms() : nullptr;
+			// The support hand is solved on the world body. The first person copy inherits it through
+			// Epic's copy pose graph, and opponents see the same grip.
+			const USkeletalMeshComponent* Body = Instance->GetSkelMeshComponent();
 			const UArenaDuelWeaponComponent* Weapon = Character ? Character->GetWeaponComponent() : nullptr;
-			if (Character && !Character->IsDead() && Arms && Instance->GetSkelMeshComponent() == Arms && Weapon)
+			bFirstPersonBody = false;
+			if (Character && !Character->IsDead() && Weapon && Body && Body == Character->GetMesh() && Body->DoesSocketExist(TEXT("HandGrip_R")))
 			{
-				FVector GripWorld;
-				const int32 RightHandIndex = Arms->GetBoneIndex(TEXT("hand_r"));
-				if (RightHandIndex != INDEX_NONE && Weapon->GetLeftHandGripWorldLocation(GripWorld))
+				const int32 RightHandIndex = Body->GetBoneIndex(TEXT("hand_r"));
+				if (RightHandIndex != INDEX_NONE)
 				{
-					LeftGripInRightHand = Arms->GetBoneTransform(RightHandIndex).InverseTransformPosition(GripWorld);
+					const FVector GripLocal(CVarLeftGripX.GetValueOnGameThread(), CVarLeftGripY.GetValueOnGameThread(), CVarLeftGripZ.GetValueOnGameThread());
+					const FVector GripWorld = Body->GetSocketTransform(TEXT("HandGrip_R")).TransformPosition(GripLocal);
+					LeftGripInRightHand = Body->GetBoneTransform(RightHandIndex).InverseTransformPosition(GripWorld);
 					bHasLeftGrip = !LeftGripInRightHand.ContainsNaN();
+					bFirstPersonBody = bHasLeftGrip;
 				}
-			}
-			bFirstPersonBody = Character && Arms && Instance->GetSkelMeshComponent() == Arms;
-			const float TargetBlend = bHasLeftGrip && Weapon && !Weapon->IsReloading() ? 1.0f : 0.0f;
+			}			const float TargetBlend = bHasLeftGrip && Weapon && !Weapon->IsReloading() ? 1.0f : 0.0f;
 			LeftHandIKBlend = TargetBlend + (LeftHandIKBlend - TargetBlend) * Decay;
 		}
 		virtual bool Evaluate(FPoseContext& Output) override
@@ -76,10 +86,8 @@ namespace
 					}
 				}
 			}
-			// True first person: the local player sees their own full body. The head joint is
-			// pinned to the component origin so the eye never bobs with the clip, and the head
-			// and legs are collapsed because the camera sits inside them.
-			if (bFirstPersonBody)
+			// Two bone IK that puts the support hand on the firearm held by the right hand.
+			if (bFirstPersonBody && bHasLeftGrip && LeftHandIKBlend > KINDA_SMALL_NUMBER)
 			{
 				const FBoneContainer& Bones = Output.Pose.GetBoneContainer();
 				const FReferenceSkeleton& RefSkeleton = Bones.GetReferenceSkeleton();
@@ -88,50 +96,36 @@ namespace
 					const int32 SkeletonIndex = RefSkeleton.FindBoneIndex(Name);
 					return SkeletonIndex == INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(SkeletonIndex));
 				};
-				const FCompactPoseBoneIndex HeadIndex = Compact(TEXT("head"));
 				const FCompactPoseBoneIndex UpperIndex = Compact(TEXT("upperarm_l"));
 				const FCompactPoseBoneIndex LowerIndex = Compact(TEXT("lowerarm_l"));
 				const FCompactPoseBoneIndex HandIndex = Compact(TEXT("hand_l"));
 				const FCompactPoseBoneIndex RightIndex = Compact(TEXT("hand_r"));
-				FVector HeadLocation = FVector::ZeroVector;
-				if (HeadIndex.GetInt() != INDEX_NONE)
+				if (UpperIndex.GetInt() != INDEX_NONE && LowerIndex.GetInt() != INDEX_NONE && HandIndex.GetInt() != INDEX_NONE && RightIndex.GetInt() != INDEX_NONE)
 				{
 					FCSPose<FCompactPose> ComponentPose;
 					ComponentPose.InitPose(Output.Pose);
-					HeadLocation = ComponentPose.GetComponentSpaceTransform(HeadIndex).GetLocation();
-					// The right hand drives the gun. The support target is stored in that
-					// hand's space so both hands use the same evaluated frame without lag.
-					if (bHasLeftGrip && LeftHandIKBlend > KINDA_SMALL_NUMBER && UpperIndex.GetInt() != INDEX_NONE && LowerIndex.GetInt() != INDEX_NONE && HandIndex.GetInt() != INDEX_NONE && RightIndex.GetInt() != INDEX_NONE)
+					const FVector Effector = ComponentPose.GetComponentSpaceTransform(RightIndex).TransformPosition(LeftGripInRightHand);
+					FTransform Upper = ComponentPose.GetComponentSpaceTransform(UpperIndex);
+					FTransform Lower = ComponentPose.GetComponentSpaceTransform(LowerIndex);
+					FTransform Hand = ComponentPose.GetComponentSpaceTransform(HandIndex);
+					const FTransform OriginalUpper = Upper, OriginalLower = Lower, OriginalHand = Hand;
+					// Component space: +X is the character's left, -Z is down. The support elbow hangs low and outward.
+					const FVector JointTarget = Lower.GetLocation() + FVector(25.0, -10.0, -40.0);
+					if (!Effector.ContainsNaN())
 					{
-						const FVector Effector = ComponentPose.GetComponentSpaceTransform(RightIndex).TransformPosition(LeftGripInRightHand);
-						FTransform Upper = ComponentPose.GetComponentSpaceTransform(UpperIndex);
-						FTransform Lower = ComponentPose.GetComponentSpaceTransform(LowerIndex);
-						FTransform Hand = ComponentPose.GetComponentSpaceTransform(HandIndex);
-						const FTransform OriginalUpper = Upper, OriginalLower = Lower, OriginalHand = Hand;
-						// Component space: +X is the character's left, -Z is down. The support elbow hangs low and outward.
-						const FVector JointTarget = Lower.GetLocation() + FVector(25.0, -10.0, -40.0);
-						if (!Effector.ContainsNaN() && !JointTarget.ContainsNaN())
+						AnimationCore::SolveTwoBoneIK(Upper, Lower, Hand, JointTarget, Effector, false, 1.0, 1.0);
+						if (!Upper.ContainsNaN() && !Lower.ContainsNaN() && !Hand.ContainsNaN())
 						{
-							AnimationCore::SolveTwoBoneIK(Upper, Lower, Hand, JointTarget, Effector, false, 1.0, 1.0);
-							if (!Upper.ContainsNaN() && !Lower.ContainsNaN() && !Hand.ContainsNaN())
-							{
-								FTransform BlendedUpper, BlendedLower, BlendedHand;
-								BlendedUpper.Blend(OriginalUpper, Upper, LeftHandIKBlend);
-								BlendedLower.Blend(OriginalLower, Lower, LeftHandIKBlend);
-								BlendedHand.Blend(OriginalHand, Hand, LeftHandIKBlend);
-								ComponentPose.SetComponentSpaceTransform(UpperIndex, BlendedUpper);
-								ComponentPose.SetComponentSpaceTransform(LowerIndex, BlendedLower);
-								ComponentPose.SetComponentSpaceTransform(HandIndex, BlendedHand);
-							}
+							FTransform BlendedUpper, BlendedLower, BlendedHand;
+							BlendedUpper.Blend(OriginalUpper, Upper, LeftHandIKBlend);
+							BlendedLower.Blend(OriginalLower, Lower, LeftHandIKBlend);
+							BlendedHand.Blend(OriginalHand, Hand, LeftHandIKBlend);
+							ComponentPose.SetComponentSpaceTransform(UpperIndex, BlendedUpper);
+							ComponentPose.SetComponentSpaceTransform(LowerIndex, BlendedLower);
+							ComponentPose.SetComponentSpaceTransform(HandIndex, BlendedHand);
+							FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(MoveTemp(ComponentPose), Output.Pose);
 						}
 					}
-					FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(MoveTemp(ComponentPose), Output.Pose);
-				}
-				if (!HeadLocation.ContainsNaN()) Output.Pose[FCompactPoseBoneIndex(0)].AddToTranslation(-HeadLocation);
-				for (const TCHAR* Name : {TEXT("neck_01"), TEXT("thigh_l"), TEXT("thigh_r")})
-				{
-					const FCompactPoseBoneIndex Index = Compact(Name);
-					if (Index.GetInt() != INDEX_NONE) Output.Pose[Index].SetScale3D(FVector::ZeroVector);
 				}
 			}
 			return bResult;
