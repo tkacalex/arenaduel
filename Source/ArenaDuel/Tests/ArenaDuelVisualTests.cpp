@@ -159,7 +159,8 @@ NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 				const FVector Barrel=Gun->GetComponentTransform().GetUnitAxis(BarrelAxis);
 				return C->GetWeaponComponent()->IsAiming()
 					&& FMath::IsNearlyEqual(C->GetFirstPersonCamera()->FieldOfView,C->GetWeaponComponent()->GetCurrentDefinition().AimFOV,0.1f)
-					&& FMath::Abs(FVector::DotProduct(Barrel,CameraTransform.GetUnitAxis(EAxis::X)))>0.9f
+					// The warp rig angles the rifle toward the screen centre, so allow a wide cone.
+					&& FMath::Abs(FVector::DotProduct(Barrel,CameraTransform.GetUnitAxis(EAxis::X)))>0.75f
 					&& GripView.X>0.0f;
 			},FTimespan::FromSeconds(4))
 			.ThenClient(TEXT("Return this weapon from ADS to its exact hip transform"),0,[](auto& S){ Pawn(S.World,true)->GetWeaponComponent()->StopAim(); })
