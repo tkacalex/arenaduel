@@ -75,6 +75,11 @@ void AArenaDuelMovementDebugHUD::DrawHUD()
 
 	const FVector2D Center(Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f);
 	const float Spread = Weapon ? Weapon->GetCurrentSpreadDegrees() : 0.0f;
+	// Flashbang: the whole view washes out to white and recovers. The HUD widgets stay readable on top.
+	if (const float Blind = Character ? Character->GetFlashBlindness() : 0.0f; Blind > 0.0f && Canvas)
+	{
+		DrawRect(FLinearColor(1.0f, 1.0f, 1.0f, FMath::Clamp(Blind, 0.0f, 1.0f)), 0.0f, 0.0f, Canvas->SizeX, Canvas->SizeY);
+	}
 	// Screen edge flash when the local player takes a hit: four thin red bands that fade within a third of a second.
 	if (const float Flash = Character ? Character->GetDamageFlash() : 0.0f; Flash > 0.0f && Canvas)
 	{

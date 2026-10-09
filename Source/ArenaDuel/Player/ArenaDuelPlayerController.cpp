@@ -314,7 +314,7 @@ void AArenaDuelPlayerController::ExecuteAdminCommandAuthoritatively(EArenaDuelAd
 		if (TargetCharacter && !TargetCharacter->IsDead()) TargetCharacter->AdminResetPlayer();
 		break;
 	case EArenaDuelAdminCommand::EquipWeapon:
-		if (TargetCharacter && TargetCharacter->GetWeaponComponent() && NumericValue >= 0.0f && NumericValue < 4.0f && FMath::IsNearlyEqual(NumericValue, static_cast<float>(FMath::RoundToInt(NumericValue)))) TargetCharacter->GetWeaponComponent()->EquipWeapon(FMath::RoundToInt(NumericValue));
+		if (TargetCharacter && TargetCharacter->GetWeaponComponent() && NumericValue >= 0.0f && NumericValue < 4.0f && FMath::IsNearlyEqual(NumericValue, static_cast<float>(FMath::RoundToInt(NumericValue)))) TargetCharacter->GetWeaponComponent()->GrantAllWeaponsForDevelopment(), TargetCharacter->GetWeaponComponent()->EquipWeapon(FMath::RoundToInt(NumericValue));
 		break;
 	case EArenaDuelAdminCommand::RefillAmmo:
 		if (TargetCharacter && TargetCharacter->GetWeaponComponent()) TargetCharacter->GetWeaponComponent()->RefillAllAmmoForDevelopment();

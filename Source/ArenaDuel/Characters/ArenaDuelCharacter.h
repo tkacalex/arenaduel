@@ -54,7 +54,13 @@ public:
 	// Line trace against the animated physics bodies of the world mesh. OutHit.BoneName names the body hit.
 	bool TraceHitZones(const FVector& Start, const FVector& End, FHitResult& OutHit) const;
 	/** 1 right after the local player took damage, fading to 0. Drives the screen edge flash. */
-	float GetDamageFlash() const;	void AdminSetHealth(float NewHealth);
+	float GetDamageFlash() const;
+	/** How white the local screen is from a flashbang right now, 0 to 1. */
+	float GetFlashBlindness() const;
+	/** Server to owner: a flashbang went off in view. */
+	UFUNCTION(Client, Reliable)
+	void ClientApplyFlash(float Strength, float Seconds);
+	void AdminSetHealth(float NewHealth);
 	void AdminKill();
 	void AdminResetPlayer();
 	void PlayShadowStepCameraImpulse();
@@ -118,6 +124,8 @@ protected:
 	void Weapon2Started();
 	void Weapon3Started();
 	void Weapon4Started();
+	void WeaponWheelUp();
+	void WeaponWheelDown();
 	void PrimaryAbilityStarted();
 	void SecondaryAbilityStarted();
 	void InitializeAbilityActorInfo();
@@ -201,6 +209,9 @@ protected:
 	float LastDamageWorldTime = -100.0f;
 	float LastDamageStrength = 0.0f;
 	float DamagePunchSign = 1.0f;
+	float FlashWorldTime = -100.0f;
+	float FlashStrength = 0.0f;
+	float FlashSeconds = 0.0f;
 
 	// Faint red rim lights that only light the opponent's body, never the arena.
 	UPROPERTY(Transient) TArray<TObjectPtr<class UPointLightComponent>> EnemyGlowLights;

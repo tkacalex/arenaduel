@@ -499,6 +499,26 @@ void AArenaDuelCharacter::ClientNotifyDamaged_Implementation(float DamageAmount)
 	DamagePunchSign = -DamagePunchSign;
 }
 
+void AArenaDuelCharacter::ClientApplyFlash_Implementation(float Strength, float Seconds)
+{
+	// A weaker flash never cuts a stronger one short.
+	if (GetFlashBlindness() > Strength) return;
+	FlashWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+	FlashStrength = FMath::Clamp(Strength, 0.0f, 1.0f);
+	FlashSeconds = FMath::Max(Seconds, 0.0f);
+}
+
+float AArenaDuelCharacter::GetFlashBlindness() const
+{
+	if (bDead || FlashSeconds <= 0.0f || !GetWorld()) return 0.0f;
+	const float Progress = (GetWorld()->GetTimeSeconds() - FlashWorldTime) / FlashSeconds;
+	if (Progress < 0.0f || Progress >= 1.0f) return 0.0f;
+	// Fully white for the first third, then a smooth recovery.
+	constexpr float Hold = 0.35f;
+	const float Fade = Progress <= Hold ? 1.0f : 1.0f - FMath::SmoothStep(0.0f, 1.0f, (Progress - Hold) / (1.0f - Hold));
+	return FlashStrength * Fade;
+}
+
 float AArenaDuelCharacter::GetDamageFlash() const
 {
 	constexpr float FlashSeconds = 0.3f;
@@ -753,6 +773,8 @@ void AArenaDuelCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 	if (Weapon2Action) EnhancedInputComponent->BindAction(Weapon2Action, ETriggerEvent::Started, this, &AArenaDuelCharacter::Weapon2Started);
 	if (Weapon3Action) EnhancedInputComponent->BindAction(Weapon3Action, ETriggerEvent::Started, this, &AArenaDuelCharacter::Weapon3Started);
 	if (Weapon4Action) EnhancedInputComponent->BindAction(Weapon4Action, ETriggerEvent::Started, this, &AArenaDuelCharacter::Weapon4Started);
+	PlayerInputComponent->BindKey(EKeys::MouseScrollUp, IE_Pressed, this, &AArenaDuelCharacter::WeaponWheelUp);
+	PlayerInputComponent->BindKey(EKeys::MouseScrollDown, IE_Pressed, this, &AArenaDuelCharacter::WeaponWheelDown);
 	PlayerInputComponent->BindKey(EKeys::Q, IE_Pressed, this, &AArenaDuelCharacter::PrimaryAbilityStarted);
 	PlayerInputComponent->BindKey(EKeys::E, IE_Pressed, this, &AArenaDuelCharacter::SecondaryAbilityStarted);
 }
@@ -918,7 +940,10 @@ void AArenaDuelCharacter::WeaponFireCompleted() { if (WeaponComponent) WeaponCom
 void AArenaDuelCharacter::AimStarted() { if (WeaponComponent) WeaponComponent->StartAim(); }
 void AArenaDuelCharacter::AimCompleted() { if (WeaponComponent) WeaponComponent->StopAim(); }
 void AArenaDuelCharacter::WeaponReloadStarted() { if (WeaponComponent) WeaponComponent->Reload(); }
-void AArenaDuelCharacter::Weapon1Started() { if (WeaponComponent) WeaponComponent->EquipWeapon(0); }
-void AArenaDuelCharacter::Weapon2Started() { if (WeaponComponent) WeaponComponent->EquipWeapon(1); }
-void AArenaDuelCharacter::Weapon3Started() { if (WeaponComponent) WeaponComponent->EquipWeapon(2); }
-void AArenaDuelCharacter::Weapon4Started() { if (WeaponComponent) WeaponComponent->EquipWeapon(3); }
+// 1 firearm, 2 flashbang, 3 knife. 4 and a second press of 1 swap the two firearms of the marksman loadout.
+void AArenaDuelCharacter::Weapon1Started() { if (WeaponComponent && CanProcessGameplayInput()) WeaponComponent->SelectSlot(EArenaDuelLoadoutSlot::Primary); }
+void AArenaDuelCharacter::Weapon2Started() { if (WeaponComponent && CanProcessGameplayInput()) WeaponComponent->SelectSlot(EArenaDuelLoadoutSlot::Flashbang); }
+void AArenaDuelCharacter::Weapon3Started() { if (WeaponComponent && CanProcessGameplayInput()) WeaponComponent->SelectSlot(EArenaDuelLoadoutSlot::Knife); }
+void AArenaDuelCharacter::Weapon4Started() { if (WeaponComponent && CanProcessGameplayInput()) WeaponComponent->CyclePrimaryFirearm(); }
+void AArenaDuelCharacter::WeaponWheelUp() { if (WeaponComponent && CanProcessGameplayInput()) WeaponComponent->CycleSlot(-1); }
+void AArenaDuelCharacter::WeaponWheelDown() { if (WeaponComponent && CanProcessGameplayInput()) WeaponComponent->CycleSlot(1); }

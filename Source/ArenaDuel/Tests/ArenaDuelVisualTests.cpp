@@ -127,7 +127,7 @@ NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 		.UntilClient(TEXT("Client observes round start"),0,[](auto& S){ return S.World->template GetGameState<AArenaDuelGameState>()->IsRoundInProgress() && Valid(Pawn(S.World,true)); },FTimespan::FromSeconds(5));
 		for (int32 Index=0; Index<4; ++Index)
 		{
-			Network.ThenServer(TEXT("Host switches visual weapon"), [Index](auto& S){ Pawn(S.World,true)->GetWeaponComponent()->EquipWeapon(Index); })
+			Network.ThenServer(TEXT("Host switches visual weapon"), [Index](auto& S){ for (bool Local : {true,false}) Pawn(S.World,Local)->GetWeaponComponent()->GrantAllWeaponsForDevelopment(); Pawn(S.World,true)->GetWeaponComponent()->EquipWeapon(Index); })
 			.ThenClient(TEXT("Client switches through normal weapon command"),0,[Index](auto& S){ Pawn(S.World,true)->GetWeaponComponent()->EquipWeapon(Index); })
 			.UntilServer(TEXT("Server has both weapon choices"),[Index](auto& S){ return Equipped(Pawn(S.World,true),Index) && Equipped(Pawn(S.World,false),Index); },FTimespan::FromSeconds(5))
 			.UntilClient(TEXT("Owner and remote held weapons converge"),0,[Index](auto& S){ return Equipped(Pawn(S.World,true),Index) && Equipped(Pawn(S.World,false),Index); },FTimespan::FromSeconds(5))

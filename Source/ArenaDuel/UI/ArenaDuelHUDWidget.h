@@ -53,6 +53,7 @@ protected:
 	UPROPERTY() TObjectPtr<UProgressBar> HealthBar;
 	UPROPERTY() TObjectPtr<UProgressBar> StaminaBar;
 	UPROPERTY() TObjectPtr<UTextBlock> WeaponName;
+	UPROPERTY() TObjectPtr<UTextBlock> SlotOverview;
 	UPROPERTY() TObjectPtr<UTextBlock> FireMode;
 	UPROPERTY() TObjectPtr<UTextBlock> MagazineAmmo;
 	UPROPERTY() TObjectPtr<UTextBlock> ReserveAmmo;

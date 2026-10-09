@@ -8,6 +8,7 @@
 #include "../Player/ArenaDuelPlayerState.h"
 #include "../Player/ArenaDuelPlayerController.h"
 #include "ArenaDuelWeaponTarget.h"
+#include "ArenaDuelFlashbang.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -95,6 +96,12 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 	PrimaryComponentTick.bStartWithTickEnabled = false;
 	SetIsReplicatedByDefault(true);
 	WeaponDefinitions = MakeDefinitions();
+	// One loadout per archetype, in enum order. Shadow: SMG. Warden: shotgun. Rift is the marksman
+	// and the only one with two firearms: the DMR and the Arc Rifle.
+	Loadouts.SetNum(3);
+	Loadouts[0].Firearms = { static_cast<uint8>(EArenaDuelWeaponId::ShadeSMG) };
+	Loadouts[1].Firearms = { static_cast<uint8>(EArenaDuelWeaponId::HexShotgun) };
+	Loadouts[2].Firearms = { static_cast<uint8>(EArenaDuelWeaponId::RuneDMR), static_cast<uint8>(EArenaDuelWeaponId::ArcRifle) };
 	WeaponBodyMaterial=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneMetal"));
 	WeaponAccentCyan=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneCyan"));
 	WeaponAccentViolet=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneViolet"));
@@ -151,7 +158,7 @@ void UArenaDuelWeaponComponent::BeginPlay()
 			HipFOV = Character->GetFirstPersonCamera()->FieldOfView;
 		}
 	}
-	if (GetOwnerRole() == ROLE_Authority) { InitializeRuntimeAmmo(); NextAllowedFireServerTimes.SetNum(WeaponDefinitions.Num()); }
+	if (GetOwnerRole() == ROLE_Authority) { InitializeRuntimeAmmo(); NextAllowedFireServerTimes.SetNum(WeaponDefinitions.Num()); ApplyLoadoutFromArchetype(); }
 	RefreshWeaponVisual();
 }
 
@@ -257,6 +264,9 @@ void UArenaDuelWeaponComponent::GetLifetimeReplicatedProps(TArray<FLifetimePrope
 	DOREPLIFETIME_CONDITION(UArenaDuelWeaponComponent, RuntimeAmmo, COND_OwnerOnly);
 	DOREPLIFETIME(UArenaDuelWeaponComponent, bReloading);
 	DOREPLIFETIME(UArenaDuelWeaponComponent, bAiming);
+	DOREPLIFETIME(UArenaDuelWeaponComponent, ActiveSlot);
+	DOREPLIFETIME(UArenaDuelWeaponComponent, LoadoutFirearms);
+	DOREPLIFETIME(UArenaDuelWeaponComponent, FlashbangsRemaining);
 }
 
 const FArenaDuelWeaponDefinition& UArenaDuelWeaponComponent::GetCurrentDefinition() const
@@ -290,6 +300,12 @@ float UArenaDuelWeaponComponent::GetCurrentSpreadDegrees() const
 void UArenaDuelWeaponComponent::StartFire()
 {
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
+	if (GetActiveSlot() != EArenaDuelLoadoutSlot::Primary)
+	{
+		// Flashbang and knife are single actions decided on the server.
+		if (GetOwnerRole() == ROLE_Authority) ServerUseEquipment_Implementation(); else ServerUseEquipment();
+		return;
+	}
 	if (bFireHeld) return;
 	if (bReloading || (GetCurrentMagazineAmmo() <= 0 && !HasInfiniteAmmoForDevelopment()) || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	bFireHeld = true;
@@ -311,6 +327,7 @@ void UArenaDuelWeaponComponent::StopFire()
 void UArenaDuelWeaponComponent::Reload()
 {
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
+	if (GetActiveSlot() != EArenaDuelLoadoutSlot::Primary) return;
 	CancelLocalAndServerFire();
 	StopAim();
 	if (GetOwnerRole() == ROLE_Authority) ServerRequestReload_Implementation(); else ServerRequestReload();
@@ -326,7 +343,7 @@ void UArenaDuelWeaponComponent::StartAim()
 {
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->GetArenaDuelMovementComponent() && Character->GetArenaDuelMovementComponent()->IsSprinting()) return;
-	if (bAiming) return;
+	if (bAiming || GetActiveSlot() != EArenaDuelLoadoutSlot::Primary) return;
 	bAiming = true;
 	if (GetOwnerRole() == ROLE_Authority) ServerSetAiming_Implementation(true); else ServerSetAiming(true);
 	SetComponentTickEnabled(true);
@@ -409,7 +426,8 @@ bool UArenaDuelWeaponComponent::IsLocalAdminMenuOpen() const
 bool UArenaDuelWeaponComponent::CanBeginAuthoritativeFire() const
 {
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
-	return Character && !Character->IsDead() && IsRoundInProgress() && Character->GetController() && GetWorld() && WeaponDefinitions.IsValidIndex(EquippedWeaponIndex) && !bReloading && (GetCurrentMagazineAmmo() > 0 || HasInfiniteAmmoForDevelopment());
+	return Character && !Character->IsDead() && IsRoundInProgress() && Character->GetController() && GetWorld() && WeaponDefinitions.IsValidIndex(EquippedWeaponIndex) && !bReloading && (GetCurrentMagazineAmmo() > 0 || HasInfiniteAmmoForDevelopment())
+		&& GetActiveSlot() == EArenaDuelLoadoutSlot::Primary && GetWorld()->GetTimeSeconds() >= EquipmentReadyServerTime;
 }
 void UArenaDuelWeaponComponent::StartAuthoritativeFire()
 {
@@ -460,12 +478,15 @@ void UArenaDuelWeaponComponent::ServerRequestEquip_Implementation(int32 Index)
 {
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character || Character->IsDead() || !IsRoundInProgress()) return;
-	if (WeaponDefinitions.IsValidIndex(Index) && !bReloading && Index != EquippedWeaponIndex) { StopAuthoritativeFire(); EquippedWeaponIndex = static_cast<uint8>(Index); OnRep_EquippedWeapon(); }
+	if (!WeaponDefinitions.IsValidIndex(Index) || bReloading || !LoadoutFirearms.Contains(static_cast<uint8>(Index))) return;
+	if (Index == EquippedWeaponIndex && GetActiveSlot() == EArenaDuelLoadoutSlot::Primary) return;
+	EquippedWeaponIndex = static_cast<uint8>(Index);
+	SetActiveSlotAuthoritative(EArenaDuelLoadoutSlot::Primary);
 }
 
 void UArenaDuelWeaponComponent::FireAuthoritative()
 {
-	if (!IsRoundInProgress()) { StopAuthoritativeFire(); return; }
+	if (!IsRoundInProgress() || GetActiveSlot() != EArenaDuelLoadoutSlot::Primary) { StopAuthoritativeFire(); return; }
 	if (!bServerFireHeld && GetCurrentDefinition().bAutomatic) return;
 	FArenaDuelWeaponRuntimeState* State = GetMutableCurrentRuntimeState();
 	const FArenaDuelWeaponDefinition& Definition = GetCurrentDefinition();
@@ -670,6 +691,7 @@ void UArenaDuelWeaponComponent::RecoverCosmeticKick()
 }
 void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 {
+	ApplyLoadoutFromArchetype();
 	auto* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character || !WeaponVisualDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	const auto& Visual = WeaponVisualDefinitions[EquippedWeaponIndex];
@@ -700,6 +722,25 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 	}
 	FirstPersonWeaponMesh->SetRelativeScale3D(Visual.FirstPersonScale);
 	ThirdPersonWeaponMesh->SetRelativeScale3D(Visual.ThirdPersonScale);
+	// Flashbang and knife have no authored models yet. They are shown as simple shapes held in the
+	// weapon hand so both players can see what is equipped. Sizes are in centimetres; the first
+	// person arms are drawn smaller than the world body, so the held item is scaled to match.
+	const EArenaDuelLoadoutSlot Slot = GetActiveSlot();
+	if (Slot != EArenaDuelLoadoutSlot::Primary)
+	{
+		const bool bKnife = Slot == EArenaDuelLoadoutSlot::Knife;
+		UStaticMesh* ItemMesh = LoadObject<UStaticMesh>(nullptr, bKnife ? TEXT("/Engine/BasicShapes/Cube.Cube") : TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+		const FVector ItemScale = bKnife ? FVector(0.26f, 0.012f, 0.045f) : FVector(0.06f, 0.06f, 0.10f);
+		const FVector ItemOffset = bKnife ? FVector(14.0f, 0.0f, 2.0f) : FVector(0.0f, 0.0f, 4.0f);
+		for (UStaticMeshComponent* ItemComponent : { FirstPersonWeaponMesh.Get(), ThirdPersonWeaponMesh.Get() })
+		{
+			const float HandScale = ItemComponent == FirstPersonWeaponMesh.Get() ? 0.6f : 1.0f;
+			if (ItemMesh) ItemComponent->SetStaticMesh(ItemMesh);
+			ItemComponent->SetRelativeScale3D(ItemScale * HandScale);
+			ItemComponent->SetRelativeLocation(ItemOffset * HandScale);
+			if (WeaponBodyMaterial) for (int32 MaterialIndex = 0; MaterialIndex < ItemComponent->GetNumMaterials(); ++MaterialIndex) ItemComponent->SetMaterial(MaterialIndex, WeaponBodyMaterial);
+		}
+	}
 	FirstPersonWeaponMesh->SetVisibility(Character->IsLocallyControlled() && !Character->IsDead());
 	ThirdPersonWeaponMesh->SetVisibility(true);
 	SetComponentTickEnabled(Character->IsLocallyControlled() && !Character->IsDead());
@@ -825,6 +866,203 @@ void UArenaDuelWeaponComponent::ClientShotConfirmation_Implementation(int32 Sequ
 {
 	LastShotSequence = Sequence; LastShotResult = Result; LastShotDistance = Distance; LastPelletsHit = PelletsHit; LastHeadPellets = HeadPellets; LastShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
 }
+// ---------------------------------------------------------------------------------------------------
+// Loadout: three slots, one firearm per player except the marksman loadout
+// ---------------------------------------------------------------------------------------------------
+
+void UArenaDuelWeaponComponent::ApplyLoadoutFromArchetype()
+{
+	if (GetOwnerRole() != ROLE_Authority || bLoadoutUnrestricted) return;
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	const AArenaDuelPlayerState* PlayerState = Character ? Character->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
+	if (!PlayerState)
+	{
+		// No player yet (unit tests, previews, the moment before possession): nothing is restricted.
+		if (LoadoutFirearms.Num() == 0) for (int32 Index = 0; Index < WeaponDefinitions.Num(); ++Index) LoadoutFirearms.Add(static_cast<uint8>(Index));
+		return;
+	}
+	const int32 Archetype = static_cast<int32>(PlayerState->GetCharacterArchetype());
+	if (Archetype == AppliedLoadoutArchetype || !Loadouts.IsValidIndex(Archetype)) return;
+	AppliedLoadoutArchetype = Archetype;
+	LoadoutFirearms.Reset();
+	for (const uint8 Index : Loadouts[Archetype].Firearms) if (WeaponDefinitions.IsValidIndex(Index)) LoadoutFirearms.AddUnique(Index);
+	if (LoadoutFirearms.Num() == 0) LoadoutFirearms.Add(0);
+	FlashbangsRemaining = static_cast<uint8>(FMath::Clamp(Loadouts[Archetype].Flashbangs, 0, 255));
+	StopAuthoritativeFire();
+	bReloading = false;
+	bAiming = false;
+	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(ReloadTimerHandle);
+	ActiveSlot = static_cast<uint8>(EArenaDuelLoadoutSlot::Primary);
+	EquippedWeaponIndex = LoadoutFirearms[0];
+}
+
+void UArenaDuelWeaponComponent::GrantAllWeaponsForDevelopment()
+{
+	if (GetOwnerRole() != ROLE_Authority) return;
+	bLoadoutUnrestricted = true;
+	LoadoutFirearms.Reset();
+	for (int32 Index = 0; Index < WeaponDefinitions.Num(); ++Index) LoadoutFirearms.Add(static_cast<uint8>(Index));
+}
+
+bool UArenaDuelWeaponComponent::CanSwitchAuthoritative() const
+{
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	// A running reload finishes first. That keeps the reload timer the only place ammo is moved.
+	return Character && !Character->IsDead() && IsRoundInProgress() && !bReloading;
+}
+
+void UArenaDuelWeaponComponent::SetActiveSlotAuthoritative(EArenaDuelLoadoutSlot Slot)
+{
+	StopAuthoritativeFire();
+	bAiming = false;
+	ActiveSlot = static_cast<uint8>(Slot);
+	EquipmentReadyServerTime = (GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0) + SwitchSeconds;
+	OnRep_EquippedWeapon();
+	if (AActor* OwnerActor = GetOwner()) OwnerActor->ForceNetUpdate();
+}
+
+void UArenaDuelWeaponComponent::SelectSlot(EArenaDuelLoadoutSlot Slot)
+{
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
+	CancelLocalAndServerFire(true);
+	StopAim();
+	if (GetOwnerRole() == ROLE_Authority) ServerSelectSlot_Implementation(static_cast<uint8>(Slot)); else ServerSelectSlot(static_cast<uint8>(Slot));
+}
+
+void UArenaDuelWeaponComponent::CyclePrimaryFirearm()
+{
+	// Selecting the primary slot while it is already active swaps its firearms; from another slot it returns to the gun.
+	if (GetActiveSlot() != EArenaDuelLoadoutSlot::Primary || LoadoutFirearms.Num() > 1) SelectSlot(EArenaDuelLoadoutSlot::Primary);
+}
+
+void UArenaDuelWeaponComponent::CycleSlot(int32 Direction)
+{
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
+	CancelLocalAndServerFire(true);
+	StopAim();
+	const int8 Step = Direction < 0 ? -1 : 1;
+	if (GetOwnerRole() == ROLE_Authority) ServerCycleSlot_Implementation(Step); else ServerCycleSlot(Step);
+}
+
+void UArenaDuelWeaponComponent::ServerSelectSlot_Implementation(uint8 Slot)
+{
+	if (!CanSwitchAuthoritative() || Slot > static_cast<uint8>(EArenaDuelLoadoutSlot::Knife)) return;
+	const EArenaDuelLoadoutSlot Requested = static_cast<EArenaDuelLoadoutSlot>(Slot);
+	if (Requested == EArenaDuelLoadoutSlot::Flashbang && FlashbangsRemaining == 0) return;
+	if (Requested == GetActiveSlot())
+	{
+		if (Requested != EArenaDuelLoadoutSlot::Primary || LoadoutFirearms.Num() < 2) return;
+		const int32 Current = LoadoutFirearms.IndexOfByKey(EquippedWeaponIndex);
+		EquippedWeaponIndex = LoadoutFirearms[(FMath::Max(Current, 0) + 1) % LoadoutFirearms.Num()];
+	}
+	SetActiveSlotAuthoritative(Requested);
+}
+
+void UArenaDuelWeaponComponent::ServerCycleSlot_Implementation(int8 Direction)
+{
+	if (!CanSwitchAuthoritative()) return;
+	// Everything that can be held right now, in key order. Negative entries are the non-firearm slots.
+	TArray<int32> Items;
+	for (const uint8 Firearm : LoadoutFirearms) Items.Add(Firearm);
+	if (FlashbangsRemaining > 0) Items.Add(-static_cast<int32>(EArenaDuelLoadoutSlot::Flashbang));
+	Items.Add(-static_cast<int32>(EArenaDuelLoadoutSlot::Knife));
+	const int32 CurrentItem = GetActiveSlot() == EArenaDuelLoadoutSlot::Primary ? static_cast<int32>(EquippedWeaponIndex) : -static_cast<int32>(ActiveSlot);
+	const int32 Current = FMath::Max(Items.IndexOfByKey(CurrentItem), 0);
+	const int32 Next = Items[(Current + (Direction < 0 ? Items.Num() - 1 : 1)) % Items.Num()];
+	if (Next == CurrentItem) return;
+	if (Next >= 0)
+	{
+		EquippedWeaponIndex = static_cast<uint8>(Next);
+		SetActiveSlotAuthoritative(EArenaDuelLoadoutSlot::Primary);
+	}
+	else SetActiveSlotAuthoritative(static_cast<EArenaDuelLoadoutSlot>(-Next));
+}
+
+void UArenaDuelWeaponComponent::ServerUseEquipment_Implementation()
+{
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	if (!Character || Character->IsDead() || !Character->GetController() || !IsRoundInProgress() || !GetWorld()) return;
+	if (GetWorld()->GetTimeSeconds() < EquipmentReadyServerTime) return;
+	if (GetActiveSlot() == EArenaDuelLoadoutSlot::Flashbang) ThrowFlashbangAuthoritative();
+	else if (GetActiveSlot() == EArenaDuelLoadoutSlot::Knife) KnifeAttackAuthoritative();
+}
+
+void UArenaDuelWeaponComponent::ThrowFlashbangAuthoritative()
+{
+	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	if (!Character || FlashbangsRemaining == 0) return;
+	const FVector Eye = Character->GetPawnViewLocation();
+	const FVector Direction = Character->GetControlRotation().Vector();
+	// Released a little in front of the face, unless a wall is closer than that.
+	FVector Start = Eye + Direction * 55.0f - FVector(0.0f, 0.0f, 8.0f);
+	FHitResult Blocked;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelFlashbangRelease), false, Character);
+	if (GetWorld()->LineTraceSingleByChannel(Blocked, Eye, Start, ECC_Visibility, Params)) Start = Eye;
+	FActorSpawnParameters Spawn;
+	Spawn.Owner = Character;
+	Spawn.Instigator = Character;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	AArenaDuelFlashbang* Grenade = GetWorld()->SpawnActor<AArenaDuelFlashbang>(AArenaDuelFlashbang::StaticClass(), Start, Direction.Rotation(), Spawn);
+	if (!Grenade) return;
+	Grenade->Launch(Direction * Flashbang.ThrowSpeed + FVector(0.0f, 0.0f, Flashbang.ThrowUpSpeed) + Character->GetVelocity() * 0.5f, Flashbang.FuseSeconds, Flashbang.MaxBlindDistance, Flashbang.MaxBlindSeconds);
+	--FlashbangsRemaining;
+	// The hand is empty now, so go straight back to the firearm.
+	SetActiveSlotAuthoritative(EArenaDuelLoadoutSlot::Primary);
+}
+
+void UArenaDuelWeaponComponent::KnifeAttackAuthoritative()
+{
+	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	if (!Character) return;
+	EquipmentReadyServerTime = GetWorld()->GetTimeSeconds() + Knife.AttackInterval;
+	const FVector Origin = Character->GetPawnViewLocation();
+	const FRotationMatrix Aim(Character->GetControlRotation());
+	const FVector Forward = Aim.GetUnitAxis(EAxis::X);
+	// Walls stop the blade: nothing behind the first world hit can be struck.
+	FHitResult WorldHit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelKnifeReach), true, Character);
+	const bool bWorld = GetWorld()->LineTraceSingleByChannel(WorldHit, Origin, Origin + Forward * Knife.Range, ECC_Visibility, Params);
+	const float Reach = bWorld ? WorldHit.Distance : Knife.Range;
+	FHitResult BestHit;
+	AArenaDuelCharacter* Victim = nullptr;
+	const FVector2D Fan[] = { FVector2D(0.0f, 0.0f), FVector2D(1.0f, 0.0f), FVector2D(-1.0f, 0.0f), FVector2D(0.0f, 1.0f), FVector2D(0.0f, -1.0f) };
+	for (const FVector2D& Offset : Fan)
+	{
+		const FVector End = Origin + Forward * Reach + (Aim.GetUnitAxis(EAxis::Y) * Offset.X + Aim.GetUnitAxis(EAxis::Z) * Offset.Y) * Knife.SwingHalfWidth * (Reach / FMath::Max(Knife.Range, 1.0f));
+		for (TActorIterator<AArenaDuelCharacter> It(GetWorld()); It; ++It)
+		{
+			FHitResult Candidate;
+			if (*It != Character && !It->IsDead() && It->TraceHitZones(Origin, End, Candidate) && (!Victim || Candidate.Distance < BestHit.Distance))
+			{
+				BestHit = Candidate;
+				Victim = *It;
+			}
+		}
+	}
+	++LastShotSequence;
+	LastHeadPellets = 0;
+	LastPelletsHit = Victim ? 1 : 0;
+	if (Victim)
+	{
+		Victim->RecordServerHit(BestHit.ImpactPoint, Forward);
+		Victim->ApplyServerDamage(Knife.Damage);
+		SetLastShot(EArenaDuelShotResult::Body, BestHit.Distance, Victim);
+	}
+	else SetLastShot(bWorld ? EArenaDuelShotResult::World : EArenaDuelShotResult::Miss, Reach, nullptr);
+	MulticastKnifeSwing(Victim != nullptr);
+}
+
+void UArenaDuelWeaponComponent::MulticastKnifeSwing_Implementation(bool bHit)
+{
+	// Cosmetic lunge of the owner's viewmodel: a hit bites deeper than a whiff. Negative kick pushes forward.
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	if (!Character || !Character->IsLocallyControlled()) return;
+	LocalWeaponKick = bHit ? -2.2f : -1.2f;
+	VisualYawKick = bHit ? 1.2f : 0.7f;
+	LastCosmeticShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
+	SetComponentTickEnabled(true);
+}
+
 void UArenaDuelWeaponComponent::OnRep_EquippedWeapon()
 {
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled()) EquipDrop = 1.0f;

@@ -151,6 +151,56 @@ struct ARENADUEL_API FArenaDuelWeaponDefinition
 	bool bAutomatic = true;
 };
 
+/** The three things a player can hold. A loadout may put more than one firearm into the primary slot. */
+UENUM(BlueprintType)
+enum class EArenaDuelLoadoutSlot : uint8
+{
+	Primary,
+	Flashbang,
+	Knife
+};
+
+/** What one character archetype carries each round. */
+USTRUCT(BlueprintType)
+struct FArenaDuelLoadoutDefinition
+{
+	GENERATED_BODY()
+
+	/** Firearms in the primary slot as indices into WeaponDefinitions. The first one is in hand at round start. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	TArray<uint8> Firearms;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0"))
+	int32 Flashbangs = 1;
+};
+
+USTRUCT(BlueprintType)
+struct FArenaDuelKnifeDefinition
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0")) float Range = 175.0f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0")) float Damage = 55.0f;
+	/** Seconds between two swings. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0.05")) float AttackInterval = 0.5f;
+	/** Half width of the swing at full range. Several rays are fanned across it so a moving target is not missed by a hair. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0")) float SwingHalfWidth = 14.0f;
+};
+
+USTRUCT(BlueprintType)
+struct FArenaDuelFlashbangDefinition
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0")) float ThrowSpeed = 1500.0f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float ThrowUpSpeed = 220.0f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0.1")) float FuseSeconds = 1.4f;
+	/** Beyond this distance the flash has no effect. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "1")) float MaxBlindDistance = 1800.0f;
+	/** Blind time for a point blank flash looked at directly. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0")) float MaxBlindSeconds = 3.2f;
+};
+
 UCLASS(ClassGroup=(Weapons), meta=(BlueprintSpawnableComponent))
 class ARENADUEL_API UArenaDuelWeaponComponent : public UActorComponent
 {
@@ -168,6 +218,16 @@ public:
 	void StopFire();
 	void Reload();
 	void EquipWeapon(int32 Index);
+	/** Switches to a slot. Selecting the primary slot again swaps between its firearms when there are two. */
+	void SelectSlot(EArenaDuelLoadoutSlot Slot);
+	void CyclePrimaryFirearm();
+	/** Mouse wheel: steps through every usable item, both firearms of a two gun loadout included. */
+	void CycleSlot(int32 Direction);
+	EArenaDuelLoadoutSlot GetActiveSlot() const { return static_cast<EArenaDuelLoadoutSlot>(ActiveSlot); }
+	int32 GetFlashbangsRemaining() const { return FlashbangsRemaining; }
+	const TArray<uint8>& GetLoadoutFirearms() const { return LoadoutFirearms; }
+	/** Authority only. Lifts the loadout restriction so admin tools and tests can equip any firearm. */
+	void GrantAllWeaponsForDevelopment();
 	void StartAim();
 	void StopAim();
 	void CancelCombatActions();
@@ -214,6 +274,25 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void ServerRequestEquip(int32 Index);
 
+	UFUNCTION(Server, Reliable)
+	void ServerSelectSlot(uint8 Slot);
+
+	UFUNCTION(Server, Reliable)
+	void ServerCycleSlot(int8 Direction);
+
+	/** Throws the flashbang or swings the knife, whichever is in hand. */
+	UFUNCTION(Server, Reliable)
+	void ServerUseEquipment();
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastKnifeSwing(bool bHit);
+
+	void ApplyLoadoutFromArchetype();
+	bool CanSwitchAuthoritative() const;
+	void SetActiveSlotAuthoritative(EArenaDuelLoadoutSlot Slot);
+	void ThrowFlashbangAuthoritative();
+	void KnifeAttackAuthoritative();
+
 	void FireAuthoritative();
 	void StartAuthoritativeFire();
 	void StopAuthoritativeFire();
@@ -247,6 +326,34 @@ protected:
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Weapons")
 	bool bAiming = false;
+
+	UPROPERTY(ReplicatedUsing=OnRep_EquippedWeapon, VisibleInstanceOnly, BlueprintReadOnly, Category="Loadout")
+	uint8 ActiveSlot = 0;
+
+	/** Firearms this player may equip this round. */
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Loadout")
+	TArray<uint8> LoadoutFirearms;
+
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Loadout")
+	uint8 FlashbangsRemaining = 0;
+
+	/** One entry per character archetype, in enum order. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Loadout")
+	TArray<FArenaDuelLoadoutDefinition> Loadouts;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Loadout")
+	FArenaDuelKnifeDefinition Knife;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Loadout")
+	FArenaDuelFlashbangDefinition Flashbang;
+
+	/** Seconds after a switch before the new item can be used. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Loadout", meta = (ClampMin = "0"))
+	float SwitchSeconds = 0.25f;
+
+	int32 AppliedLoadoutArchetype = -1;
+	bool bLoadoutUnrestricted = false;
+	double EquipmentReadyServerTime = 0.0;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Weapons")
 	TObjectPtr<UStaticMeshComponent> FirstPersonWeaponMesh;

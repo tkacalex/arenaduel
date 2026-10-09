@@ -1,0 +1,113 @@
+#include "ArenaDuelFlashbang.h"
+#include "../Characters/ArenaDuelCharacter.h"
+#include "Components/PointLightComponent.h"
+#include "Components/SphereComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
+#include "GameFramework/Controller.h"
+#include "GameFramework/ProjectileMovementComponent.h"
+#include "TimerManager.h"
+#include "UObject/ConstructorHelpers.h"
+
+AArenaDuelFlashbang::AArenaDuelFlashbang()
+{
+	PrimaryActorTick.bCanEverTick = false;
+	bReplicates = true;
+	SetReplicateMovement(true);
+	bAlwaysRelevant = true;
+
+	Collision = CreateDefaultSubobject<USphereComponent>(TEXT("Collision"));
+	Collision->InitSphereRadius(6.0f);
+	// Bounces off the arena, passes through players and never blocks a weapon trace.
+	Collision->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	Collision->SetCollisionObjectType(ECC_WorldDynamic);
+	Collision->SetCollisionResponseToAllChannels(ECR_Ignore);
+	Collision->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+	Collision->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
+	RootComponent = Collision;
+
+	Visual = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Visual"));
+	Visual->SetupAttachment(Collision);
+	Visual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Visual->SetRelativeScale3D(FVector(0.11f));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+	if (Sphere.Succeeded()) Visual->SetStaticMesh(Sphere.Object);
+
+	Movement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("Movement"));
+	Movement->SetUpdatedComponent(Collision);
+	Movement->bShouldBounce = true;
+	Movement->Bounciness = 0.42f;
+	Movement->Friction = 0.35f;
+	Movement->ProjectileGravityScale = 1.0f;
+	Movement->bRotationFollowsVelocity = false;
+	Movement->InitialSpeed = 0.0f;
+	Movement->MaxSpeed = 4000.0f;
+}
+
+void AArenaDuelFlashbang::Launch(const FVector& Velocity, float FuseSeconds, float InMaxBlindDistance, float InMaxBlindSeconds)
+{
+	if (!HasAuthority()) return;
+	MaxBlindDistance = FMath::Max(InMaxBlindDistance, 1.0f);
+	MaxBlindSeconds = FMath::Max(InMaxBlindSeconds, 0.0f);
+	// The thrower's own capsule is already ignored through the Pawn channel.
+	Movement->Velocity = Velocity;
+	Movement->UpdateComponentVelocity();
+	GetWorldTimerManager().SetTimer(FuseTimer, this, &AArenaDuelFlashbang::Detonate, FMath::Max(FuseSeconds, 0.1f), false);
+}
+
+float AArenaDuelFlashbang::ComputeBlindStrength(const FVector& BurstLocation, const FVector& Eye, const FVector& ViewDirection, float MaxDistance)
+{
+	const FVector ToBurst = BurstLocation - Eye;
+	const float Distance = ToBurst.Size();
+	if (Distance >= MaxDistance || MaxDistance <= 0.0f) return 0.0f;
+	const float DistanceFactor = 1.0f - FMath::Square(Distance / MaxDistance);
+	// Looking straight at the burst is the full effect. Looking away still leaves a quarter of it.
+	const float Facing = Distance > 1.0f ? FVector::DotProduct(ViewDirection.GetSafeNormal(), ToBurst / Distance) : 1.0f;
+	const float FacingFactor = FMath::Lerp(0.25f, 1.0f, FMath::Clamp((Facing + 0.2f) / 1.2f, 0.0f, 1.0f));
+	return FMath::Clamp(DistanceFactor * FacingFactor, 0.0f, 1.0f);
+}
+
+void AArenaDuelFlashbang::Detonate()
+{
+	if (!HasAuthority() || !GetWorld()) return;
+	const FVector Burst = GetActorLocation();
+	for (TActorIterator<AArenaDuelCharacter> It(GetWorld()); It; ++It)
+	{
+		AArenaDuelCharacter* Character = *It;
+		if (!Character || Character->IsDead()) continue;
+		const FVector Eye = Character->GetPawnViewLocation();
+		const FVector View = Character->GetController() ? Character->GetControlRotation().Vector() : Character->GetActorForwardVector();
+		const float Strength = ComputeBlindStrength(Burst, Eye, View, MaxBlindDistance);
+		if (Strength <= 0.05f) continue;
+		// A wall between the burst and the eye shields completely. Players do not block this trace.
+		FHitResult Wall;
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelFlashSight), false, this);
+		Params.AddIgnoredActor(Character);
+		if (GetWorld()->LineTraceSingleByChannel(Wall, Burst, Eye, ECC_Visibility, Params)) continue;
+		Character->ClientApplyFlash(Strength, MaxBlindSeconds * Strength);
+	}
+	MulticastDetonate(Burst);
+	Movement->StopMovementImmediately();
+	Visual->SetVisibility(false);
+	// Stay alive just long enough for the burst to reach every client.
+	SetLifeSpan(0.5f);
+}
+
+void AArenaDuelFlashbang::MulticastDetonate_Implementation(FVector_NetQuantize Location)
+{
+	UWorld* World = GetWorld();
+	if (Visual) Visual->SetVisibility(false);
+	if (!World || World->GetNetMode() == NM_DedicatedServer) return;
+	// Cosmetic burst on a short timer of its own, so it outlives this actor's cleanup order.
+	UPointLightComponent* Burst = NewObject<UPointLightComponent>(World->GetWorldSettings());
+	Burst->SetWorldLocation(FVector(Location));
+	Burst->SetIntensity(400000.0f);
+	Burst->SetAttenuationRadius(2600.0f);
+	Burst->SetLightColor(FLinearColor::White);
+	Burst->SetCastShadows(true);
+	Burst->RegisterComponentWithWorld(World);
+	FTimerHandle Handle;
+	World->GetTimerManager().SetTimer(Handle, FTimerDelegate::CreateWeakLambda(Burst, [Burst]() { Burst->DestroyComponent(); }), 0.12f, false);
+}
