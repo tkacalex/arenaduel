@@ -1,4 +1,4 @@
-﻿#if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS
+#if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS
 
 #include "Misc/AutomationTest.h"
 #include "ArenaDuel/Characters/ArenaDuelCharacterMovementComponent.h"
@@ -13,6 +13,10 @@ bool FArenaDuelBhopConfigTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("The landing grace is a few frames, not a slide"), Movement->GetBhopLandingGrace() > 0.0f && Movement->GetBhopLandingGrace() <= 0.1f);
 	TestTrue(TEXT("A landing costs a small share of the extra speed"), Movement->GetLandingSpeedLoss() >= 0.0f && Movement->GetLandingSpeedLoss() < 0.5f);
 	TestTrue(TEXT("The jump buffer is short"), Movement->GetJumpBufferSeconds() > 0.0f && Movement->GetJumpBufferSeconds() <= 0.25f);
+	const float Loss = Movement->GetLandingSpeedLoss();
+	TestEqual(TEXT("A landing at sprint speed costs nothing"), UArenaDuelCharacterMovementComponent::ComputeLandingSpeed(Movement->SprintSpeed, Movement->SprintSpeed, Loss), Movement->SprintSpeed);
+	TestEqual(TEXT("A landing at walk speed costs nothing"), UArenaDuelCharacterMovementComponent::ComputeLandingSpeed(Movement->WalkSpeed, Movement->SprintSpeed, Loss), Movement->WalkSpeed);
+	TestTrue(TEXT("A fast landing loses its share of the extra speed only"), FMath::IsNearlyEqual(UArenaDuelCharacterMovementComponent::ComputeLandingSpeed(Movement->SprintSpeed + 300.0f, Movement->SprintSpeed, Loss), Movement->SprintSpeed + 300.0f * (1.0f - Loss), 0.01f));
 	return true;
 }
 
@@ -37,7 +41,7 @@ bool FArenaDuelBhopAirStrafeTest::RunTest(const FString& Parameters)
 
 	// A perfect strafe: the wished direction is kept at a right angle to the velocity while turning.
 	FVector Velocity = Running;
-	for (int32 Index = 0; Index < 60 * 20; ++Index) Velocity = Strafe(Velocity, FVector(-Velocity.Y, Velocity.X, 0.0));
+	for (int32 Index = 0; Index < 60 * 60; ++Index) Velocity = Strafe(Velocity, FVector(-Velocity.Y, Velocity.X, 0.0));
 	TestTrue(TEXT("Even perfect strafing stops at the hop speed limit"), Velocity.Size() <= Max + 0.5 && Velocity.Size() > Max - 5.0);
 	// Sloppy strafing: sideways held without turning the view.
 	Velocity = Running;

@@ -61,6 +61,8 @@ public:
 	 * MaxGainSpeed through gains, and speed that is already above it is left alone.
 	 */
 	static FVector ComputeAirStrafe(const FVector& InVelocity, const FVector& WishDirection, float WishSpeedCap, float AccelerationPerSecond, float MaxGainSpeed, float DeltaTime);
+	/** Horizontal speed kept by a landing: the share of the speed above sprint speed given by Loss is removed. */
+	static float ComputeLandingSpeed(float Speed, float InSprintSpeed, float Loss) { return Speed <= InSprintSpeed ? Speed : InSprintSpeed + (Speed - InSprintSpeed) * (1.0f - FMath::Clamp(Loss, 0.0f, 1.0f)); }
 	bool IsAutoBhopEnabled() const { return bAutoBhop; }
 	float GetBhopMaxSpeed() const { return BhopMaxSpeed; }
 	float GetBhopLandingGrace() const { return BhopLandingGrace; }
@@ -197,7 +199,7 @@ public:
 
 	/** Air strafe acceleration, as a multiple of WalkSpeed per second. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0"))
-	float AirStrafeAccelerate = 8.0f;
+	float AirStrafeAccelerate = 2.5f;
 
 	/** Below half walk speed, air input may add up to this much speed, so a standing jump can still be steered. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0"))
@@ -307,6 +309,7 @@ protected:
 	/** Seconds on the ground since the last landing, counted only inside the landing grace. */
 	float TimeSinceLanded = 1000.0f;
 	float SpeedAllowance = 0.0f;
+	bool bDevHopWasOn = false;
 	float SlideInputBufferRemaining = 0.0f;
 	float SlideElapsed = 0.0f;
 	float TimeSinceSlideEnded = 1000.0f;

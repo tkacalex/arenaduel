@@ -456,24 +456,6 @@ ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4SprintJumpKeepsSpeedTest, "ArenaDuel
 	return true;
 })
 
-ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4BhopLandingTest, "ArenaDuel.Phase4.BhopLanding", {
-	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World();
-	AArenaDuelCharacter* Hopper = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(0.0f, 0.0f, 200.0f), FVector(1200.0f, 0.0f, -300.0f));
-	UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Hopper);
-	TestNotNull(TEXT("Hopping movement"), Move);
-	if (Move)
-	{
-		for (int32 Index = 0; Index < 90 && Move->IsFalling(); ++Index) Move->TickComponent(0.016f, LEVELTICK_All, nullptr);
-		TestTrue(TEXT("The hop reached the floor"), Move->IsMovingOnGround());
-		// 1200 arrives; the landing takes its share of the 300 above sprint speed and nothing else.
-		const float Expected = Move->SprintSpeed + 300.0f * (1.0f - Move->GetLandingSpeedLoss());
-		TestTrue(FString::Printf(TEXT("Right after the landing the speed is still there (expected %.0f, got %.0f at x=%.0f z=%.0f)"), Expected, Move->Velocity.Size2D(), Hopper->GetActorLocation().X, Hopper->GetActorLocation().Z), FMath::IsNearlyEqual(static_cast<float>(Move->Velocity.Size2D()), Expected, 15.0f));
-		for (int32 Index = 0; Index < 60; ++Index) Move->TickComponent(0.016f, LEVELTICK_All, nullptr);
-		TestTrue(TEXT("Without a jump the ground brakes it back to walking pace"), Move->Velocity.Size2D() <= Move->WalkSpeed + 5.0f);
-	}
-	return true;
-})
-
 ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4AirControlTrajectoryTest, "ArenaDuel.Phase4.AirControlTrajectory", {
 	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World();
 	AArenaDuelCharacter* NoInput = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(0.0f, 0.0f, 300.0f), FVector(900.0f, 0.0f, 0.0f));

@@ -45,6 +45,8 @@ public:
 	bool IsCrouchInputHeld() const { return bCrouchInputHeld; }
 	/** Owner only: should a landing turn straight into the next jump? Held jump with auto hop, or a press shortly before. */
 	bool WantsLandingJump(bool bAutoHop, float BufferSeconds) const;
+	/** Development driver only: behaves as if the jump key were held. */
+	void SetDevJumpHeld(bool bHeld) { bJumpInputHeld = bHeld; }
 	bool IsDead() const { return bDead; }
 	void SetRoundInputLocked(bool bLocked);
 	bool CanProcessGameplayInput() const;

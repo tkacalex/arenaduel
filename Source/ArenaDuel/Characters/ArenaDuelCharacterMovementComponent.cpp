@@ -107,6 +107,17 @@ public:
 
 DEFINE_LOG_CATEGORY_STATIC(LogArenaDuelSlide, Log, All);
 
+#if !UE_BUILD_SHIPPING
+namespace
+{
+	// Development drivers for trying hopping without anyone holding keys. They act on every locally
+	// controlled pawn in the process, so in a two player PIE session host and client both hop.
+	// ArenaDuel.Dev.Hop 1: sprint forward with jump held. ArenaDuel.Dev.Strafe 1: in the air, strafe right at the best angle instead.
+	TAutoConsoleVariable<int32> CVarDevHop(TEXT("ArenaDuel.Dev.Hop"), 0, TEXT("Development: sprint forward and hold jump on local pawns"));
+	TAutoConsoleVariable<int32> CVarDevStrafe(TEXT("ArenaDuel.Dev.Strafe"), 0, TEXT("Development: with Dev.Hop, air strafe right at the best angle"));
+}
+#endif
+
 namespace ArenaDuelMovement
 {
 	static constexpr uint8 SlideMode = static_cast<uint8>(EArenaDuelCustomMovementMode::Slide);
@@ -599,10 +610,16 @@ void UArenaDuelCharacterMovementComponent::ProcessLanded(const FHitResult& Hit, 
 	const double Speed = Velocity.Size2D();
 	if (Speed > SprintSpeed && LandingSpeedLoss > 0.0f)
 	{
-		const double Kept = SprintSpeed + (Speed - SprintSpeed) * (1.0 - LandingSpeedLoss);
+		const double Kept = ComputeLandingSpeed(static_cast<float>(Speed), SprintSpeed, LandingSpeedLoss);
 		Velocity.X *= Kept / Speed;
 		Velocity.Y *= Kept / Speed;
 	}
+#if !UE_BUILD_SHIPPING
+	if (CVarDevHop.GetValueOnGameThread() != 0 && CharacterOwner)
+	{
+		UE_LOG(LogArenaDuelSlide, Log, TEXT("Hop landing %s role=%d local=%d speed=%.0f kept=%.0f"), *CharacterOwner->GetName(), static_cast<int32>(CharacterOwner->GetLocalRole()), CharacterOwner->IsLocallyControlled() ? 1 : 0, Speed, Velocity.Size2D());
+	}
+#endif
 	TimeSinceLanded = 0.0f;
 	SpeedAllowance = 0.0f;
 	Super::ProcessLanded(Hit, RemainingTime, Iterations);
@@ -628,6 +645,38 @@ void UArenaDuelCharacterMovementComponent::OnMovementModeChanged(EMovementMode P
 
 void UArenaDuelCharacterMovementComponent::TickComponent(float DeltaSeconds, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+#if !UE_BUILD_SHIPPING
+	if (AArenaDuelCharacter* DevCharacter = Cast<AArenaDuelCharacter>(CharacterOwner); DevCharacter && DevCharacter->IsLocallyControlled() && !DevCharacter->IsDead())
+	{
+		const bool bDevHop = CVarDevHop.GetValueOnGameThread() != 0;
+		if (bDevHop)
+		{
+			bWantsSprint = true;
+			DevCharacter->SetDevJumpHeld(true);
+			const double DevSpeed = Velocity.Size2D();
+			if (IsFalling() && CVarDevStrafe.GetValueOnGameThread() != 0 && DevSpeed > WalkSpeed * 0.5f && DevCharacter->GetController())
+			{
+				// Face so that the right vector sits just inside the strafe window, then push right.
+				const double Angle = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(AirStrafeWishSpeed * 0.5 / DevSpeed, 0.0, 1.0)));
+				FRotator View = DevCharacter->GetController()->GetControlRotation();
+				View.Yaw = Velocity.Rotation().Yaw + Angle - 90.0;
+				DevCharacter->GetController()->SetControlRotation(View);
+				DevCharacter->AddMovementInput(FRotationMatrix(FRotator(0.0, View.Yaw, 0.0)).GetUnitAxis(EAxis::Y), 1.0f);
+			}
+			else
+			{
+				DevCharacter->AddMovementInput(DevCharacter->GetActorForwardVector(), 1.0f);
+			}
+			if (IsMovingOnGround() && !DevCharacter->bPressedJump) DevCharacter->Jump();
+		}
+		else if (bDevHopWasOn)
+		{
+			bWantsSprint = false;
+			DevCharacter->SetDevJumpHeld(false);
+		}
+		bDevHopWasOn = bDevHop;
+	}
+#endif
 	Super::TickComponent(DeltaSeconds, TickType, ThisTickFunction);
 	const AArenaDuelCharacter* ArenaCharacter = Cast<AArenaDuelCharacter>(CharacterOwner);
 	const AArenaDuelPlayerState* PlayerState = ArenaCharacter ? ArenaCharacter->GetPlayerState<AArenaDuelPlayerState>() : nullptr;

@@ -24,7 +24,7 @@ All are `EditDefaultsOnly` properties of the movement component.
 | `BhopMaxSpeed` | 1300 | Highest speed air strafing can reach |
 | `GlobalMomentumCap` | 1350 | Hard limit in the air, unchanged |
 | `GroundAcceleration` | 4200 | Ground acceleration, unchanged |
-| `AirStrafeAccelerate` | 8 | Air strafe acceleration, times `WalkSpeed` per second |
+| `AirStrafeAccelerate` | 2.5 | Air strafe acceleration, times `WalkSpeed` per second |
 | `AirStrafeWishSpeed` | 70 | Air strafe strength; smaller needs more precise turning |
 | `AirLowSpeedControl` | 300 | Air control below half walk speed |
 | `GroundBrakingFriction` / `GroundBrakingDeceleration` | 12 / 6000 | Ground braking after the grace, unchanged |
@@ -35,7 +35,7 @@ All are `EditDefaultsOnly` properties of the movement component.
 
 Jump height and gravity are the engine properties `JumpZVelocity` and `GravityScale` on the same component. They were not changed.
 
-With these values a perfect strafe gains roughly 160 per second at sprint speed, so going from 900 to the limit takes about three seconds of clean hops. Those figures are calculated from the step, not measured in play.
+With these values a strafe at the best angle gains roughly 100 per second at sprint speed and needs the view to turn at about 95 degrees per second; a strafe held exactly sideways to the travel direction gains about 20 per second. Those figures are calculated from the step.
 
 ## Camera and animation
 
@@ -55,7 +55,7 @@ The dash used to be clamped to `GlobalMomentumCap` in the air on the first step,
 
 - `ArenaDuel.Bhop.AirStrafeRule`: forward at speed adds nothing, a strafe adds a little, perfect strafing stops at the limit, strafing without turning gains almost nothing, speed above the limit is neither cut nor raised.
 - `ArenaDuel.Bhop.Config`: the limits and windows are in a sane relation.
-- `ArenaDuel.Phase4.BhopLanding`: a landing at 1200 keeps its speed apart from the landing cost, and without a jump the ground brakes it to walking pace.
+- The landing cost is checked through `ComputeLandingSpeed` in `ArenaDuel.Bhop.Config`. The landing grace itself has no automated test: characters spawned in the editor test world do not land reliably.
 - `ArenaDuel.Phase4.SprintJumpKeepsSpeed`, `ArenaDuel.Phase4.AirControlTrajectory` and the rest of `ArenaDuel.Phase4.*` cover that existing movement still works.
 
 ## Not verified
