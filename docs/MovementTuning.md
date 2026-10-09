@@ -84,3 +84,9 @@ Checked in a play session for a standing player: not aiming, aiming, looking up 
 ## Aiming while sprinting
 
 Aiming no longer stops at a sprint and starting a sprint no longer drops the aim. While both are held the sprint speed is multiplied by `AimSprintSpeedScale` (0.9, so 810 instead of 900) and the first-person weapon stays at the eye instead of going to the sprint pose. The aim state comes from the weapon component, which the owner sets at once and the server receives a moment later, so a small position correction is possible in the instant aim is pressed or released at full speed. `ArenaDuel.GroundFeel.AimSprintScale` checks the value; the behaviour was not tried with held keys in a play session.
+
+## Shadow Step
+
+The dash launches at `DashSpeed` 2200 in the movement direction. Before, it was limited to `GlobalMomentumCap` (1350), only half again as fast as a sprint, and the stronger ground braking from the movement pass stopped it almost at once. Started on the ground it now also lifts off with `DashLift` 200, a hop of about 20 cm that keeps the dash in the air for roughly 0.4 s, which is about 9 m of travel; in the air it keeps its vertical speed. Both values are properties of `UArenaDuelGA_ShadowStep`. The cooldown is still five seconds.
+
+`ArenaDuel.Shadow.StepStrength` checks the values. The distance is calculated, not measured in a play session.

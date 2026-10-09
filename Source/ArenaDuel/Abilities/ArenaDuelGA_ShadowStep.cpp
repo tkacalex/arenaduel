@@ -35,10 +35,11 @@ void UArenaDuelGA_ShadowStep::ActivateAbility(const FGameplayAbilitySpecHandle H
 	if (Direction.IsNearlyZero() && Character->GetController())	Direction = Character->GetController()->GetControlRotation().Vector().GetSafeNormal2D();
 	if (Direction.IsNearlyZero())	Direction = Character->GetActorForwardVector().GetSafeNormal2D();
 
-	const float CurrentZ = Character->GetVelocity().Z;
 	const UArenaDuelCharacterMovementComponent* Movement = Character->GetArenaDuelMovementComponent();
-	const float DashSpeed = Movement ? FMath::Min(2500.0f, Movement->GlobalMomentumCap) : 1350.0f;
-	Character->LaunchCharacter(Direction * DashSpeed + FVector(0.0f, 0.0f, CurrentZ), true, true);
+	// From the ground the dash lifts off a little; in the air it keeps the vertical speed it has.
+	const float CurrentZ = Character->GetVelocity().Z;
+	const float LaunchZ = Movement && Movement->IsMovingOnGround() ? DashLift : CurrentZ;
+	Character->LaunchCharacter(Direction * DashSpeed + FVector(0.0f, 0.0f, LaunchZ), true, true);
 	Character->PlayShadowStepCameraImpulse();
 	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 }
