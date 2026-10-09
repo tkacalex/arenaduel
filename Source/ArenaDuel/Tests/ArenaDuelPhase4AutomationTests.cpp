@@ -828,6 +828,13 @@ namespace ArenaDuelPhase4NetworkTests
 		}
 		const UArenaDuelCharacterMovementComponent* ClientMove = State.OwnedPawn->GetArenaDuelMovementComponent();
 		const bool bFrameConverged = ClientMove && IsFinite(State.OwnedPawn->GetActorLocation()) && IsFinite(LastServerSnapshot.Location) && IsFinite(ClientMove->Velocity) && IsFinite(LastServerSnapshot.Velocity) && FVector::Dist2D(State.OwnedPawn->GetActorLocation(), LastServerSnapshot.Location) <= 200.0f && FVector::Dist2D(ClientMove->Velocity, LastServerSnapshot.Velocity) <= 350.0f && ClientMove->MovementMode == LastServerSnapshot.MovementMode && ClientMove->CustomMovementMode == LastServerSnapshot.CustomMovementMode;
+		if (!bFrameConverged && ClientMove && GFrameCounter % 30 == 0)
+		{
+			// Says which part of the comparison is off when a scenario fails to converge.
+			UE_LOG(LogTemp, Display, TEXT("ArenaDuelConvergence client=%s server=%s clientVel=%s serverVel=%s clientMode=%d/%d serverMode=%d/%d"),
+				*State.OwnedPawn->GetActorLocation().ToCompactString(), *LastServerSnapshot.Location.ToCompactString(), *ClientMove->Velocity.ToCompactString(), *LastServerSnapshot.Velocity.ToCompactString(),
+				static_cast<int32>(ClientMove->MovementMode.GetValue()), static_cast<int32>(ClientMove->CustomMovementMode), static_cast<int32>(LastServerSnapshot.MovementMode), static_cast<int32>(LastServerSnapshot.CustomMovementMode));
+		}
 		State.StableConvergenceFrames = bFrameConverged ? State.StableConvergenceFrames + 1 : 0;
 		return State.StableConvergenceFrames >= 5;
 	}
