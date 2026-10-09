@@ -97,16 +97,16 @@ def spawn_lights():
     index = 0
     for x in (-2800, -1400, 0, 1400, 2800):
         for y in (-1700, 0, 1700):
-            light = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.PointLight, unreal.Vector(x, y, 1250), unreal.Rotator())
+            light = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.PointLight, unreal.Vector(x, y, 1050), unreal.Rotator())
             light.set_actor_label('%sFillLight_%02d' % (PREFIX, index))
             component = light.get_component_by_class(unreal.PointLightComponent)
             # Shadowless movable fills, as in L_ArenaCore: cheap, and the arena stays readable everywhere.
             component.set_mobility(unreal.ComponentMobility.MOVABLE)
             component.set_cast_shadows(False)
-            component.set_editor_property('intensity', 260.0)
+            component.set_editor_property('intensity', 110.0)
             component.set_editor_property('attenuation_radius', 2200.0)
-            # unreal.Color takes b, g, r, a by position, so name the channels: a cold blue-white.
-            component.set_editor_property('light_color', unreal.Color(r=120, g=150, b=255, a=255))
+            # unreal.Color takes b, g, r, a by position, so name the channels. Nearly neutral, a touch cold.
+            component.set_editor_property('light_color', unreal.Color(r=205, g=212, b=230, a=255))
             component.set_editor_property('use_inverse_squared_falloff', True)
             index += 1
 
@@ -128,8 +128,8 @@ def build():
     house = make_material('M_DistrictDarkHouse', (0.040, 0.030, 0.028, 1), 0.10, 0.75)
     crate = make_material('M_DistrictDarkCrate', (0.055, 0.034, 0.020, 1), 0.15, 0.65)
     metal = make_material('M_DistrictDarkMetal', (0.016, 0.019, 0.026, 1), 0.85, 0.35)
-    cyan = make_material('M_DistrictDarkCyan', (0.01, 0.07, 0.10, 1), 0.3, 0.5, (0.006, 0.07, 0.11, 1))
-    violet = make_material('M_DistrictDarkViolet', (0.06, 0.015, 0.10, 1), 0.3, 0.5, (0.05, 0.008, 0.10, 1))
+    cyan = make_material('M_DistrictDimCyan', (0.004, 0.03, 0.045, 1), 0.3, 0.5, (0.002, 0.02, 0.032, 1))
+    violet = make_material('M_DistrictDimViolet', (0.028, 0.006, 0.045, 1), 0.3, 0.5, (0.016, 0.003, 0.032, 1))
 
     # Shell: 7000 x 5000 interior, floor at z = 0, ceiling at z = 1500.
     cube('Floor', -3500, 3500, -2500, 2500, -100, 0, floor)
@@ -142,8 +142,8 @@ def build():
     # --- Spawn cover: no line of sight from spawn to spawn. A window in the middle, a door on each side.
     wall('SpawnWall', 'y', -2500, -950, 950, 330, concrete, [door(-600), window(0), door(600)])
     # Team colour strips on the spawn walls, cyan for player one, violet for player two.
-    cube('SpawnStrip', -2522, -2520, -950, 950, 330, 350, cyan)
-    cube('SpawnStrip', 2520, 2522, -950, 950, 330, 350, violet)
+    cube('SpawnStrip', -2522, -2478, -950, 950, 330, 336, cyan)
+    cube('SpawnStrip', 2478, 2522, -950, 950, 330, 336, violet)
     # Wing walls so the doors are peeked, not walked through in the open.
     wall('SpawnWing', 'x', 950, -2900, -2500, 330, concrete, [])
     wall('SpawnWing', 'x', -950, -2900, -2500, 330, concrete, [])
