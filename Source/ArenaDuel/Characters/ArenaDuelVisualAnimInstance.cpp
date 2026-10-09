@@ -162,9 +162,14 @@ UArenaDuelVisualAnimInstance::UArenaDuelVisualAnimInstance()
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> RunBwd(TEXT("/Game/Characters/Mannequins/Anims/Rifle/Jog/MF_Rifle_Jog_Bwd"));
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> RunLeft(TEXT("/Game/Characters/Mannequins/Anims/Rifle/Jog/MF_Rifle_Jog_Left"));
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> RunRight(TEXT("/Game/Characters/Mannequins/Anims/Rifle/Jog/MF_Rifle_Jog_Right"));
+	WalkClips[0] = Walk; WalkClips[1] = WalkBwd.Object; WalkClips[2] = WalkLeft.Object; WalkClips[3] = WalkRight.Object;
+	RunClips[0] = Run; RunClips[1] = RunBwd.Object; RunClips[2] = RunLeft.Object; RunClips[3] = RunRight.Object;
 	// A missing directional clip falls back to the forward clip.
-	WalkClips[0] = Walk; WalkClips[1] = WalkBwd.Object ? WalkBwd.Object : Walk.Get(); WalkClips[2] = WalkLeft.Object ? WalkLeft.Object : Walk.Get(); WalkClips[3] = WalkRight.Object ? WalkRight.Object : Walk.Get();
-	RunClips[0] = Run; RunClips[1] = RunBwd.Object ? RunBwd.Object : Run.Get(); RunClips[2] = RunLeft.Object ? RunLeft.Object : Run.Get(); RunClips[3] = RunRight.Object ? RunRight.Object : Run.Get();
+	for (int32 Direction = 1; Direction < 4; ++Direction)
+	{
+		if (!WalkClips[Direction]) WalkClips[Direction] = Walk;
+		if (!RunClips[Direction]) RunClips[Direction] = Run;
+	}
 	SetRootMotionMode(ERootMotionMode::IgnoreRootMotion);
 }
 
