@@ -11,6 +11,9 @@
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
 #include "Components/BoxComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "PhysicsEngine/BodyInstance.h"
+#include "PhysicsEngine/BodySetup.h"
 #include "DrawDebugHelpers.h"
 #include "EngineUtils.h"
 
@@ -96,17 +99,19 @@ void AArenaDuelMovementDebugHUD::DrawHUD()
 	{
 		for (TActorIterator<AArenaDuelCharacter> It(GetWorld()); It; ++It)
 		{
-			if (UBoxComponent* Body = It->BodyHitZone)
+			// One box per physics body: gold head, cyan torso, violet limbs.
+			const USkeletalMeshComponent* Mesh = It->GetMesh();
+			if (!Mesh || It->IsDead()) continue;
+			for (const FBodyInstance* BodyInstance : Mesh->Bodies)
 			{
-				DrawDebugBox(GetWorld(), Body->GetComponentLocation(), Body->GetScaledBoxExtent(), Body->GetComponentQuat(), FColor(90, 210, 255), false, 0.0f, 0, 1.5f);
-			}
-			if (UBoxComponent* Head = It->HeadHitZone)
-			{
-				DrawDebugBox(GetWorld(), Head->GetComponentLocation(), Head->GetScaledBoxExtent(), Head->GetComponentQuat(), FColor(220, 100, 255), false, 0.0f, 0, 1.5f);
+				if (!BodyInstance || !BodyInstance->IsValidBodyInstance() || !BodyInstance->BodySetup.IsValid()) continue;
+				const EArenaDuelShotResult Zone = UArenaDuelWeaponComponent::ClassifyHitBone(BodyInstance->BodySetup->BoneName);
+				const FColor Color = Zone == EArenaDuelShotResult::Head ? FColor(227, 199, 125) : Zone == EArenaDuelShotResult::Limb ? FColor(220, 100, 255) : FColor(90, 210, 255);
+				const FBox Bounds = BodyInstance->GetBodyBounds();
+				DrawDebugBox(GetWorld(), Bounds.GetCenter(), Bounds.GetExtent(), Color, false, 0.0f, 0, 1.0f);
 			}
 		}
-	}
-	if (bShowDebugOverlay && Character && Movement)
+	}	if (bShowDebugOverlay && Character && Movement)
 	{
 		const FString Debug = FString::Printf(TEXT("SPEED %03d\nSTATE %s\nSTAMINA %02d / %02d\nSPREAD %.2f\nSEQ %d\nF3 HIDE"), FMath::RoundToInt(Movement->Velocity.Size2D()), *MovementState(Movement), FMath::RoundToInt(Movement->GetStamina()), FMath::RoundToInt(Movement->GetMaxStamina()), Spread, Weapon ? Weapon->GetLastShotSequence() : 0);
 		DrawCanvasText(Canvas, Debug, FVector2D(32.0f, 32.0f), FLinearColor(0.8f, 0.9f, 1.0f, 1.0f), GEngine->GetSmallFont());

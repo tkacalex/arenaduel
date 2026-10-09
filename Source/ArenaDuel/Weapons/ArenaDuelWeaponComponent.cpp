@@ -23,6 +23,7 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "Net/UnrealNetwork.h"
+#include "EngineUtils.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -71,6 +72,19 @@ namespace
 		if (Hit.GetActor()->IsA<AArenaDuelWeaponTarget>() || Hit.GetActor()->IsA<APawn>()) return EArenaDuelShotResult::Body;
 		return EArenaDuelShotResult::World;
 	}
+}
+
+EArenaDuelShotResult UArenaDuelWeaponComponent::ClassifyHitBone(FName BoneName)
+{
+	const FString Bone = BoneName.ToString();
+	if (Bone.StartsWith(TEXT("head"))) return EArenaDuelShotResult::Head;
+	for (const TCHAR* Limb : { TEXT("upperarm"), TEXT("lowerarm"), TEXT("hand"), TEXT("thigh"), TEXT("calf"), TEXT("foot"), TEXT("ball"),
+		TEXT("thumb"), TEXT("index"), TEXT("middle"), TEXT("ring"), TEXT("pinky") })
+	{
+		if (Bone.StartsWith(Limb)) return EArenaDuelShotResult::Limb;
+	}
+	// Pelvis, spine, clavicles and neck.
+	return EArenaDuelShotResult::Body;
 }
 
 UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
@@ -404,7 +418,7 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 	const FVector Origin = Character->GetPawnViewLocation();
 	const FVector Direction = Controller->GetControlRotation().Vector();
 	FRandomStream Random(++LastShotSequence);
-	int32 BodyPellets = 0, HeadPellets = 0, WorldPellets = 0;
+	int32 BodyPellets = 0, HeadPellets = 0, LimbPellets = 0, WorldPellets = 0;
 	TArray<FVector_NetQuantize> TraceEnds;
 	float ClosestDistance = Definition.Range;
 	AActor* LastTarget = nullptr;
@@ -414,7 +428,35 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 		FHitResult Hit;
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelWeaponTrace), true, Character);
 		const bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, Origin, Origin + PelletDirection * Definition.Range, ECC_Visibility, Params);
-		TraceEnds.Add(bHit ? Hit.ImpactPoint : Origin + PelletDirection * Definition.Range);
+		const FVector WorldEnd = bHit ? FVector(Hit.ImpactPoint) : Origin + PelletDirection * Definition.Range;
+		// Characters are hit on their animated physics bodies, never on the world trace. The body
+		// trace stops at the world impact, so cover and barriers protect whatever is behind them.
+		FHitResult BodyHit;
+		AArenaDuelCharacter* Victim = nullptr;
+		for (TActorIterator<AArenaDuelCharacter> It(GetWorld()); It; ++It)
+		{
+			FHitResult Candidate;
+			if (*It != Character && !It->IsDead() && It->TraceHitZones(Origin, WorldEnd, Candidate) && (!Victim || Candidate.Distance < BodyHit.Distance))
+			{
+				BodyHit = Candidate;
+				Victim = *It;
+			}
+		}
+		if (Victim)
+		{
+			const EArenaDuelShotResult Zone = ClassifyHitBone(BodyHit.BoneName);
+			const float Multiplier = Zone == EArenaDuelShotResult::Head ? Definition.HeadshotMultiplier : Zone == EArenaDuelShotResult::Limb ? Definition.LimbDamageMultiplier : 1.0f;
+			Victim->RecordServerHit(BodyHit.ImpactPoint, PelletDirection);
+			Victim->ApplyServerDamage(Definition.BodyDamage * Multiplier);
+			TraceEnds.Add(BodyHit.ImpactPoint);
+			ClosestDistance = FMath::Min(ClosestDistance, BodyHit.Distance);
+			LastTarget = Victim;
+			if (Zone == EArenaDuelShotResult::Head) ++HeadPellets;
+			else if (Zone == EArenaDuelShotResult::Limb) ++LimbPellets;
+			else ++BodyPellets;
+			continue;
+		}
+		TraceEnds.Add(WorldEnd);
 		if (!bHit) continue;
 		if (AArenaDuelArcBarrier* Barrier = Cast<AArenaDuelArcBarrier>(Hit.GetActor()))
 		{
@@ -440,9 +482,9 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 		else if (Result == EArenaDuelShotResult::Body) ++BodyPellets;
 		else ++WorldPellets;
 	}
-	LastPelletsHit = BodyPellets + HeadPellets;
+	LastPelletsHit = BodyPellets + HeadPellets + LimbPellets;
 	LastHeadPellets = HeadPellets;
-	const EArenaDuelShotResult Aggregate = HeadPellets > 0 ? EArenaDuelShotResult::Head : BodyPellets > 0 ? EArenaDuelShotResult::Body : WorldPellets > 0 ? EArenaDuelShotResult::World : EArenaDuelShotResult::Miss;
+	const EArenaDuelShotResult Aggregate = HeadPellets > 0 ? EArenaDuelShotResult::Head : BodyPellets > 0 ? EArenaDuelShotResult::Body : LimbPellets > 0 ? EArenaDuelShotResult::Limb : WorldPellets > 0 ? EArenaDuelShotResult::World : EArenaDuelShotResult::Miss;
 	SetLastShot(Aggregate, ClosestDistance, LastTarget);
 	MulticastShotFired(TraceEnds);
 }

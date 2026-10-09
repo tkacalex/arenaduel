@@ -65,7 +65,8 @@ enum class EArenaDuelShotResult : uint8
 	Miss,
 	World,
 	Body,
-	Head
+	Head,
+	Limb
 };
 
 USTRUCT(BlueprintType)
@@ -126,6 +127,10 @@ struct ARENADUEL_API FArenaDuelWeaponDefinition
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float HeadshotMultiplier = 1.0f;
+
+	// Arms, hands, legs and feet.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	float LimbDamageMultiplier = 0.8f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float AimSpreadMultiplier = 0.65f;
@@ -192,6 +197,8 @@ public:
 	int32 GetLastPelletsHit() const { return LastPelletsHit; }
 	int32 GetLastHeadPellets() const { return LastHeadPellets; }
 	float GetCurrentSpreadDegrees() const;
+	// Maps a physics asset bone to the zone it scores as: head, torso or limb.
+	static EArenaDuelShotResult ClassifyHitBone(FName BoneName);
 	float GetCrosshairKick() const;
 
 protected:

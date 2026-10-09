@@ -86,17 +86,16 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	BodyHitZone->SetupAttachment(GetCapsuleComponent());
 	BodyHitZone->SetRelativeLocation(FVector(0.0f, 0.0f, -16.0f));
 	BodyHitZone->SetBoxExtent(FVector(38.0f, 38.0f, 70.0f));
-	BodyHitZone->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	// Superseded by per-bone hit zones on the world mesh. Kept as a disabled component so saved assets still load.
+	BodyHitZone->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	BodyHitZone->SetCollisionResponseToAllChannels(ECR_Ignore);
-	BodyHitZone->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	BodyHitZone->ComponentTags.Add(TEXT("BodyHitZone"));
 	HeadHitZone = CreateDefaultSubobject<UBoxComponent>(TEXT("HeadHitZone"));
 	HeadHitZone->SetupAttachment(GetCapsuleComponent());
 	HeadHitZone->SetRelativeLocation(FVector(0.0f, 0.0f, 68.0f));
 	HeadHitZone->SetBoxExtent(FVector(24.0f, 24.0f, 14.0f));
-	HeadHitZone->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	HeadHitZone->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	HeadHitZone->SetCollisionResponseToAllChannels(ECR_Ignore);
-	HeadHitZone->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	HeadHitZone->ComponentTags.Add(TEXT("HeadHitZone"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> SphereMesh(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
@@ -217,7 +216,7 @@ void AArenaDuelCharacter::RefreshCharacterVisuals()
 	GetMesh()->SetOwnerNoSee(true);
 	GetMesh()->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::WorldSpaceRepresentation;
 	// A corpse keeps the ragdoll collision it was given at death.
-	if (!bDead) GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	if (!bDead) ConfigureHitZoneCollision();
 	FirstPersonArms->SetVisibility(IsLocallyControlled() && !bDead);
 	// Derived arm-only geometry retains the Epic skeleton, animation and grip socket.
 	const auto* State = GetPlayerState<AArenaDuelPlayerState>();
@@ -481,6 +480,29 @@ void AArenaDuelCharacter::UpdateLocalDeathCamera()
 		FirstPersonCamera->SetRelativeRotation(DeathRotation);
 		GetWorldTimerManager().ClearTimer(LocalDeathCameraTimer);
 	}
+}
+
+void AArenaDuelCharacter::ConfigureHitZoneCollision()
+{
+	// The physics asset bodies of the world mesh are the hit zones. They answer no collision channel,
+	// so nothing blocks or overlaps them; weapons query them directly through TraceHitZones. The pose
+	// must keep updating where nobody renders the body, or the server would test a frozen pose.
+	USkeletalMeshComponent* Body = GetMesh();
+	BodyHitZone->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	HeadHitZone->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Body->SetCollisionObjectType(ECC_Pawn);
+	Body->SetCollisionResponseToAllChannels(ECR_Ignore);
+	Body->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	Body->SetGenerateOverlapEvents(false);
+	Body->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+	Body->bEnableUpdateRateOptimizations = false;
+}
+
+bool AArenaDuelCharacter::TraceHitZones(const FVector& Start, const FVector& End, FHitResult& OutHit) const
+{
+	USkeletalMeshComponent* Body = GetMesh();
+	if (bDead || !Body || !Body->GetPhysicsAsset()) return false;
+	return Body->LineTraceComponent(OutHit, Start, End, FCollisionQueryParams(SCENE_QUERY_STAT(ArenaDuelHitZones), false));
 }
 
 void AArenaDuelCharacter::RecordServerHit(const FVector& WorldLocation, const FVector& Direction)

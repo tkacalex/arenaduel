@@ -51,6 +51,8 @@ public:
 	void ApplyServerDamage(float DamageAmount);
 	// Server only. Remembers where and from which direction the latest hit landed, for the death ragdoll push.
 	void RecordServerHit(const FVector& WorldLocation, const FVector& Direction);
+	// Line trace against the animated physics bodies of the world mesh. OutHit.BoneName names the body hit.
+	bool TraceHitZones(const FVector& Start, const FVector& End, FHitResult& OutHit) const;
 	void AdminSetHealth(float NewHealth);
 	void AdminKill();
 	void AdminResetPlayer();
@@ -124,6 +126,7 @@ protected:
 	void UpdateLocalDeathCamera();
 	void UpdateShadowStepCameraImpulse();
 	void StartDeathRagdoll();
+	void ConfigureHitZoneCollision();
 	void SettleDeathRagdoll();
 	FRotator GetThirdPersonMeshBaseRotation() const;
 
