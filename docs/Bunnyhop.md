@@ -4,7 +4,7 @@ Everything lives in `UArenaDuelCharacterMovementComponent` and runs inside the e
 
 ## How it works
 
-**Air strafing.** While falling with a movement key held, the engine's air acceleration is replaced by a Source style step (`ComputeAirStrafe`): speed is added along the wished direction only while the velocity along that direction is below `AirStrafeWishSpeed`. Holding forward at speed adds nothing. Holding a strafe key and turning the view with it keeps the wished direction at an angle to the velocity, and each step adds a little. Gains stop at `BhopMaxSpeed`. A jump from a standstill keeps plain air control up to `AirLowSpeedControl`.
+**Air strafing.** While falling with a movement key held, the engine's air acceleration is replaced by a Source style step (`ComputeAirStrafe`): speed is added along the wished direction only while the velocity along that direction is below `AirStrafeWishSpeed`. Holding forward at speed adds nothing. Holding a strafe key and turning the view with it keeps the wished direction at an angle to the velocity, and each step adds a little. Gains stop at `BhopMaxSpeed`. Below `AirLowSpeedControl` the air is steered plainly: input accelerates where it points, up to that speed, so a jump at walking pace handles as it always did.
 
 **Keeping speed over a landing.** For `BhopLandingGrace` after touching down the ground does not brake. A jump inside that window leaves with the speed it arrived with. The window is the same for every landing and does not depend on input, so the server and the owning client simulate it identically. Without a jump, normal ground braking brings the player back to sprint or walk speed.
 
@@ -26,7 +26,7 @@ All are `EditDefaultsOnly` properties of the movement component.
 | `GroundAcceleration` | 4200 | Ground acceleration, unchanged |
 | `AirStrafeAccelerate` | 2.5 | Air strafe acceleration, times `WalkSpeed` per second |
 | `AirStrafeWishSpeed` | 70 | Air strafe strength; smaller needs more precise turning |
-| `AirLowSpeedControl` | 300 | Air control below half walk speed |
+| `AirLowSpeedControl` | 600 | Plain air steering below this speed |
 | `GroundBrakingFriction` / `GroundBrakingDeceleration` | 12 / 6000 | Ground braking after the grace, unchanged |
 | `BhopLandingGrace` | 0.05 s | Time after a landing without braking |
 | `LandingSpeedLoss` | 0.04 | Share of the speed above sprint speed lost per landing |

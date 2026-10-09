@@ -231,10 +231,17 @@ void UArenaDuelCharacterMovementComponent::CalcVelocity(float DeltaTime, float F
 	if (MovementMode == MOVE_Falling && !Acceleration.IsNearlyZero())
 	{
 		// Air strafing replaces the engine's air acceleration. A slow jump keeps some plain air control.
-		const float WishSpeedCap = Velocity.Size2D() < WalkSpeed * 0.5f ? AirLowSpeedControl : AirStrafeWishSpeed;
-		const FVector Strafed = ComputeAirStrafe(Velocity, Acceleration, WishSpeedCap, AirStrafeAccelerate * WalkSpeed, BhopMaxSpeed, DeltaTime);
-		Velocity.X = Strafed.X;
-		Velocity.Y = Strafed.Y;
+		const float StrafeAcceleration = AirStrafeAccelerate * WalkSpeed;
+		FVector Steered = ComputeAirStrafe(Velocity, Acceleration, AirStrafeWishSpeed, StrafeAcceleration, BhopMaxSpeed, DeltaTime);
+		if (Steered.Size() < AirLowSpeedControl)
+		{
+			// Below this speed the air is steered plainly: accelerate where the input points, up to that speed.
+			// Both rules give nearly the same result where they meet, so there is no jump in behaviour at the
+			// boundary for the owner and the server to disagree about.
+			Steered = (FVector(Velocity.X, Velocity.Y, 0.0) + Acceleration.GetSafeNormal2D() * StrafeAcceleration * DeltaTime).GetClampedToMaxSize(AirLowSpeedControl);
+		}
+		Velocity.X = Steered.X;
+		Velocity.Y = Steered.Y;
 		return;
 	}
 	if (MovementMode == MOVE_Walking && TimeSinceLanded < BhopLandingGrace)
@@ -629,8 +636,13 @@ void UArenaDuelCharacterMovementComponent::ProcessLanded(const FHitResult& Hit, 
 	if (ArenaCharacter && ArenaCharacter->IsLocallyControlled() && !ArenaCharacter->bClientUpdating && IsMovingOnGround()
 		&& ArenaCharacter->WantsLandingJump(bAutoBhop, JumpBufferSeconds))
 	{
-		ArenaCharacter->Jump();
+		// The engine clears a pressed jump at the end of every movement step, so pressing it here would be
+		// lost. It is raised at the start of the next step instead, where it is also recorded in the move.
+		bLandingJumpPending = true;
 	}
+#if !UE_BUILD_SHIPPING
+	DevStrafeSide = -DevStrafeSide;
+#endif
 }
 
 void UArenaDuelCharacterMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode)
@@ -659,24 +671,32 @@ void UArenaDuelCharacterMovementComponent::TickComponent(float DeltaSeconds, ELe
 				// Face so that the right vector sits just inside the strafe window, then push right.
 				const double Angle = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(AirStrafeWishSpeed * 0.5 / DevSpeed, 0.0, 1.0)));
 				FRotator View = DevCharacter->GetController()->GetControlRotation();
-				View.Yaw = Velocity.Rotation().Yaw + Angle - 90.0;
+				// The side changes with every landing, like a player weaving left and right, so the path stays roughly straight.
+				View.Yaw = Velocity.Rotation().Yaw + DevStrafeSide * (Angle - 90.0);
 				DevCharacter->GetController()->SetControlRotation(View);
-				DevCharacter->AddMovementInput(FRotationMatrix(FRotator(0.0, View.Yaw, 0.0)).GetUnitAxis(EAxis::Y), 1.0f);
+				DevCharacter->AddMovementInput(FRotationMatrix(FRotator(0.0, View.Yaw, 0.0)).GetUnitAxis(EAxis::Y), DevStrafeSide);
 			}
 			else
 			{
 				DevCharacter->AddMovementInput(DevCharacter->GetActorForwardVector(), 1.0f);
 			}
-			if (IsMovingOnGround() && !DevCharacter->bPressedJump) DevCharacter->Jump();
+			// Dev.Hop 2 first runs up to sprint speed on the ground; the hops themselves come from the held jump.
+			if (IsMovingOnGround() && !DevCharacter->bPressedJump && !bLandingJumpPending && DevSpeed >= (CVarDevHop.GetValueOnGameThread() > 1 ? SprintSpeed - 20.0f : 0.0f) && !bDevFirstJumpDone) { DevCharacter->Jump(); bDevFirstJumpDone = true; }
 		}
 		else if (bDevHopWasOn)
 		{
+			bDevFirstJumpDone = false;
 			bWantsSprint = false;
 			DevCharacter->SetDevJumpHeld(false);
 		}
 		bDevHopWasOn = bDevHop;
 	}
 #endif
+	if (bLandingJumpPending)
+	{
+		bLandingJumpPending = false;
+		if (CharacterOwner && CharacterOwner->IsLocallyControlled() && IsMovingOnGround()) CharacterOwner->Jump();
+	}
 	Super::TickComponent(DeltaSeconds, TickType, ThisTickFunction);
 	const AArenaDuelCharacter* ArenaCharacter = Cast<AArenaDuelCharacter>(CharacterOwner);
 	const AArenaDuelPlayerState* PlayerState = ArenaCharacter ? ArenaCharacter->GetPlayerState<AArenaDuelPlayerState>() : nullptr;

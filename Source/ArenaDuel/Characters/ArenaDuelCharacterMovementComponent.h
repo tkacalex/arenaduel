@@ -201,9 +201,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0"))
 	float AirStrafeAccelerate = 2.5f;
 
-	/** Below half walk speed, air input may add up to this much speed, so a standing jump can still be steered. */
+	/** Below this speed the air is steered plainly and input may accelerate up to it, so a jump at walking pace handles like before. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0"))
-	float AirLowSpeedControl = 300.0f;
+	float AirLowSpeedControl = 600.0f;
 
 	/** Seconds after a landing without ground braking. A jump inside this window keeps the speed. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0", ClampMax = "0.3"))
@@ -310,6 +310,10 @@ protected:
 	float TimeSinceLanded = 1000.0f;
 	float SpeedAllowance = 0.0f;
 	bool bDevHopWasOn = false;
+	float DevStrafeSide = 1.0f;
+	bool bDevFirstJumpDone = false;
+	/** Owner only: jump at the start of the next step, set by a landing with jump held or buffered. */
+	bool bLandingJumpPending = false;
 	float SlideInputBufferRemaining = 0.0f;
 	float SlideElapsed = 0.0f;
 	float TimeSinceSlideEnded = 1000.0f;
