@@ -469,11 +469,11 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 		const EArenaDuelShotResult Result = ClassifyHit(Hit);
 		if ((Result == EArenaDuelShotResult::Body || Result == EArenaDuelShotResult::Head) && Hit.GetActor() != Character)
 		{
-			if (AArenaDuelCharacter* Victim = Cast<AArenaDuelCharacter>(Hit.GetActor()))
+			if (AArenaDuelCharacter* WorldVictim = Cast<AArenaDuelCharacter>(Hit.GetActor()))
 			{
 				const float Damage = Definition.BodyDamage * (Result == EArenaDuelShotResult::Head ? Definition.HeadshotMultiplier : 1.0f);
-				Victim->RecordServerHit(Hit.ImpactPoint, PelletDirection);
-				Victim->ApplyServerDamage(Damage);
+				WorldVictim->RecordServerHit(Hit.ImpactPoint, PelletDirection);
+				WorldVictim->ApplyServerDamage(Damage);
 			}
 		}
 		ClosestDistance = FMath::Min(ClosestDistance, FVector::Dist(Origin, Hit.Location));
