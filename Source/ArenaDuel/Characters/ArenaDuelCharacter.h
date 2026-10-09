@@ -206,7 +206,7 @@ protected:
 	UPROPERTY(Transient) TArray<TObjectPtr<class UPointLightComponent>> EnemyGlowLights;
 	void UpdateEnemyGlow();
 	/** Brightness of each of the four rim lights. Kept low: the opponent should read slightly red, not lit up. */
-	UPROPERTY(EditDefaultsOnly, Category = "Presentation") float EnemyGlowIntensity = 220.0f;	// Replicated with bDead so every machine pushes its local ragdoll the same way.
+	UPROPERTY(EditDefaultsOnly, Category = "Presentation") float EnemyGlowIntensity = 60.0f;	// Replicated with bDead so every machine pushes its local ragdoll the same way.
 	UPROPERTY(Replicated) FVector_NetQuantize DeathHitLocation;
 	UPROPERTY(Replicated) FVector_NetQuantizeNormal DeathHitDirection;
 	void SetDeadState();
