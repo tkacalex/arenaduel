@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
@@ -25,10 +25,11 @@ public:
 	float GetStepInterval() const { return HealStep / FMath::Max(HealPerSecond, 0.01f); }
 	/** True when a character whose feet are at FeetLocation stands on the pad. */
 	bool IsOnPad(const FVector& FeetLocation) const;
+	/** One heal step for every living player on the pad. The server timer calls this every GetStepInterval(). */
+	void HealStandingPlayers();
 
 protected:
 	virtual void BeginPlay() override;
-	void HealStandingPlayers();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Heal Pad") TObjectPtr<UStaticMeshComponent> Visual;
 
