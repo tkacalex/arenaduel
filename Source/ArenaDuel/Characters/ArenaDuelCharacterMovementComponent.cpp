@@ -223,8 +223,10 @@ void UArenaDuelCharacterMovementComponent::CalcVelocity(float DeltaTime, float F
 	}
 	// The strong braking friction belongs to the ground. The engine would apply it in every mode, which
 	// stripped the speed off a sprint jump within a few frames; off the ground the mode's own friction is used.
-	TGuardValue<bool> GroundOnlyBrakingFriction(bUseSeparateBrakingFriction, bUseSeparateBrakingFriction && MovementMode == MOVE_Walking);
+	const bool bSeparateBrakingFriction = bUseSeparateBrakingFriction;
+	bUseSeparateBrakingFriction = bSeparateBrakingFriction && MovementMode == MOVE_Walking;
 	Super::CalcVelocity(DeltaTime, Friction, bFluid, BrakingDeceleration);
+	bUseSeparateBrakingFriction = bSeparateBrakingFriction;
 }
 float UArenaDuelCharacterMovementComponent::GetMaxSpeed() const
 {
