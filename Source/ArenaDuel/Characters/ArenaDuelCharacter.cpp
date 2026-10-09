@@ -521,9 +521,9 @@ float AArenaDuelCharacter::GetFlashBlindness() const
 
 float AArenaDuelCharacter::GetDamageFlash() const
 {
-	constexpr float FlashSeconds = 0.3f;
-	const float Age = GetWorld() ? GetWorld()->GetTimeSeconds() - LastDamageWorldTime : FlashSeconds;
-	return FMath::Clamp(1.0f - Age / FlashSeconds, 0.0f, 1.0f);
+	constexpr float EdgeFlashSeconds = 0.3f;
+	const float Age = GetWorld() ? GetWorld()->GetTimeSeconds() - LastDamageWorldTime : EdgeFlashSeconds;
+	return FMath::Clamp(1.0f - Age / EdgeFlashSeconds, 0.0f, 1.0f);
 }
 
 void AArenaDuelCharacter::UpdateEnemyGlow()

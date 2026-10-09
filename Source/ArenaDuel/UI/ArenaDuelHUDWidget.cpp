@@ -237,15 +237,15 @@ void UArenaDuelHUDWidget::RefreshData()
 	}
 	if (const UArenaDuelWeaponComponent* Weapon = Character->GetWeaponComponent())
 	{
-		const EArenaDuelLoadoutSlot Slot = Weapon->GetActiveSlot();
-		if (Slot == EArenaDuelLoadoutSlot::Flashbang)
+		const EArenaDuelLoadoutSlot HeldSlot = Weapon->GetActiveSlot();
+		if (HeldSlot == EArenaDuelLoadoutSlot::Flashbang)
 		{
 			SetText(WeaponName, FText::FromString(TEXT("Flashbang")));
 			SetText(FireMode, FText::FromString(TEXT("THROW")));
 			SetText(MagazineAmmo, FText::AsNumber(Weapon->GetFlashbangsRemaining()));
 			SetText(ReserveAmmo, FText::GetEmpty());
 		}
-		else if (Slot == EArenaDuelLoadoutSlot::Knife)
+		else if (HeldSlot == EArenaDuelLoadoutSlot::Knife)
 		{
 			SetText(WeaponName, FText::FromString(TEXT("Knife")));
 			SetText(FireMode, FText::FromString(TEXT("MELEE")));
@@ -267,13 +267,13 @@ void UArenaDuelHUDWidget::RefreshData()
 			{
 				const FArenaDuelWeaponDefinition* Definition = Weapon->GetWeaponDefinition(Firearm);
 				const FString GunName = Definition ? Definition->DisplayName.ToString().ToUpper() : FString(TEXT("?"));
-				const bool bInHand = Slot == EArenaDuelLoadoutSlot::Primary && Definition && Definition->Id == Weapon->GetCurrentWeaponId();
+				const bool bInHand = HeldSlot == EArenaDuelLoadoutSlot::Primary && Definition && Definition->Id == Weapon->GetCurrentWeaponId();
 				if (!Guns.IsEmpty()) Guns += TEXT(" / ");
 				Guns += bInHand ? FString::Printf(TEXT("[%s]"), *GunName) : GunName;
 			}
 			const FString Flash = FString::Printf(TEXT("FLASH x%d"), Weapon->GetFlashbangsRemaining());
-			const FString FlashLabel = Slot == EArenaDuelLoadoutSlot::Flashbang ? FString::Printf(TEXT("[%s]"), *Flash) : Flash;
-			const FString KnifeLabel = Slot == EArenaDuelLoadoutSlot::Knife ? TEXT("[KNIFE]") : TEXT("KNIFE");
+			const FString FlashLabel = HeldSlot == EArenaDuelLoadoutSlot::Flashbang ? FString::Printf(TEXT("[%s]"), *Flash) : Flash;
+			const FString KnifeLabel = HeldSlot == EArenaDuelLoadoutSlot::Knife ? TEXT("[KNIFE]") : TEXT("KNIFE");
 			SetText(SlotOverview, FText::FromString(FString::Printf(TEXT("1 %s    2 %s    3 %s"), *Guns, *FlashLabel, *KnifeLabel)));
 		}
 		const ESlateVisibility ReloadVisibility = Weapon->IsReloading() ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
