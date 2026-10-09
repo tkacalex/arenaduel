@@ -41,6 +41,14 @@ public:
 	UFUNCTION(Server, Reliable)
 	void ServerSetCharacterReady(bool bReady);
 
+	// Zombie Survival.
+	UFUNCTION(Server, Reliable)
+	void ServerSurvivalPurchase(uint8 Item);
+	UFUNCTION(Server, Reliable)
+	void ServerSurvivalRestart();
+	/** Leaves the current game for the main menu. For a host this ends the session. */
+	void ReturnToMainMenu();
+
 	UFUNCTION(Server, Reliable)
 	void ServerExecuteAdminCommand(EArenaDuelAdminCommand Command, uint8 TargetDuelSlot, float NumericValue);
 
@@ -51,6 +59,11 @@ protected:
 	FTimerHandle MatchPresentationTimer;
 	bool bCharacterSelectOpen = false;
 	void ToggleAdminMenu();
+	void SurvivalBuyAmmo();
+	void SurvivalBuyHeal();
+	void SurvivalBuyDamage();
+	void SurvivalRestartKey();
+	void SurvivalMenuKey();
 	void HandleEscape();
 	void HandleAdminWidgetAction(EArenaDuelAdminCommand Command, float NumericValue);
 	void ExecuteAdminCommandAuthoritatively(EArenaDuelAdminCommand Command, uint8 TargetDuelSlot, float NumericValue);

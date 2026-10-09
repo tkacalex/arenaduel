@@ -296,6 +296,9 @@ void AArenaDuelPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME(AArenaDuelPlayerState, AbilitySystemComponent);
 	DOREPLIFETIME(AArenaDuelPlayerState, DuelSlot);
 	DOREPLIFETIME(AArenaDuelPlayerState, RoundWins);
+	DOREPLIFETIME(AArenaDuelPlayerState, SurvivalPoints);
+	DOREPLIFETIME(AArenaDuelPlayerState, SurvivalKills);
+	DOREPLIFETIME(AArenaDuelPlayerState, SurvivalDamageLevel);
 	DOREPLIFETIME(AArenaDuelPlayerState, CharacterArchetype);
 	DOREPLIFETIME(AArenaDuelPlayerState, bCharacterReady);
 	DOREPLIFETIME(AArenaDuelPlayerState, bAdminGodMode);

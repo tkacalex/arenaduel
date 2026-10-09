@@ -31,6 +31,14 @@ public:
 	UArenaDuelAttributeSet* GetArenaDuelAttributes() const { return AttributeSet; }
 	uint8 GetDuelSlot() const { return DuelSlot; }
 	int32 GetRoundWins() const { return RoundWins; }
+	// Zombie Survival. Kept per player so a co-op run can score everyone separately.
+	int32 GetSurvivalPoints() const { return SurvivalPoints; }
+	int32 GetSurvivalKills() const { return SurvivalKills; }
+	int32 GetSurvivalDamageLevel() const { return SurvivalDamageLevel; }
+	void AddSurvivalPoints(int32 Amount) { if (HasAuthority()) SurvivalPoints = FMath::Max(0, SurvivalPoints + Amount); }
+	void AddSurvivalKill() { if (HasAuthority()) ++SurvivalKills; }
+	void AddSurvivalDamageLevel() { if (HasAuthority()) ++SurvivalDamageLevel; }
+	void ResetSurvival() { if (HasAuthority()) { SurvivalPoints = 0; SurvivalKills = 0; SurvivalDamageLevel = 0; } }
 	bool HasAdminGodMode() const { return bAdminGodMode; }
 	bool HasAdminInfiniteAmmo() const { return bAdminInfiniteAmmo; }
 	bool HasAdminInfiniteStamina() const { return bAdminInfiniteStamina; }
@@ -85,6 +93,10 @@ protected:
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
 	int32 RoundWins = 0;
+
+	UPROPERTY(Replicated) int32 SurvivalPoints = 0;
+	UPROPERTY(Replicated) int32 SurvivalKills = 0;
+	UPROPERTY(Replicated) int32 SurvivalDamageLevel = 0;
 
 	UPROPERTY(ReplicatedUsing=OnRep_CharacterArchetype, VisibleInstanceOnly, BlueprintReadOnly, Category="Character")
 	EArenaDuelCharacterArchetype CharacterArchetype = EArenaDuelCharacterArchetype::Shadow;

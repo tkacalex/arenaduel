@@ -43,6 +43,7 @@ protected:
 	UFUNCTION() void OnVSyncChanged(FString Value, ESelectInfo::Type SelectionType);
 	UFUNCTION() void OnFPSChanged(FString Value, ESelectInfo::Type SelectionType);
 	UFUNCTION() void OnResumeClicked();
+	UFUNCTION() void OnMainMenuClicked();
 	UFUNCTION() void OnSettingsClicked();
 	UFUNCTION() void OnApplyClicked();
 	UFUNCTION() void OnBackClicked();

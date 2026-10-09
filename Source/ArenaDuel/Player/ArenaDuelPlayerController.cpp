@@ -11,6 +11,9 @@
 #include "../UI/ArenaDuelAdminWidget.h"
 #include "../UI/ArenaDuelCharacterSelectWidget.h"
 #include "../UI/ArenaDuelPlayerMenuWidget.h"
+#include "../Game/ArenaDuelZombieGameMode.h"
+#include "../Game/ArenaDuelZombieGameState.h"
+#include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameUserSettings.h"
 #include "Engine/Engine.h"
 #include "AudioDevice.h"
@@ -29,7 +32,53 @@ void AArenaDuelPlayerController::SetupInputComponent()
 	{
 		InputComponent->BindKey(EKeys::F1, IE_Pressed, this, &AArenaDuelPlayerController::ToggleAdminMenu);
 		InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AArenaDuelPlayerController::HandleEscape);
+		// Zombie Survival: the shop between waves and the two choices after a run. They do nothing in a duel.
+		InputComponent->BindKey(EKeys::Five, IE_Pressed, this, &AArenaDuelPlayerController::SurvivalBuyAmmo);
+		InputComponent->BindKey(EKeys::Six, IE_Pressed, this, &AArenaDuelPlayerController::SurvivalBuyHeal);
+		InputComponent->BindKey(EKeys::Seven, IE_Pressed, this, &AArenaDuelPlayerController::SurvivalBuyDamage);
+		InputComponent->BindKey(EKeys::Enter, IE_Pressed, this, &AArenaDuelPlayerController::SurvivalRestartKey);
+		InputComponent->BindKey(EKeys::M, IE_Pressed, this, &AArenaDuelPlayerController::SurvivalMenuKey);
 	}
+}
+
+void AArenaDuelPlayerController::SurvivalBuyAmmo() { if (GetWorld() && GetWorld()->GetGameState<AArenaDuelZombieGameState>()) ServerSurvivalPurchase(static_cast<uint8>(EArenaDuelSurvivalPurchase::Ammo)); }
+void AArenaDuelPlayerController::SurvivalBuyHeal() { if (GetWorld() && GetWorld()->GetGameState<AArenaDuelZombieGameState>()) ServerSurvivalPurchase(static_cast<uint8>(EArenaDuelSurvivalPurchase::Heal)); }
+void AArenaDuelPlayerController::SurvivalBuyDamage() { if (GetWorld() && GetWorld()->GetGameState<AArenaDuelZombieGameState>()) ServerSurvivalPurchase(static_cast<uint8>(EArenaDuelSurvivalPurchase::Damage)); }
+
+void AArenaDuelPlayerController::SurvivalRestartKey()
+{
+	const AArenaDuelZombieGameState* Survival = GetWorld() ? GetWorld()->GetGameState<AArenaDuelZombieGameState>() : nullptr;
+	if (Survival && Survival->IsGameOver()) ServerSurvivalRestart();
+}
+
+void AArenaDuelPlayerController::SurvivalMenuKey()
+{
+	const AArenaDuelZombieGameState* Survival = GetWorld() ? GetWorld()->GetGameState<AArenaDuelZombieGameState>() : nullptr;
+	if (Survival && Survival->IsGameOver()) ReturnToMainMenu();
+}
+
+void AArenaDuelPlayerController::ServerSurvivalPurchase_Implementation(uint8 Item)
+{
+	if (AArenaDuelZombieGameMode* Survival = GetWorld() ? GetWorld()->GetAuthGameMode<AArenaDuelZombieGameMode>() : nullptr; Survival && Item <= static_cast<uint8>(EArenaDuelSurvivalPurchase::Damage))
+	{
+		Survival->TryPurchase(this, static_cast<EArenaDuelSurvivalPurchase>(Item));
+	}
+}
+
+void AArenaDuelPlayerController::ServerSurvivalRestart_Implementation()
+{
+	AArenaDuelZombieGameMode* Survival = GetWorld() ? GetWorld()->GetAuthGameMode<AArenaDuelZombieGameMode>() : nullptr;
+	const AArenaDuelZombieGameState* State = GetWorld() ? GetWorld()->GetGameState<AArenaDuelZombieGameState>() : nullptr;
+	// Only a finished run can be restarted this way; a running one cannot be reset by a stray key press.
+	if (Survival && State && State->IsGameOver()) Survival->RestartSurvival();
+}
+
+void AArenaDuelPlayerController::ReturnToMainMenu()
+{
+	if (!IsLocalController()) return;
+	CloseAdminMenu();
+	ClosePlayerMenu();
+	UGameplayStatics::OpenLevel(this, FName(TEXT("/Game/ArenaDuel/Maps/L_MainMenu")));
 }
 
 void AArenaDuelPlayerController::BeginPlay()

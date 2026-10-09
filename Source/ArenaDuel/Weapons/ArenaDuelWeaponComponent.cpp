@@ -10,6 +10,7 @@
 #include "ArenaDuelWeaponTarget.h"
 #include "ArenaDuelFlashbang.h"
 #include "ArenaDuelItemMeshes.h"
+#include "../Characters/ArenaDuelZombie.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -702,6 +703,31 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 				Victim = *It;
 			}
 		}
+		// Survival enemies use the same per-bone zones. Whichever body is nearer along the pellet takes it.
+		FHitResult ZombieHit;
+		AArenaDuelZombie* ZombieVictim = nullptr;
+		for (TActorIterator<AArenaDuelZombie> It(GetWorld()); It; ++It)
+		{
+			FHitResult Candidate;
+			if (!It->IsDead() && It->TraceHitZones(Origin, WorldEnd, Candidate) && (!ZombieVictim || Candidate.Distance < ZombieHit.Distance))
+			{
+				ZombieHit = Candidate;
+				ZombieVictim = *It;
+			}
+		}
+		if (ZombieVictim && (!Victim || ZombieHit.Distance < BodyHit.Distance))
+		{
+			const EArenaDuelShotResult Zone = ClassifyHitBone(ZombieHit.BoneName);
+			const float Multiplier = Zone == EArenaDuelShotResult::Head ? Definition.HeadshotMultiplier : Zone == EArenaDuelShotResult::Limb ? Definition.LimbDamageMultiplier : 1.0f;
+			ZombieVictim->TakeWeaponHit(Definition.BodyDamage, Multiplier, Zone, const_cast<AController*>(Controller), ZombieHit.ImpactPoint, PelletDirection);
+			TraceEnds.Add(ZombieHit.ImpactPoint);
+			ClosestDistance = FMath::Min(ClosestDistance, ZombieHit.Distance);
+			LastTarget = ZombieVictim;
+			if (Zone == EArenaDuelShotResult::Head) ++HeadPellets;
+			else if (Zone == EArenaDuelShotResult::Limb) ++LimbPellets;
+			else ++BodyPellets;
+			continue;
+		}
 		if (Victim)
 		{
 			const EArenaDuelShotResult Zone = ClassifyHitBone(BodyHit.BoneName);
@@ -1245,6 +1271,32 @@ void UArenaDuelWeaponComponent::KnifeAttackAuthoritative(bool bHeavy)
 				Victim = *It;
 			}
 		}
+	}
+	// The blade also reaches survival enemies; the nearest body in the fan takes the hit.
+	AArenaDuelZombie* ZombieVictim = nullptr;
+	FHitResult ZombieHit;
+	for (const FVector2D& Offset : Fan)
+	{
+		const FVector End = Origin + Forward * Reach + (Aim.GetUnitAxis(EAxis::Y) * Offset.X + Aim.GetUnitAxis(EAxis::Z) * Offset.Y) * Knife.SwingHalfWidth * (Reach / FMath::Max(Knife.Range, 1.0f));
+		for (TActorIterator<AArenaDuelZombie> It(GetWorld()); It; ++It)
+		{
+			FHitResult Candidate;
+			if (!It->IsDead() && It->TraceHitZones(Origin, End, Candidate) && (!ZombieVictim || Candidate.Distance < ZombieHit.Distance))
+			{
+				ZombieHit = Candidate;
+				ZombieVictim = *It;
+			}
+		}
+	}
+	if (ZombieVictim && (!Victim || ZombieHit.Distance < BestHit.Distance))
+	{
+		++LastShotSequence;
+		LastHeadPellets = 0;
+		LastPelletsHit = 1;
+		ZombieVictim->TakeWeaponHit(bHeavy ? Knife.HeavyDamage : Knife.Damage, 1.0f, EArenaDuelShotResult::Body, Character->GetController(), ZombieHit.ImpactPoint, Forward);
+		SetLastShot(EArenaDuelShotResult::Body, ZombieHit.Distance, ZombieVictim);
+		MulticastKnifeSwing(true, bHeavy);
+		return;
 	}
 	++LastShotSequence;
 	LastHeadPellets = 0;

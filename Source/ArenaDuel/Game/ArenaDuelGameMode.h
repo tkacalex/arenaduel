@@ -26,7 +26,7 @@ public:
 	virtual AActor* FindPlayerStart_Implementation(AController* Player, const FString& IncomingName = TEXT("")) override;
 	void RequestCharacterSelection(APlayerController* Requester, EArenaDuelCharacterArchetype Archetype);
 	void RequestCharacterReady(APlayerController* Requester, bool bReady);
-	void HandlePlayerDeath(AArenaDuelCharacter* DeadCharacter);
+	virtual void HandlePlayerDeath(AArenaDuelCharacter* DeadCharacter);
 	void AdminRestartRound();
 	void AdminAdvanceRound();
 	void AdminAwardRound(uint8 WinningDuelSlot);
@@ -40,7 +40,7 @@ protected:
 	void ClearPendingRoundAndMatchTimers();
 	void AssignDuelSlot(AArenaDuelPlayerState* JoiningPlayerState);
 	void EndRoundForDevelopment(AArenaDuelPlayerState* WinningPlayerState);
-	void EnterCharacterSelect();
+	virtual void EnterCharacterSelect();
 	void AutoReadyCharacterSelectPlayers();
 	void StartCharacterAutoReadyTimer();
 	void StartSelectedMatch();

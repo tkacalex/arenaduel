@@ -70,6 +70,7 @@ void UArenaDuelPlayerMenuWidget::BuildTree()
 	Label(WidgetTree,PausePage,TEXT("PAUSED LOCALLY  |  THE MATCH CONTINUES"),55,104,510,32,14,MenuViolet);
 	UButton* Resume=ActionButton(WidgetTree,PausePage,TEXT("RESUME"),105,220,410,62,MenuCyan); Resume->OnClicked.AddDynamic(this,&ThisClass::OnResumeClicked);
 	UButton* OpenSettings=ActionButton(WidgetTree,PausePage,TEXT("SETTINGS"),105,304,410,62,MenuViolet); OpenSettings->OnClicked.AddDynamic(this,&ThisClass::OnSettingsClicked);
+	UButton* MainMenu=ActionButton(WidgetTree,PausePage,TEXT("MAIN MENU"),105,388,410,62,MenuViolet); MainMenu->OnClicked.AddDynamic(this,&ThisClass::OnMainMenuClicked);
 	Label(WidgetTree,PausePage,TEXT("ESC  RESUME"),105,475,410,30,14,FLinearColor(0.54f,0.64f,0.76f));
 	Label(WidgetTree,SettingsPage,TEXT("PLAYER SETTINGS"),38,20,640,48,30,MenuCyan);
 	Label(WidgetTree,SettingsPage,TEXT("LOCAL SETTINGS  /  APPLY TO THIS DEVICE"),40,68,720,25,13,MenuViolet);
@@ -125,6 +126,7 @@ void UArenaDuelPlayerMenuWidget::Back(){if(bFromCharacterSelect){Close();return;
 void UArenaDuelPlayerMenuWidget::ResetDefaults(){PendingSettings=FArenaDuelLocalSettings();PullValues();}
 void UArenaDuelPlayerMenuWidget::Close(){if(AArenaDuelPlayerController* PC=Cast<AArenaDuelPlayerController>(GetOwningPlayer()))PC->ClosePlayerMenu();}
 void UArenaDuelPlayerMenuWidget::OnResumeClicked(){Close();}
+void UArenaDuelPlayerMenuWidget::OnMainMenuClicked(){ if (AArenaDuelPlayerController* Controller = Cast<AArenaDuelPlayerController>(GetOwningPlayer())) Controller->ReturnToMainMenu(); }
 void UArenaDuelPlayerMenuWidget::OnSettingsClicked(){ShowSettings();}
 void UArenaDuelPlayerMenuWidget::OnApplyClicked(){Apply();}
 void UArenaDuelPlayerMenuWidget::OnBackClicked(){Back();}

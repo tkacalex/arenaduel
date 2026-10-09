@@ -1,6 +1,7 @@
 #include "ArenaDuelCharacterSelectWidget.h"
 #include "../Player/ArenaDuelPlayerController.h"
 #include "../Game/ArenaDuelGameState.h"
+#include "ArenaDuelMainMenuWidget.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
@@ -399,7 +400,12 @@ void UArenaDuelCharacterSelectWidget::RefreshLobby()
 		UpdateText(CenterStatus, !Players[0] || !Players[1] ? TEXT("WAITING FOR OPPONENT") : Players[0]->IsCharacterReady() ? TEXT("PLAYER 1 READY / WAITING FOR PLAYER 2") : Players[1]->IsCharacterReady() ? TEXT("PLAYER 2 READY / WAITING FOR PLAYER 1") : TEXT("WAITING FOR BOTH PLAYERS"));
 	}
 	UpdateText(Matchup, FString::Printf(TEXT("%s    VS    %s"), Players[0] ? *Players[0]->GetCharacterArchetypeDisplayName().ToString() : TEXT("PLAYER 1"), Players[1] ? *Players[1]->GetCharacterArchetypeDisplayName().ToString() : TEXT("PLAYER 2")));
-	UpdateText(Connection, FString::Printf(TEXT("%s\n%.0f MS"), GetWorld() && GetWorld()->GetNetMode() == NM_Client ? TEXT("CLIENT") : TEXT("LISTEN / LOCAL SERVER"), Local ? Local->GetPingInMilliseconds() : 0.0f));
+	if (GetWorld() && GetWorld()->GetNetMode() == NM_ListenServer)
+	{
+		// The host shows the address a friend types into "join": this machine and the game port.
+		UpdateText(Connection, FString::Printf(TEXT("HOST  |  JOIN: %s"), *UArenaDuelMainMenuWidget::GetLocalJoinAddress(GetWorld())));
+	}
+	else UpdateText(Connection, FString::Printf(TEXT("%s\n%.0f MS"), GetWorld() && GetWorld()->GetNetMode() == NM_Client ? TEXT("CLIENT") : TEXT("LISTEN / LOCAL SERVER"), Local ? Local->GetPingInMilliseconds() : 0.0f));
 }
 
 void UArenaDuelCharacterSelectWidget::Select(EArenaDuelCharacterArchetype Archetype)

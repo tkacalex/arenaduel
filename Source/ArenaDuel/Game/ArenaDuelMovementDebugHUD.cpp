@@ -3,6 +3,9 @@
 #include "ArenaDuelMovementDebugHUD.h"
 #include "../UI/ArenaDuelHUDWidget.h"
 #include "ArenaDuelGameState.h"
+#include "ArenaDuelZombieGameMode.h"
+#include "ArenaDuelZombieGameState.h"
+#include "../Player/ArenaDuelPlayerState.h"
 #include "../Characters/ArenaDuelCharacter.h"
 #include "../Characters/ArenaDuelCharacterMovementComponent.h"
 #include "../Weapons/ArenaDuelWeaponComponent.h"
@@ -116,6 +119,76 @@ namespace
 			Canvas->K2_DrawLine(Center + FVector2D(0.0f, PostStart), Center + FVector2D(0.0f, Radius), Post + Extra, Color);
 		}
 	}
+
+	/** Zombie Survival: wave, enemies left, points, countdown and shop, announcements, boss bar and the game over panel. */
+	void DrawSurvival(UCanvas* Canvas, const AArenaDuelZombieGameState* State, const APlayerController* Controller)
+	{
+		const UFont* Font = GEngine ? GEngine->GetLargeFont() : nullptr;
+		if (!Font) return;
+		const float Width = Canvas->SizeX, Height = Canvas->SizeY, Unit = FMath::Max(Height / 1080.0f, 0.5f);
+		const float Now = State->GetServerWorldTimeSeconds();
+		const AArenaDuelPlayerState* Player = Controller ? Controller->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
+		const auto Text = [&](const FString& String, float X, float Y, float Scale, const FLinearColor& Color, bool bCentre)
+		{
+			FCanvasTextItem Item(FVector2D(X, Y), FText::FromString(String), Font, Color);
+			Item.Scale = FVector2D(Scale * Unit, Scale * Unit);
+			Item.bCentreX = bCentre;
+			Item.EnableShadow(FLinearColor(0.0f, 0.0f, 0.0f, 0.85f));
+			Canvas->DrawItem(Item);
+		};
+		const FLinearColor Pale(0.86f, 0.92f, 1.0f, 1.0f), Green(0.45f, 1.0f, 0.55f, 1.0f), Amber(1.0f, 0.78f, 0.35f, 1.0f), Red(1.0f, 0.3f, 0.25f, 1.0f);
+
+		Text(State->GetWave() > 0 ? FString::Printf(TEXT("WAVE %d"), State->GetWave()) : FString(TEXT("GET READY")), Width * 0.5f, 26.0f * Unit, 2.0f, Pale, true);
+		if (!State->IsIntermission() && !State->IsGameOver()) Text(FString::Printf(TEXT("ZOMBIES LEFT  %d"), State->GetZombiesRemaining()), Width * 0.5f, 68.0f * Unit, 1.2f, Green, true);
+		Text(FString::Printf(TEXT("POINTS  %d"), Player ? Player->GetSurvivalPoints() : 0), Width - 300.0f * Unit, 30.0f * Unit, 1.5f, Amber, false);
+		Text(FString::Printf(TEXT("KILLS  %d"), Player ? Player->GetSurvivalKills() : 0), Width - 300.0f * Unit, 64.0f * Unit, 1.1f, Pale, false);
+
+		if (State->IsIntermission() && !State->IsGameOver())
+		{
+			const int32 Seconds = FMath::Max(0, FMath::CeilToInt(State->GetNextWaveServerTime() - Now));
+			Text(FString::Printf(TEXT("NEXT WAVE IN  %d"), Seconds), Width * 0.5f, 68.0f * Unit, 1.3f, Amber, true);
+			if (const AArenaDuelZombieGameMode* Rules = GetDefault<AArenaDuelZombieGameMode>(); Rules && State->GetWave() > 0)
+			{
+				Text(FString::Printf(TEXT("[5] AMMO  %d      [6] HEAL  %d      [7] DAMAGE +25%%  %d  (LEVEL %d)"),
+					Rules->GetPurchaseCost(Controller, EArenaDuelSurvivalPurchase::Ammo), Rules->GetPurchaseCost(Controller, EArenaDuelSurvivalPurchase::Heal),
+					Rules->GetPurchaseCost(Controller, EArenaDuelSurvivalPurchase::Damage), Player ? Player->GetSurvivalDamageLevel() : 0), Width * 0.5f, Height - 150.0f * Unit, 1.1f, Pale, true);
+			}
+		}
+
+		// Boss bar under the wave line.
+		if (const float Boss = State->GetBossHealthFraction(); Boss >= 0.0f && !State->IsGameOver())
+		{
+			const float BarWidth = 620.0f * Unit, BarHeight = 14.0f * Unit, X = (Width - BarWidth) * 0.5f, Y = 132.0f * Unit;
+			Text(State->GetBossName(), Width * 0.5f, 100.0f * Unit, 1.2f, Red, true);
+			FCanvasTileItem Back(FVector2D(X - 2.0f, Y - 2.0f), FVector2D(BarWidth + 4.0f, BarHeight + 4.0f), FLinearColor(0.0f, 0.0f, 0.0f, 0.75f));
+			Back.BlendMode = SE_BLEND_Translucent;
+			Canvas->DrawItem(Back);
+			FCanvasTileItem Fill(FVector2D(X, Y), FVector2D(BarWidth * FMath::Clamp(Boss, 0.0f, 1.0f), BarHeight), Red);
+			Fill.BlendMode = SE_BLEND_Translucent;
+			Canvas->DrawItem(Fill);
+		}
+
+		// Announcement: large, centred, fading over three seconds.
+		if (const float Age = Now - State->GetAnnouncementServerTime(); Age >= 0.0f && Age < 3.0f && !State->GetAnnouncement().IsEmpty() && !State->IsGameOver())
+		{
+			const float Alpha = FMath::Clamp(1.5f - Age * 0.5f, 0.0f, 1.0f);
+			Text(State->GetAnnouncement(), Width * 0.5f, Height * 0.3f, 3.0f, FLinearColor(1.0f, 0.95f, 0.85f, Alpha), true);
+		}
+
+		if (State->IsGameOver())
+		{
+			FCanvasTileItem Dim(FVector2D(0.0f, 0.0f), FVector2D(Width, Height), FLinearColor(0.0f, 0.0f, 0.0f, 0.72f));
+			Dim.BlendMode = SE_BLEND_Translucent;
+			Canvas->DrawItem(Dim);
+			// The wave the player died in was not survived.
+			const int32 Survived = FMath::Max(0, State->GetWave() - (State->IsIntermission() ? 0 : 1));
+			Text(TEXT("GAME OVER"), Width * 0.5f, Height * 0.26f, 4.0f, Red, true);
+			Text(FString::Printf(TEXT("WAVES SURVIVED   %d"), Survived), Width * 0.5f, Height * 0.42f, 1.8f, Pale, true);
+			Text(FString::Printf(TEXT("ZOMBIES KILLED   %d"), Player ? Player->GetSurvivalKills() : State->GetTotalKills()), Width * 0.5f, Height * 0.48f, 1.8f, Pale, true);
+			Text(FString::Printf(TEXT("POINTS   %d"), Player ? Player->GetSurvivalPoints() : 0), Width * 0.5f, Height * 0.54f, 1.8f, Amber, true);
+			Text(TEXT("[ENTER]  PLAY AGAIN          [M]  MAIN MENU"), Width * 0.5f, Height * 0.66f, 1.4f, Green, true);
+		}
+	}
 }
 
 void AArenaDuelMovementDebugHUD::DrawHUD()
@@ -130,6 +203,12 @@ void AArenaDuelMovementDebugHUD::DrawHUD()
 	const UArenaDuelCharacterMovementComponent* Movement = Character ? Character->GetArenaDuelMovementComponent() : nullptr;
 	const UArenaDuelWeaponComponent* Weapon = Character ? Character->GetWeaponComponent() : nullptr;
 	if (!Canvas) return;
+	if (const AArenaDuelZombieGameState* Survival = GetWorld()->GetGameState<AArenaDuelZombieGameState>())
+	{
+		// Survival has its own header; the duel scoreboard has nothing to show here.
+		if (GameplayWidget) GameplayWidget->SetMatchHeaderVisible(false);
+		DrawSurvival(Canvas, Survival, Controller);
+	}
 
 	const FVector2D Center(Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f);
 	const float Spread = Weapon ? Weapon->GetCurrentSpreadDegrees() : 0.0f;
