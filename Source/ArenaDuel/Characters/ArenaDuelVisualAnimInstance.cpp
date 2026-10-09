@@ -4,6 +4,8 @@
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimSingleNodeInstanceProxy.h"
 #include "TwoBoneIK.h"
+#include "Animation/AnimationPoseData.h"
+#include "Animation/AttributesRuntime.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -46,6 +48,11 @@ namespace
 		bool bRigidForearm = false;
 		FVector ElbowDirection = FVector::ZeroVector;
 		FVector RightElbowDirection = FVector::ZeroVector;
+		// World body: the reload plays on the upper body only, on top of whatever the legs are doing.
+		const UAnimSequence* ReloadOverlay = nullptr;
+		float ReloadTime = 0;
+		float ReloadWeight = 0;
+		bool bWasReloading = false;
 		float ForearmRoll = 0;
 		virtual void PreUpdate(UAnimInstance* Instance, float DeltaSeconds) override
 		{
@@ -95,12 +102,44 @@ namespace
 					LeftGripInRightHand = Body->GetBoneTransform(RightHandIndex).InverseTransformPosition(GripWorld);
 					bHasLeftGrip = !LeftGripInRightHand.ContainsNaN();
 				}
-			}			const float TargetBlend = bHasLeftGrip && Weapon && !Weapon->IsReloading() ? 1.0f : 0.0f;
+			}			const UArenaDuelVisualAnimInstance* Visual = Cast<UArenaDuelVisualAnimInstance>(Instance);
+			ReloadOverlay = Visual ? Visual->GetReloadClip() : nullptr;
+			const bool bReloadingBody = bThirdPersonBody && Weapon && Weapon->IsReloading() && !Character->IsDead() && ReloadOverlay;
+			if (bReloadingBody)
+			{
+				// The clip is stretched to the reload time of the weapon, as the first-person arms do.
+				const float Rate = ReloadOverlay->GetPlayLength() / FMath::Max(Weapon->GetCurrentDefinition().ReloadDuration, 0.1f);
+				ReloadTime = bWasReloading ? FMath::Min(ReloadTime + FMath::Max(DeltaSeconds, 0.0f) * Rate, ReloadOverlay->GetPlayLength()) : 0.0f;
+			}
+			bWasReloading = bReloadingBody;
+			ReloadWeight = (bReloadingBody ? 1.0f : 0.0f) + (ReloadWeight - (bReloadingBody ? 1.0f : 0.0f)) * Decay;
+			const float TargetBlend = bHasLeftGrip && Weapon && !Weapon->IsReloading() ? 1.0f : 0.0f;
 			LeftHandIKBlend = TargetBlend + (LeftHandIKBlend - TargetBlend) * Decay;
 		}
 		virtual bool Evaluate(FPoseContext& Output) override
 		{
 			const bool bResult = FAnimSingleNodeInstanceProxy::Evaluate(Output);
+			if (ReloadOverlay && ReloadWeight > KINDA_SMALL_NUMBER)
+			{
+				const FBoneContainer& OverlayBones = Output.Pose.GetBoneContainer();
+				const int32 SpineSkeletonIndex = OverlayBones.GetReferenceSkeleton().FindBoneIndex(TEXT("spine_02"));
+				const FCompactPoseBoneIndex SpineIndex = SpineSkeletonIndex == INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : OverlayBones.MakeCompactPoseIndex(FMeshPoseBoneIndex(SpineSkeletonIndex));
+				if (SpineIndex.GetInt() != INDEX_NONE)
+				{
+					FCompactPose ReloadPose;
+					ReloadPose.SetBoneContainer(&OverlayBones);
+					FBlendedCurve ReloadCurve;
+					ReloadCurve.InitFrom(Output.Curve);
+					UE::Anim::FStackAttributeContainer ReloadAttributes;
+					FAnimationPoseData ReloadData(ReloadPose, ReloadCurve, ReloadAttributes);
+					ReloadOverlay->GetAnimationPose(ReloadData, FAnimExtractContext(static_cast<double>(ReloadTime), false));
+					// Everything from the chest up takes the reload; hips and legs keep the locomotion clip.
+					for (const FCompactPoseBoneIndex BoneIndex : Output.Pose.ForEachBoneIndex())
+					{
+						if (BoneIndex == SpineIndex || OverlayBones.BoneIsChildOf(BoneIndex, SpineIndex)) Output.Pose[BoneIndex].Blend(Output.Pose[BoneIndex], ReloadPose[BoneIndex], ReloadWeight);
+					}
+				}
+			}
 			// Peek fairness: the rifle clips lean the head ahead of the capsule, while the camera sits on
 			// the capsule axis. Sliding the world body back so the head stays over that axis means an
 			// opponent can see and hit a head only where its owner's camera can already see out.
@@ -270,7 +309,9 @@ void UArenaDuelVisualAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	bool bLocomotion = false;
 	bool bRunning = false;
 	if (!bFirstPerson && Character->GetArenaDuelMovementComponent() && Character->GetArenaDuelMovementComponent()->IsSliding()) Desired = Idle;
-	else if (Character->GetWeaponComponent() && Character->GetWeaponComponent()->IsReloading()) Desired = Reload;
+	// Only the first-person arms switch to the reload clip. The world body keeps its locomotion clip
+	// and gets the reload layered onto the upper body in the proxy.
+	else if (bFirstPerson && Character->GetWeaponComponent() && Character->GetWeaponComponent()->IsReloading()) Desired = Reload;
 	else if (!bFirstPerson)
 	{
 		if (Character->GetCharacterMovement()->IsFalling()) Desired = Fall;

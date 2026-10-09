@@ -14,6 +14,7 @@ class ARENADUEL_API UArenaDuelVisualAnimInstance : public UAnimSingleNodeInstanc
 public:
 	UArenaDuelVisualAnimInstance();
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
+	const UAnimSequence* GetReloadClip() const { return Reload; }
 protected:
 	virtual FAnimInstanceProxy* CreateAnimInstanceProxy() override;
 private:
