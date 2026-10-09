@@ -238,6 +238,10 @@ public:
 	void GrantAllWeaponsForDevelopment();
 	void StartAim();
 	void StopAim();
+	/** True while the aim key is held, also while a reload or switch has paused the aim itself. */
+	bool IsAimHeld() const { return bAimHeld; }
+	/** 0 to 1: how far the aim accuracy bonus has come in since aiming began. */
+	float GetAimAccuracyAlpha() const;
 	void CancelCombatActions();
 	void RefillAllAmmoForDevelopment();
 	void RefreshWeaponVisual();
@@ -334,6 +338,16 @@ protected:
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Weapons")
 	bool bAiming = false;
+	/** Local input intent. Not replicated; the server only ever sees the resulting aim state. */
+	bool bAimHeld = false;
+	float AimStartWorldTime = -1000.0f;
+	float AimBlockedUntilWorldTime = 0.0f;
+	/** Seconds until the aim accuracy bonus is fully in after aiming begins. */
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon|Aim", meta = (ClampMin = "0"))
+	float AimSettleSeconds = 0.12f;
+	void SuspendAim();
+	bool CanAimNow() const;
+	void UpdateAimFromIntent();
 
 	UPROPERTY(ReplicatedUsing=OnRep_EquippedWeapon, VisibleInstanceOnly, BlueprintReadOnly, Category="Loadout")
 	uint8 ActiveSlot = 0;

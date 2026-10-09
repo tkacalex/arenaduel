@@ -61,4 +61,14 @@ bool FArenaDuelFlashbangStrengthTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelAimRulesTest, "ArenaDuel.Loadout.AimRules", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FArenaDuelAimRulesTest::RunTest(const FString& Parameters)
+{
+	const UArenaDuelWeaponComponent* Weapons = GetDefault<UArenaDuelWeaponComponent>();
+	const float* Settle = ArenaDuelLoadoutTests::Property<float>(Weapons, TEXT("AimSettleSeconds"));
+	TestTrue(TEXT("The aim bonus comes in over a short, non-zero time"), Settle && *Settle > 0.0f && *Settle <= 0.3f);
+	TestEqual(TEXT("Not aiming gives no aim bonus"), Weapons->GetAimAccuracyAlpha(), 0.0f);
+	TestFalse(TEXT("No aim key is held by default"), Weapons->IsAimHeld());
+	return true;
+}
 #endif

@@ -197,6 +197,7 @@ void UArenaDuelWeaponComponent::BeginPlay()
 void UArenaDuelWeaponComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled()) UpdateAimFromIntent();
 	TickLocalPresentation(DeltaTime);
 	UpdateTracers();
 }
@@ -362,7 +363,8 @@ float UArenaDuelWeaponComponent::GetCurrentSpreadDegrees() const
 	const UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
 	const float SpeedFactor = FMath::Clamp(Movement ? Movement->Velocity.Size2D() / 600.0f : 0.0f, 0.0f, 1.0f);
 	const float AirFactor = Movement && Movement->IsFalling() ? 0.5f : 0.0f;
-	const float AimMultiplier = bAiming ? GetCurrentDefinition().AimSpreadMultiplier : 1.0f;
+	// Accuracy follows the weapon coming up: the aim bonus fades in over AimSettleSeconds instead of applying on the click.
+	const float AimMultiplier = FMath::Lerp(1.0f, GetCurrentDefinition().AimSpreadMultiplier, GetAimAccuracyAlpha());
 	return (GetCurrentDefinition().BaseSpreadDegrees + GetCurrentDefinition().MovementSpreadDegrees * (SpeedFactor + AirFactor)) * AimMultiplier;
 }
 
@@ -397,15 +399,17 @@ void UArenaDuelWeaponComponent::Reload()
 {
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
 	if (GetActiveSlot() != EArenaDuelLoadoutSlot::Primary) return;
+	// Pressing reload with a full magazine does nothing, so it must not drop the aim either.
+	if (bReloading || GetCurrentMagazineAmmo() >= GetCurrentDefinition().MagazineCapacity) return;
 	CancelLocalAndServerFire();
-	StopAim();
+	SuspendAim();
 	if (GetOwnerRole() == ROLE_Authority) ServerRequestReload_Implementation(); else ServerRequestReload();
 }
 void UArenaDuelWeaponComponent::EquipWeapon(int32 Index)
 {
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
 	CancelLocalAndServerFire(true);
-	StopAim();
+	SuspendAim();
 	if (GetOwnerRole() == ROLE_Authority) ServerRequestEquip_Implementation(Index); else ServerRequestEquip(Index);
 }
 void UArenaDuelWeaponComponent::StartAim()
@@ -418,16 +422,52 @@ void UArenaDuelWeaponComponent::StartAim()
 		if (GetOwnerRole() == ROLE_Authority) ServerUseEquipment_Implementation(true); else ServerUseEquipment(true);
 		return;
 	}
-	if (bAiming) return;
-	bAiming = true;
-	if (GetOwnerRole() == ROLE_Authority) ServerSetAiming_Implementation(true); else ServerSetAiming(true);
+	// The held key is remembered. A reload or a weapon switch only pauses the aim; it comes back by itself.
+	bAimHeld = true;
+	UpdateAimFromIntent();
 	SetComponentTickEnabled(true);
 }
 void UArenaDuelWeaponComponent::StopAim()
 {
+	bAimHeld = false;
+	SuspendAim();
+}
+void UArenaDuelWeaponComponent::SuspendAim()
+{
+	// Short local block, so the aim does not flick back before the reload or switch has replicated.
+	if (GetWorld()) AimBlockedUntilWorldTime = GetWorld()->GetTimeSeconds() + 0.25f;
 	bAiming = false;
 	if (GetOwnerRole() == ROLE_Authority) ServerSetAiming_Implementation(false); else ServerSetAiming(false);
 	SetComponentTickEnabled(true);
+}
+bool UArenaDuelWeaponComponent::CanAimNow() const
+{
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	return Character && !Character->IsDead() && IsRoundInProgress() && !IsLocalAdminMenuOpen()
+		&& GetActiveSlot() == EArenaDuelLoadoutSlot::Primary && !bReloading
+		&& (!GetWorld() || GetWorld()->GetTimeSeconds() >= AimBlockedUntilWorldTime);
+}
+void UArenaDuelWeaponComponent::UpdateAimFromIntent()
+{
+	if (bAiming && !CanAimNow())
+	{
+		// Keep the block short here: this path only reacts to state that has already arrived.
+		const float BlockedUntil = AimBlockedUntilWorldTime;
+		SuspendAim();
+		AimBlockedUntilWorldTime = BlockedUntil;
+	}
+	else if (bAimHeld && !bAiming && CanAimNow())
+	{
+		bAiming = true;
+		AimStartWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+		if (GetOwnerRole() == ROLE_Authority) ServerSetAiming_Implementation(true); else ServerSetAiming(true);
+	}
+}
+float UArenaDuelWeaponComponent::GetAimAccuracyAlpha() const
+{
+	if (!bAiming) return 0.0f;
+	if (AimSettleSeconds <= KINDA_SMALL_NUMBER || !GetWorld()) return 1.0f;
+	return FMath::Clamp((GetWorld()->GetTimeSeconds() - AimStartWorldTime) / AimSettleSeconds, 0.0f, 1.0f);
 }
 void UArenaDuelWeaponComponent::CancelCombatActions()
 {
@@ -476,7 +516,12 @@ void UArenaDuelWeaponComponent::ServerSetAiming_Implementation(bool bAimingState
 	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character) return;
 	if (!bAimingState) { bAiming = false; return; }
-	if (!Character->IsDead() && Character->GetController() && IsRoundInProgress()) bAiming = true;
+	// Only a firearm that is not being reloaded can be aimed. The owner asks again when the reload is done.
+	if (!Character->IsDead() && Character->GetController() && IsRoundInProgress() && !bReloading && GetActiveSlot() == EArenaDuelLoadoutSlot::Primary)
+	{
+		if (!bAiming) AimStartWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+		bAiming = true;
+	}
 }
 void UArenaDuelWeaponComponent::ServerSetFireHeld_Implementation(bool bHeld) { if (bHeld && IsRoundInProgress()) StartAuthoritativeFire(); else StopAuthoritativeFire(); }
 bool UArenaDuelWeaponComponent::IsRoundInProgress() const
@@ -544,6 +589,8 @@ void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 	FArenaDuelWeaponRuntimeState* State = GetMutableCurrentRuntimeState();
 	if (!State || bReloading || State->MagazineAmmo >= GetCurrentDefinition().MagazineCapacity || (State->ReserveAmmo <= 0 && !HasInfiniteAmmoForDevelopment())) return;
 	StopAuthoritativeFire();
+	// A reload lowers the weapon for everyone, also when the server starts it for an empty magazine.
+	bAiming = false;
 	bReloading = true;
 	FTimerDelegate ReloadDelegate; ReloadDelegate.BindUObject(this, &UArenaDuelWeaponComponent::CompleteReload);
 	GetWorld()->GetTimerManager().SetTimer(ReloadTimerHandle, ReloadDelegate, GetCurrentDefinition().ReloadDuration, false);
@@ -1006,7 +1053,7 @@ void UArenaDuelWeaponComponent::SelectSlot(EArenaDuelLoadoutSlot Slot)
 {
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
 	CancelLocalAndServerFire(true);
-	StopAim();
+	SuspendAim();
 	if (GetOwnerRole() == ROLE_Authority) ServerSelectSlot_Implementation(static_cast<uint8>(Slot)); else ServerSelectSlot(static_cast<uint8>(Slot));
 }
 
@@ -1020,7 +1067,7 @@ void UArenaDuelWeaponComponent::CycleSlot(int32 Direction)
 {
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
 	CancelLocalAndServerFire(true);
-	StopAim();
+	SuspendAim();
 	const int8 Step = Direction < 0 ? -1 : 1;
 	if (GetOwnerRole() == ROLE_Authority) ServerCycleSlot_Implementation(Step); else ServerCycleSlot(Step);
 }

@@ -83,3 +83,12 @@ The weapon panel shows the item in hand (name, mode, ammo or flashbang count). A
 - No equip animation beyond the existing viewmodel dip.
 - The mouse wheel is bound directly to the scroll keys, not through an input action, so it cannot be rebound in the input mapping yet.
 - Flash blindness on the receiving screen was not captured in a play session.
+
+## Aim rules
+
+- The aim key is remembered while it is held (`bAimHeld`, local only). A reload, a weapon or slot switch pauses the aim and it returns by itself afterwards, without pressing the key again. Death, round end and opening a menu clear it.
+- The server accepts aiming only for a firearm that is not being reloaded, and lowers the aim itself when a reload starts, including the automatic reload on an empty magazine. The opponent therefore sees the aim pose only while the player can really aim.
+- Reload with a full magazine does nothing and no longer drops the aim.
+- The aim accuracy bonus fades in over `AimSettleSeconds` (0.12 s) after aiming begins, on the server too, instead of applying on the click. The spread values themselves (`BaseSpreadDegrees`, `MovementSpreadDegrees`, `AimSpreadMultiplier`) are unchanged.
+
+`ArenaDuel.Loadout.AimRules` checks the defaults. Holding the key through a reload or a switch was not tried with real input in a play session.
