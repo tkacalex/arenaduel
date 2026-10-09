@@ -68,3 +68,15 @@ Crouch moved from C to Left Ctrl, the key the slide already used. `IMC_Gameplay`
 - Second press during a slide: slide cancel, the player stands up.
 
 `Tools/Editor/RemapCrouchKey.py` applies the key change to the asset. `ArenaDuel.Slide.CrouchAndSlideShareCtrl` checks the mapping. The behaviour was not tried with real key presses in a play session.
+
+## Reading the opponent's stance
+
+The world body shows what its player is doing with the weapon, from replicated state only (`bAiming` on the weapon component, the pawn's base aim rotation):
+
+- Aiming: the aim idle clip is layered onto the body from `spine_02` upward, so the rifle is at the eye whether the legs stand, walk, run or fall.
+- Not aiming: standing uses a low ready, the weapon arm turned down by 26 degrees with the support hand following; walking and running show the carry pose of their clips.
+- View pitch: spread over `spine_03` and `spine_05`, so chest, arms, weapon and head tilt with the look, up to 80 degrees either way.
+
+All of it runs on every machine, so the server's hit zones follow the same pose. Console helpers for checking it from the other window: `ArenaDuel.Aim 0|1`, `ArenaDuel.Pitch <degrees>`, `ArenaDuel.Slot 0|1|2`.
+
+Checked in a play session for a standing player: not aiming, aiming, looking up and looking down. A walking or running opponent was not watched.
