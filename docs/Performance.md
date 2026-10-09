@@ -8,14 +8,17 @@ Two player PIE session (listen server plus one client) on `L_ArenaCore`, server 
 
 Server window, internal resolution 1956x1001 upscaled to 3840x1965 by TSR.
 
-| Pass | Epic preset | Project values | 
+| Pass | Epic preset | Project values |
 |---|---|---|
-| Whole view | 14.3 ms | 8.6 ms |
+| Whole view, first session | 14.3 ms | 8.6 ms |
 | Temporal Super Resolution | 5.8 ms | 2.7 ms |
 | Lumen diffuse indirect and AO | 4.5 ms | 2.4 ms |
 | Lumen reflections | 0.3 ms | 0.3 ms |
+| Whole view, second session after the config was committed | 15.4 to 17.2 ms | 11.4 to 13.8 ms |
 
-The complete editor frame (both PIE windows plus the editor UI) went from 27.9 ms to 18.1 ms. A side by side screenshot of the arena showed no visible difference.
+The first session switched the values through the console and was stable to 0.2 ms. The second session, after an editor restart with the committed config, was noisy: the editor was in the background, GPU load was below 10 percent and single captures came back three to four times slower in every pass, which points at the GPU clocking down. Those captures are left out of the range above. Treat the gain as roughly a quarter to 40 percent of the view's GPU time, not as an exact figure.
+
+A side by side screenshot of the arena showed no visible difference.
 
 ## What changed
 
