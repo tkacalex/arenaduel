@@ -35,7 +35,9 @@ void UArenaDuelGA_ShadowStep::ActivateAbility(const FGameplayAbilitySpecHandle H
 	if (Direction.IsNearlyZero() && Character->GetController())	Direction = Character->GetController()->GetControlRotation().Vector().GetSafeNormal2D();
 	if (Direction.IsNearlyZero())	Direction = Character->GetActorForwardVector().GetSafeNormal2D();
 
-	const UArenaDuelCharacterMovementComponent* Movement = Character->GetArenaDuelMovementComponent();
+	UArenaDuelCharacterMovementComponent* Movement = Character->GetArenaDuelMovementComponent();
+	// Falling movement is clamped to the momentum cap every step; the dash is allowed above it until it lands.
+	if (Movement) Movement->AllowSpeedUntilLanding(DashSpeed);
 	// From the ground the dash lifts off a little; in the air it keeps the vertical speed it has.
 	const float CurrentZ = Character->GetVelocity().Z;
 	const float LaunchZ = Movement && Movement->IsMovingOnGround() ? DashLift : CurrentZ;

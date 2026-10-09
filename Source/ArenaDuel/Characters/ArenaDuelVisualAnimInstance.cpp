@@ -364,7 +364,10 @@ void UArenaDuelVisualAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	else if (bFirstPerson && Character->GetWeaponComponent() && Character->GetWeaponComponent()->IsReloading()) Desired = Reload;
 	else if (!bFirstPerson)
 	{
-		if (Character->GetCharacterMovement()->IsFalling()) Desired = Fall;
+		// A hop touches the ground for a frame or two. The fall clip is kept until the feet have really settled,
+		// so chained hops do not flick to the run clip and back.
+		GroundedSeconds = Character->GetCharacterMovement()->IsFalling() ? 0.0f : GroundedSeconds + DeltaSeconds;
+		if (GroundedSeconds < 0.1f) Desired = Fall;
 		else if (Speed > 10.0f)
 		{
 			// Pick the clip that matches the travel direction relative to the facing. The current

@@ -342,6 +342,7 @@ protected:
 	bool bAimHeld = false;
 	float AimStartWorldTime = -1000.0f;
 	float AimBlockedUntilWorldTime = 0.0f;
+	double LastLandingWorldTime = -1000.0;
 	/** Applied on top of every weapon's own aim sensitivity. Below 1 the mouse turns slower while zoomed. */
 	UPROPERTY(EditDefaultsOnly, Category = "Weapon|Aim", meta = (ClampMin = "0.1", ClampMax = "2"))
 	float AimSensitivityScale = 0.85f;

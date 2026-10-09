@@ -217,6 +217,22 @@ void UArenaDuelCharacterMovementComponent::CalcVelocity(float DeltaTime, float F
 	// Counter-strafing: velocity that runs against the held input is removed much faster than normal
 	// braking, so tapping the opposite key stops the player almost at once. It depends only on the
 	// velocity and acceleration of the move being simulated, so prediction and server replay agree.
+	if (MovementMode == MOVE_Falling && !Acceleration.IsNearlyZero())
+	{
+		// Air strafing replaces the engine's air acceleration. A slow jump keeps some plain air control.
+		const float WishSpeedCap = Velocity.Size2D() < WalkSpeed * 0.5f ? AirLowSpeedControl : AirStrafeWishSpeed;
+		const FVector Strafed = ComputeAirStrafe(Velocity, Acceleration, WishSpeedCap, AirStrafeAccelerate * WalkSpeed, BhopMaxSpeed, DeltaTime);
+		Velocity.X = Strafed.X;
+		Velocity.Y = Strafed.Y;
+		return;
+	}
+	if (MovementMode == MOVE_Walking && TimeSinceLanded < BhopLandingGrace)
+	{
+		// Just landed: no braking yet, so a jump on the next step leaves with the speed it arrived with.
+		// The window is the same for everyone and does not depend on input, so client and server agree.
+		TimeSinceLanded += DeltaTime;
+		return;
+	}
 	if (MovementMode == MOVE_Walking && !Acceleration.IsNearlyZero())
 	{
 		Velocity = ApplyCounterStrafe(Velocity, Acceleration, DeltaTime);
@@ -558,7 +574,46 @@ void UArenaDuelCharacterMovementComponent::PhysFalling(float DeltaSeconds, int32
 		return;
 	}
 	Super::PhysFalling(DeltaSeconds, Iterations);
-	Velocity = Velocity.GetClampedToMaxSize2D(GlobalMomentumCap);
+	// A dash may carry more than the cap until it lands; everything else stays inside it.
+	Velocity = Velocity.GetClampedToMaxSize2D(FMath::Max(GlobalMomentumCap, SpeedAllowance));
+}
+
+FVector UArenaDuelCharacterMovementComponent::ComputeAirStrafe(const FVector& InVelocity, const FVector& WishDirection, float WishSpeedCap, float AccelerationPerSecond, float MaxGainSpeed, float DeltaTime)
+{
+	FVector Horizontal(InVelocity.X, InVelocity.Y, 0.0);
+	const FVector Direction = WishDirection.GetSafeNormal2D();
+	if (Direction.IsNearlyZero() || DeltaTime <= 0.0f) return Horizontal;
+	const double SpeedBefore = Horizontal.Size();
+	const double AddSpeed = WishSpeedCap - FVector::DotProduct(Horizontal, Direction);
+	if (AddSpeed <= 0.0) return Horizontal;
+	Horizontal += Direction * FMath::Min(static_cast<double>(AccelerationPerSecond * DeltaTime), AddSpeed);
+	const double Limit = FMath::Max(static_cast<double>(MaxGainSpeed), SpeedBefore);
+	if (Horizontal.Size() > Limit) Horizontal = Horizontal.GetSafeNormal() * Limit;
+	return Horizontal;
+}
+
+void UArenaDuelCharacterMovementComponent::ProcessLanded(const FHitResult& Hit, float RemainingTime, int32 Iterations)
+{
+	// Every landing takes a share of the speed above sprint speed, so chained hops settle below the cap
+	// instead of holding it for free. Ordinary running is not touched.
+	const double Speed = Velocity.Size2D();
+	if (Speed > SprintSpeed && LandingSpeedLoss > 0.0f)
+	{
+		const double Kept = SprintSpeed + (Speed - SprintSpeed) * (1.0 - LandingSpeedLoss);
+		Velocity.X *= Kept / Speed;
+		Velocity.Y *= Kept / Speed;
+	}
+	TimeSinceLanded = 0.0f;
+	SpeedAllowance = 0.0f;
+	Super::ProcessLanded(Hit, RemainingTime, Iterations);
+	// Jump again at once when the owner holds jump (auto hop) or pressed it just before touching down.
+	// Only the owning machine knows the key; the jump then travels to the server in the next move as usual.
+	AArenaDuelCharacter* ArenaCharacter = Cast<AArenaDuelCharacter>(CharacterOwner);
+	if (ArenaCharacter && ArenaCharacter->IsLocallyControlled() && !ArenaCharacter->bClientUpdating && IsMovingOnGround()
+		&& ArenaCharacter->WantsLandingJump(bAutoBhop, JumpBufferSeconds))
+	{
+		ArenaCharacter->Jump();
+	}
 }
 
 void UArenaDuelCharacterMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode)

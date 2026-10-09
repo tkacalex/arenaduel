@@ -940,7 +940,11 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 	IdlePhase = FMath::Fmod(IdlePhase + DeltaSeconds * 1.6f, 2.0f * PI);
 	if (bWasFalling && !bFalling)
 	{
-		LandingVelocity -= FMath::Clamp(-PreviousVerticalVelocity / 650.0f, 0.0f, 1.0f) * ViewmodelFeel.LandingKick * 18.0f;
+		// Chained hops land every half second; a full kick each time would shake the weapon constantly.
+		const double Now = GetWorld()->GetTimeSeconds();
+		const float HopScale = Now - LastLandingWorldTime < 0.9 ? 0.3f : 1.0f;
+		LastLandingWorldTime = Now;
+		LandingVelocity -= FMath::Clamp(-PreviousVerticalVelocity / 650.0f, 0.0f, 1.0f) * ViewmodelFeel.LandingKick * 18.0f * HopScale;
 	}
 	else if (!bWasFalling && bFalling)
 	{

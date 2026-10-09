@@ -43,6 +43,8 @@ public:
 	UCameraComponent* GetFirstPersonCamera() const { return FirstPersonCamera; }
 	UArenaDuelWeaponComponent* GetWeaponComponent() const { return WeaponComponent; }
 	bool IsCrouchInputHeld() const { return bCrouchInputHeld; }
+	/** Owner only: should a landing turn straight into the next jump? Held jump with auto hop, or a press shortly before. */
+	bool WantsLandingJump(bool bAutoHop, float BufferSeconds) const;
 	bool IsDead() const { return bDead; }
 	void SetRoundInputLocked(bool bLocked);
 	bool CanProcessGameplayInput() const;
@@ -199,6 +201,8 @@ protected:
 	TObjectPtr<UArenaDuelWeaponComponent> WeaponComponent;
 
 	bool bCrouchInputHeld = false;
+	bool bJumpInputHeld = false;
+	double LastJumpPressWorldTime = -1000.0;
 
 	UPROPERTY(ReplicatedUsing=OnRep_Dead, VisibleInstanceOnly, BlueprintReadOnly, Category="Combat")
 	bool bDead = false;

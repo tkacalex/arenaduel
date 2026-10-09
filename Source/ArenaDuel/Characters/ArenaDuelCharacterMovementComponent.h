@@ -53,6 +53,23 @@ public:
 	static bool ShouldCancelSlide(bool bSlideKeyDown, bool bReleasedDuringSlide, float Elapsed, float MinTime) { return bSlideKeyDown && bReleasedDuringSlide && Elapsed >= MinTime; }
 	float GetSlideCancelMinTime() const { return SlideCancelMinTime; }
 	float GetAimSprintSpeedScale() const { return AimSprintSpeedScale; }
+
+	/**
+	 * Source style air strafing for one step. Speed is only added along the wished direction, and only
+	 * while the velocity along that direction is below WishSpeedCap. Holding forward at speed therefore
+	 * adds nothing; steering sideways while turning adds a little each step. The result never exceeds
+	 * MaxGainSpeed through gains, and speed that is already above it is left alone.
+	 */
+	static FVector ComputeAirStrafe(const FVector& InVelocity, const FVector& WishDirection, float WishSpeedCap, float AccelerationPerSecond, float MaxGainSpeed, float DeltaTime);
+	bool IsAutoBhopEnabled() const { return bAutoBhop; }
+	float GetBhopMaxSpeed() const { return BhopMaxSpeed; }
+	float GetBhopLandingGrace() const { return BhopLandingGrace; }
+	float GetLandingSpeedLoss() const { return LandingSpeedLoss; }
+	float GetJumpBufferSeconds() const { return JumpBufferSeconds; }
+	float GetAirStrafeWishSpeed() const { return AirStrafeWishSpeed; }
+	float GetAirStrafeAccelerate() const { return AirStrafeAccelerate; }
+	/** Lets one launch, such as a dash, exceed the momentum cap in the air until the next landing. */
+	void AllowSpeedUntilLanding(float Speed) { SpeedAllowance = FMath::Max(SpeedAllowance, Speed); }
 	bool TryWallJump();
 	void QueueAdvancedJump(bool bWallJump);
 	void ClearAdvancedJumpIntent();
@@ -72,6 +89,7 @@ public:
 	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
 	virtual void PhysCustom(float DeltaSeconds, int32 Iterations) override;
 	virtual void PhysFalling(float DeltaSeconds, int32 Iterations) override;
+	virtual void ProcessLanded(const FHitResult& Hit, float RemainingTime, int32 Iterations) override;
 	virtual void OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode) override;
 	virtual void TickComponent(float DeltaSeconds, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -165,6 +183,38 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
 	float SlideDuration = 1.5f;
 
+	/** Holding jump jumps again on every landing. Off: the jump has to be pressed again around each landing. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop")
+	bool bAutoBhop = true;
+
+	/** Air strafing cannot push the horizontal speed above this. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0"))
+	float BhopMaxSpeed = 1300.0f;
+
+	/** Air strafe strength: speed along the wished direction up to which air input still adds speed. Smaller needs more precise turning. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0"))
+	float AirStrafeWishSpeed = 70.0f;
+
+	/** Air strafe acceleration, as a multiple of WalkSpeed per second. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0"))
+	float AirStrafeAccelerate = 8.0f;
+
+	/** Below half walk speed, air input may add up to this much speed, so a standing jump can still be steered. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0"))
+	float AirLowSpeedControl = 300.0f;
+
+	/** Seconds after a landing without ground braking. A jump inside this window keeps the speed. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0", ClampMax = "0.3"))
+	float BhopLandingGrace = 0.05f;
+
+	/** Share of the speed above sprint speed that every landing takes away. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0", ClampMax = "1"))
+	float LandingSpeedLoss = 0.04f;
+
+	/** A jump pressed this long before a landing still counts for that landing. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0"))
+	float JumpBufferSeconds = 0.12f;
+
 	/** Sprint speed multiplier while aiming down sights. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Ground", meta = (ClampMin = "0.1", ClampMax = "1"))
 	float AimSprintSpeedScale = 0.9f;
@@ -254,6 +304,9 @@ protected:
 	bool bSlideQueued = false;
 	/** The slide key was let go since this slide began. Read from the replicated slide intent, so client and server agree. */
 	bool bSlideReleasedDuringSlide = false;
+	/** Seconds on the ground since the last landing, counted only inside the landing grace. */
+	float TimeSinceLanded = 1000.0f;
+	float SpeedAllowance = 0.0f;
 	float SlideInputBufferRemaining = 0.0f;
 	float SlideElapsed = 0.0f;
 	float TimeSinceSlideEnded = 1000.0f;

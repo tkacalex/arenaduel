@@ -28,4 +28,5 @@ private:
 	UPROPERTY() TObjectPtr<UAnimSequence> WalkClips[4];
 	UPROPERTY() TObjectPtr<UAnimSequence> RunClips[4];
 	int32 MoveDirection = 0;
+	float GroundedSeconds = 1.0f;
 };

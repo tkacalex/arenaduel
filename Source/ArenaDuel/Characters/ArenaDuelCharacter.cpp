@@ -860,12 +860,20 @@ void AArenaDuelCharacter::Look(const FInputActionValue& Value)
 	}
 }
 
+bool AArenaDuelCharacter::WantsLandingJump(bool bAutoHop, float BufferSeconds) const
+{
+	if (!CanProcessGameplayInput() || !GetWorld()) return false;
+	return (bAutoHop && bJumpInputHeld) || GetWorld()->GetTimeSeconds() - LastJumpPressWorldTime <= BufferSeconds;
+}
+
 void AArenaDuelCharacter::JumpStarted()
 {
 	if (!CanProcessGameplayInput())
 	{
 		return;
 	}
+	bJumpInputHeld = true;
+	LastJumpPressWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
 
 	if (UArenaDuelCharacterMovementComponent* MovementComponent = GetArenaDuelMovementComponent())
 	{
@@ -895,6 +903,7 @@ void AArenaDuelCharacter::JumpStarted()
 
 void AArenaDuelCharacter::JumpCompleted()
 {
+	bJumpInputHeld = false;
 	if (!IsLocallyControlled())
 	{
 		return;
