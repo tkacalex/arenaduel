@@ -51,7 +51,7 @@ bool FArenaDuelPhase4MapAndAssetsTest::RunTest(const FString& Parameters)
 	}
 
 	const FString ConfiguredMap = UGameMapsSettings::GetGameDefaultMap();
-	TestTrue(TEXT("Configured development map remains a project-owned ArenaDuel map"), ConfiguredMap == ArenaDuelPhase4Tests::MovementMap || ConfiguredMap == TEXT("/Game/ArenaDuel/Maps/L_ArenaCore"));
+	TestTrue(TEXT("Configured development map remains a project-owned ArenaDuel map"), ConfiguredMap == ArenaDuelPhase4Tests::MovementMap || ConfiguredMap == TEXT("/Game/ArenaDuel/Maps/L_ArenaCore") || ConfiguredMap == TEXT("/Game/ArenaDuel/Maps/L_ArenaDistrict"));
 	TestEqual(TEXT("Phase 4 GameMode"), UGameMapsSettings::GetGlobalDefaultGameMode(), FString(ArenaDuelPhase4Tests::GameModeClass));
 	bool bDirectional = false;
 	bool bSkyLight = false;

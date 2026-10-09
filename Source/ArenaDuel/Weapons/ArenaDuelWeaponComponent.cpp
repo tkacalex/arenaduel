@@ -57,6 +57,8 @@ namespace
 			if (!Controller || Args.Num() == 0) return;
 			FRotator Rotation = Controller->GetControlRotation();
 			Rotation.Pitch = FMath::Clamp(FCString::Atof(*Args[0]), -85.0f, 85.0f);
+			// Optional second value: yaw.
+			if (Args.Num() > 1) Rotation.Yaw = FCString::Atof(*Args[1]);
 			Controller->SetControlRotation(Rotation);
 		}));
 	// Exact critically damped step. Its response does not depend on the frame rate.
