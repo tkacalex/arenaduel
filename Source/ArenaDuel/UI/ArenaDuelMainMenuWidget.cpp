@@ -21,14 +21,14 @@
 
 namespace
 {
-	const FLinearColor MenuCyan(0.35f, 0.86f, 1.0f, 1.0f);
-	const FLinearColor MenuText(0.86f, 0.9f, 0.96f, 1.0f);
-	const FLinearColor MenuMuted(0.5f, 0.58f, 0.68f, 1.0f);
+	const FLinearColor MainMenuCyan(0.35f, 0.86f, 1.0f, 1.0f);
+	const FLinearColor MainMenuTextColor(0.86f, 0.9f, 0.96f, 1.0f);
+	const FLinearColor MainMenuMuted(0.5f, 0.58f, 0.68f, 1.0f);
 	const TCHAR* DuelMap = TEXT("/Game/ArenaDuel/Maps/L_ArenaDistrict");
 	const TCHAR* SurvivalMap = TEXT("/Game/ArenaDuel/Maps/L_ZombieArena");
 	constexpr int32 GamePort = 7777;
 
-	UTextBlock* MakeText(UWidgetTree* Tree, const FString& Text, int32 Size, const FLinearColor& Color)
+	UTextBlock* MainMenuMakeText(UWidgetTree* Tree, const FString& Text, int32 Size, const FLinearColor& Color)
 	{
 		UTextBlock* Block = Tree->ConstructWidget<UTextBlock>();
 		Block->SetText(FText::FromString(Text));
@@ -39,13 +39,13 @@ namespace
 		return Block;
 	}
 
-	void Place(UCanvasPanel* Panel, UWidget* Widget, const FAnchors& Anchors, const FMargin& Offsets, const FVector2D& Alignment = FVector2D::ZeroVector, bool bAutoSize = false)
+	void MainMenuPlace(UCanvasPanel* Panel, UWidget* Widget, const FAnchors& Anchors, const FMargin& Offsets, const FVector2D& Alignment = FVector2D::ZeroVector, bool bAutoSize = false)
 	{
-		UCanvasPanelSlot* Slot = Panel->AddChildToCanvas(Widget);
-		Slot->SetAnchors(Anchors);
-		Slot->SetOffsets(Offsets);
-		Slot->SetAlignment(Alignment);
-		Slot->SetAutoSize(bAutoSize);
+		UCanvasPanelSlot* PanelSlot = Panel->AddChildToCanvas(Widget);
+		PanelSlot->SetAnchors(Anchors);
+		PanelSlot->SetOffsets(Offsets);
+		PanelSlot->SetAlignment(Alignment);
+		PanelSlot->SetAutoSize(bAutoSize);
 	}
 }
 
@@ -122,27 +122,27 @@ void UArenaDuelMainMenuWidget::BuildTree()
 
 	UBorder* Background = WidgetTree->ConstructWidget<UBorder>();
 	Background->SetBrushColor(FLinearColor(0.006f, 0.008f, 0.014f, 1.0f));
-	Place(Root, Background, FAnchors(0.0f, 0.0f, 1.0f, 1.0f), FMargin(0.0f));
+	MainMenuPlace(Root, Background, FAnchors(0.0f, 0.0f, 1.0f, 1.0f), FMargin(0.0f));
 
 	// A dim panel behind the column and a thin accent line give the page its shape.
 	UBorder* Panel = WidgetTree->ConstructWidget<UBorder>();
 	Panel->SetBrushColor(FLinearColor(0.014f, 0.022f, 0.04f, 0.96f));
-	Place(Root, Panel, FAnchors(0.0f, 0.0f, 0.0f, 1.0f), FMargin(0.0f, 0.0f, 620.0f, 0.0f));
+	MainMenuPlace(Root, Panel, FAnchors(0.0f, 0.0f, 0.0f, 1.0f), FMargin(0.0f, 0.0f, 620.0f, 0.0f));
 	UBorder* Accent = WidgetTree->ConstructWidget<UBorder>();
-	Accent->SetBrushColor(MenuCyan);
-	Place(Root, Accent, FAnchors(0.0f, 0.0f, 0.0f, 1.0f), FMargin(620.0f, 0.0f, 3.0f, 0.0f));
+	Accent->SetBrushColor(MainMenuCyan);
+	MainMenuPlace(Root, Accent, FAnchors(0.0f, 0.0f, 0.0f, 1.0f), FMargin(620.0f, 0.0f, 3.0f, 0.0f));
 
-	Place(Root, MakeText(WidgetTree, TEXT("ARENADUEL"), 54, MenuCyan), FAnchors(0.0f, 0.0f), FMargin(90.0f, 90.0f, 0.0f, 0.0f), FVector2D::ZeroVector, true);
-	PageTitle = MakeText(WidgetTree, TEXT(""), 15, MenuMuted);
-	Place(Root, PageTitle, FAnchors(0.0f, 0.0f), FMargin(94.0f, 172.0f, 0.0f, 0.0f), FVector2D::ZeroVector, true);
+	MainMenuPlace(Root, MainMenuMakeText(WidgetTree, TEXT("ARENADUEL"), 54, MainMenuCyan), FAnchors(0.0f, 0.0f), FMargin(90.0f, 90.0f, 0.0f, 0.0f), FVector2D::ZeroVector, true);
+	PageTitle = MainMenuMakeText(WidgetTree, TEXT(""), 15, MainMenuMuted);
+	MainMenuPlace(Root, PageTitle, FAnchors(0.0f, 0.0f), FMargin(94.0f, 172.0f, 0.0f, 0.0f), FVector2D::ZeroVector, true);
 
 	Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Column"));
-	Place(Root, Column, FAnchors(0.0f, 0.0f), FMargin(90.0f, 250.0f, 440.0f, 560.0f));
+	MainMenuPlace(Root, Column, FAnchors(0.0f, 0.0f), FMargin(90.0f, 250.0f, 440.0f, 560.0f));
 
-	Status = MakeText(WidgetTree, TEXT(""), 14, FLinearColor(1.0f, 0.62f, 0.4f, 1.0f));
+	Status = MainMenuMakeText(WidgetTree, TEXT(""), 14, FLinearColor(1.0f, 0.62f, 0.4f, 1.0f));
 	Status->SetAutoWrapText(true);
-	Place(Root, Status, FAnchors(0.0f, 1.0f), FMargin(90.0f, -130.0f, 440.0f, 70.0f));
-	Place(Root, MakeText(WidgetTree, TEXT("ARROWS / TAB  MOVE     ENTER  SELECT     ESC  BACK"), 11, MenuMuted), FAnchors(0.0f, 1.0f), FMargin(90.0f, -46.0f, 0.0f, 0.0f), FVector2D::ZeroVector, true);
+	MainMenuPlace(Root, Status, FAnchors(0.0f, 1.0f), FMargin(90.0f, -130.0f, 440.0f, 70.0f));
+	MainMenuPlace(Root, MainMenuMakeText(WidgetTree, TEXT("ARROWS / TAB  MOVE     ENTER  SELECT     ESC  BACK"), 11, MainMenuMuted), FAnchors(0.0f, 1.0f), FMargin(90.0f, -46.0f, 0.0f, 0.0f), FVector2D::ZeroVector, true);
 
 	ShowPage(EPage::Main);
 }
@@ -158,10 +158,10 @@ UButton* UArenaDuelMainMenuWidget::AddButton(const TCHAR* Label, bool bPrimary)
 	Style.SetNormalPadding(FMargin(22.0f, 14.0f));
 	Style.SetPressedPadding(FMargin(22.0f, 15.0f, 22.0f, 13.0f));
 	Button->SetStyle(Style);
-	Button->SetContent(MakeText(WidgetTree, Label, 20, bPrimary ? MenuCyan : MenuText));
-	UVerticalBoxSlot* Slot = Column->AddChildToVerticalBox(Button);
-	Slot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 12.0f));
-	Slot->SetHorizontalAlignment(HAlign_Fill);
+	Button->SetContent(MainMenuMakeText(WidgetTree, Label, 20, bPrimary ? MainMenuCyan : MainMenuTextColor));
+	UVerticalBoxSlot* ButtonSlot = Column->AddChildToVerticalBox(Button);
+	ButtonSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 12.0f));
+	ButtonSlot->SetHorizontalAlignment(HAlign_Fill);
 	if (!FirstButton) FirstButton = Button;
 	return Button;
 }
@@ -193,8 +193,8 @@ void UArenaDuelMainMenuWidget::ShowPage(EPage Page)
 		PageTitle->SetText(FText::FromString(TEXT("JOIN A FRIEND  -  ENTER THE ADDRESS THE HOST SEES IN THE LOBBY")));
 		AddressBox = WidgetTree->ConstructWidget<UEditableTextBox>();
 		AddressBox->SetHintText(FText::FromString(TEXT("192.168.0.12:7777")));
-		UVerticalBoxSlot* Slot = Column->AddChildToVerticalBox(AddressBox);
-		Slot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 16.0f));
+		UVerticalBoxSlot* AddressSlot = Column->AddChildToVerticalBox(AddressBox);
+		AddressSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 16.0f));
 		AddButton(TEXT("CONNECT"), true)->OnClicked.AddDynamic(this, &ThisClass::OnJoinConfirm);
 		AddButton(TEXT("BACK"), false)->OnClicked.AddDynamic(this, &ThisClass::OnBack);
 		break;
