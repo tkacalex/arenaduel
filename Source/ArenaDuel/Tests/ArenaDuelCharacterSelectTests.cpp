@@ -96,7 +96,7 @@ NETWORK_TEST_CLASS(FArenaDuelCharacterSelectNetworkTest, "ArenaDuel.CharacterSel
 			AArenaDuelCharacter* Pawn = Cast<AArenaDuelCharacter>(Host->GetPawn());
 			Pawn->ApplyServerDamage(50);
 			Pawn->GetWeaponComponent()->StartFire();
-			if (Pawn->GetHealth() != 100 || Pawn->GetWeaponComponent()->GetCurrentMagazineAmmo() != 30 || P1->TryActivatePrimaryAbility() || Pawn->GetCharacterMovement()->MovementMode != MOVE_None) TestRunner->AddError(TEXT("Selection leaked gameplay"));
+			if (Pawn->GetHealth() != 100 || Pawn->GetWeaponComponent()->GetCurrentMagazineAmmo() != Pawn->GetWeaponComponent()->GetCurrentDefinition().MagazineCapacity || P1->TryActivatePrimaryAbility() || Pawn->GetCharacterMovement()->MovementMode != MOVE_None) TestRunner->AddError(TEXT("Selection leaked gameplay"));
 			Host->ServerSetCharacterReady(true);
 			Host->ServerRequestCharacterSelection(EArenaDuelCharacterArchetype::Shadow);
 			if (GS->GetMatchPhase() != EArenaDuelMatchPhase::CharacterSelect || P1->GetCharacterArchetype() != EArenaDuelCharacterArchetype::Warden) TestRunner->AddError(TEXT("One ready started countdown or unlocked selection"));

@@ -200,7 +200,7 @@ void UArenaDuelHUDWidget::BuildWidgetTree()
 	TimerLabel->SetJustification(ETextJustify::Center);
 	ScoreLeft->SetJustification(ETextJustify::Center);
 	ScoreRight->SetJustification(ETextJustify::Center);
-	SlotOverview = Text(WidgetTree, TEXT(""), 11, Secondary); RootCanvas->AddChild(SlotOverview); PlaceFixed(SlotOverview, FVector2D(1,1), FVector2D(-24,-116), FVector2D(520,20), FVector2D(1,1));
+	SlotOverview = Text(WidgetTree, TEXT(""), 11, Secondary); WeaponContentCanvas->AddChild(SlotOverview); PlaceFixed(SlotOverview, FVector2D(0,0), FVector2D(-210,-28), FVector2D(520,20), FVector2D(0,0));
 	SlotOverview->SetJustification(ETextJustify::Right);
 	MagazineAmmo->SetJustification(ETextJustify::Right);
 	ReserveAmmo->SetJustification(ETextJustify::Right);

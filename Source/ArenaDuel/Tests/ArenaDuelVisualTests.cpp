@@ -185,7 +185,7 @@ NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 		Network.ThenClient(TEXT("Record owner before respawn"),0,[](auto& S){ S.PreviousPawn=Pawn(S.World,true); })
 		.ThenServer(TEXT("Normal authoritative round reset"),[](auto& S){ S.PreviousPawn=Pawn(S.World,true); S.World->template GetAuthGameMode<AArenaDuelGameMode>()->AdminRestartRound(); })
 		.UntilServer(TEXT("Fresh host and world representation"),[](auto& S){return Pawn(S.World,true)!=S.PreviousPawn.Get() && Valid(Pawn(S.World,true)) && Valid(Pawn(S.World,false));},FTimespan::FromSeconds(8))
-		.UntilClient(TEXT("Fresh client arms and opponent weapon without manual switch"),0,[](auto& S){return Pawn(S.World,true)!=S.PreviousPawn.Get() && Equipped(Pawn(S.World,true),0) && Equipped(Pawn(S.World,false),0);},FTimespan::FromSeconds(8))
+		.UntilClient(TEXT("Fresh client arms and opponent weapon without manual switch"),0,[](auto& S){auto HoldsLoadoutDefault=[](AArenaDuelCharacter* C){ return C && C->GetWeaponComponent()->GetLoadoutFirearms().Num()>0 && Equipped(C,C->GetWeaponComponent()->GetLoadoutFirearms()[0]) && C->GetWeaponComponent()->GetActiveSlot()==EArenaDuelLoadoutSlot::Primary; }; return Pawn(S.World,true)!=S.PreviousPawn.Get() && HoldsLoadoutDefault(Pawn(S.World,true)) && HoldsLoadoutDefault(Pawn(S.World,false));},FTimespan::FromSeconds(8))
 		.ThenClient(TEXT("Report evaluated pose and attachment"),0,[this](auto& S){
 			const auto* C=Pawn(S.World,true);
 			const auto* Anim=Cast<UArenaDuelVisualAnimInstance>(C->GetFirstPersonArms()->GetAnimInstance());
