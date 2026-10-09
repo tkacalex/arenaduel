@@ -103,9 +103,9 @@ def spawn_lights():
             # Shadowless movable fills, as in L_ArenaCore: cheap, and the arena stays readable everywhere.
             component.set_mobility(unreal.ComponentMobility.MOVABLE)
             component.set_cast_shadows(False)
-            component.set_editor_property('intensity', 2600.0)
-            component.set_editor_property('attenuation_radius', 2600.0)
-            component.set_editor_property('light_color', unreal.Color(205, 215, 255, 255))
+            component.set_editor_property('intensity', 700.0)
+            component.set_editor_property('attenuation_radius', 2400.0)
+            component.set_editor_property('light_color', unreal.Color(150, 170, 255, 255))
             component.set_editor_property('use_inverse_squared_falloff', True)
             index += 1
 
@@ -122,12 +122,13 @@ def build():
     floor = make_material('M_ArenaCoreFloor', (0.055, 0.075, 0.105, 1), 0.35, 0.78)
     shell = make_material('M_ArenaCoreWall', (0.018, 0.026, 0.046, 1), 0.42, 0.68)
     ceiling = make_material('M_ArenaCoreCeiling', (0.009, 0.014, 0.026, 1), 0.28, 0.8)
-    concrete = make_material('M_DistrictConcrete', (0.20, 0.22, 0.25, 1), 0.05, 0.85)
-    house = make_material('M_DistrictHouse', (0.26, 0.20, 0.15, 1), 0.05, 0.8)
-    crate = make_material('M_DistrictCrate', (0.36, 0.23, 0.10, 1), 0.1, 0.7)
-    metal = make_material('M_DistrictMetal', (0.12, 0.14, 0.17, 1), 0.8, 0.4)
-    cyan = make_material('M_DistrictCyan', (0.05, 0.30, 0.42, 1), 0.3, 0.5, (0.02, 0.22, 0.34, 1))
-    violet = make_material('M_DistrictViolet', (0.26, 0.08, 0.40, 1), 0.3, 0.5, (0.16, 0.03, 0.30, 1))
+    # A dark palette: near-black surfaces that differ only slightly in tone, and two dim team colours.
+    concrete = make_material('M_DistrictDarkConcrete', (0.030, 0.034, 0.042, 1), 0.10, 0.80)
+    house = make_material('M_DistrictDarkHouse', (0.040, 0.030, 0.028, 1), 0.10, 0.75)
+    crate = make_material('M_DistrictDarkCrate', (0.055, 0.034, 0.020, 1), 0.15, 0.65)
+    metal = make_material('M_DistrictDarkMetal', (0.016, 0.019, 0.026, 1), 0.85, 0.35)
+    cyan = make_material('M_DistrictDarkCyan', (0.01, 0.07, 0.10, 1), 0.3, 0.5, (0.006, 0.07, 0.11, 1))
+    violet = make_material('M_DistrictDarkViolet', (0.06, 0.015, 0.10, 1), 0.3, 0.5, (0.05, 0.008, 0.10, 1))
 
     # Shell: 7000 x 5000 interior, floor at z = 0, ceiling at z = 1500.
     cube('Floor', -3500, 3500, -2500, 2500, -100, 0, floor)
