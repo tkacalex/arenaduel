@@ -44,7 +44,7 @@ To add a weapon, add it to `MakeDefinitions` and `WeaponVisualDefinitions` and r
 |---|---|
 | `ThrowSpeed` / `ThrowUpSpeed` | 1500 / 220 |
 | `FuseSeconds` | 1.4 |
-| `MaxBlindDistance` | 1800 |
+| `MaxBlindDistance` | 3500 |
 | `MaxBlindSeconds` | 3.2 |
 
 On detonation the server checks every living character: strength falls off with the square of the distance, looking away leaves a quarter of it, and a wall between burst and eye shields completely. The owner of a blinded pawn gets a full-screen white-out that holds for a third of its time and then fades. Blind time is `MaxBlindSeconds` times the strength. The thrower can blind themselves. After the throw the firearm comes back automatically.

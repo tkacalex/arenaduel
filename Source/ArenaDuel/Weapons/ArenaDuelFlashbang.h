@@ -41,6 +41,6 @@ protected:
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UProjectileMovementComponent> Movement;
 
 	FTimerHandle FuseTimer;
-	float MaxBlindDistance = 1800.0f;
+	float MaxBlindDistance = 3500.0f;
 	float MaxBlindSeconds = 3.2f;
 };

@@ -195,8 +195,8 @@ struct FArenaDuelFlashbangDefinition
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0")) float ThrowSpeed = 1500.0f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float ThrowUpSpeed = 220.0f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0.1")) float FuseSeconds = 1.4f;
-	/** Beyond this distance the flash has no effect. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "1")) float MaxBlindDistance = 1800.0f;
+	/** Beyond this distance the flash has no effect. Large enough that a full-strength throw still blinds the thrower who watches it go off. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "1")) float MaxBlindDistance = 3500.0f;
 	/** Blind time for a point blank flash looked at directly. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0")) float MaxBlindSeconds = 3.2f;
 };
