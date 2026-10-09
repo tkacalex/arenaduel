@@ -909,8 +909,17 @@ void AArenaDuelCharacter::CrouchStarted()
 {
 	if (CanProcessGameplayInput())
 	{
+		// Crouch and slide share Left Ctrl. While running the press belongs to the slide, which crouches
+		// the capsule itself; crouching here first would brake the run before the slide can start.
+		const UArenaDuelCharacterMovementComponent* MovementComponent = GetArenaDuelMovementComponent();
+		if (MovementComponent && MovementComponent->IsSliding())
+		{
+			// Second press during a slide is the slide cancel: stand up instead of staying crouched.
+			bCrouchInputHeld = false;
+			return;
+		}
 		bCrouchInputHeld = true;
-		Crouch();
+		if (!MovementComponent || !MovementComponent->WouldSlideOnPress()) Crouch();
 	}
 }
 

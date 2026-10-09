@@ -12,6 +12,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "Engine/StaticMeshActor.h"
 #include "InputAction.h"
+#include "InputMappingContext.h"
 #include "InputActionValue.h"
 #include "Tests/AutomationEditorCommon.h"
 
@@ -233,6 +234,24 @@ bool FArenaDuelSlideCancelRuleTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Letting the key go does not cancel"), UArenaDuelCharacterMovementComponent::ShouldCancelSlide(false, true, 1.0f, MinTime));
 	TestTrue(TEXT("A second press cancels"), UArenaDuelCharacterMovementComponent::ShouldCancelSlide(true, true, MinTime + 0.01f, MinTime));
 	TestFalse(TEXT("A second press before the minimum time waits"), UArenaDuelCharacterMovementComponent::ShouldCancelSlide(true, true, MinTime * 0.5f, MinTime));
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelCrouchSlideKeyTest, "ArenaDuel.Slide.CrouchAndSlideShareCtrl", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FArenaDuelCrouchSlideKeyTest::RunTest(const FString& Parameters)
+{
+	const UInputMappingContext* Context = LoadObject<UInputMappingContext>(nullptr, TEXT("/Game/ArenaDuel/Input/IMC_Gameplay.IMC_Gameplay"));
+	if (!TestNotNull(TEXT("Mapping context"), Context)) return false;
+	bool bCrouchOnCtrl = false, bSlideOnCtrl = false, bCrouchElsewhere = false;
+	for (const FEnhancedActionKeyMapping& Mapping : Context->GetMappings())
+	{
+		const FString ActionName = Mapping.Action ? Mapping.Action->GetName() : FString();
+		if (ActionName == TEXT("IA_Crouch")) { if (Mapping.Key == EKeys::LeftControl) bCrouchOnCtrl = true; else bCrouchElsewhere = true; }
+		if (ActionName == TEXT("IA_Slide") && Mapping.Key == EKeys::LeftControl) bSlideOnCtrl = true;
+	}
+	TestTrue(TEXT("Crouch is on Left Ctrl"), bCrouchOnCtrl);
+	TestFalse(TEXT("Crouch has no other key"), bCrouchElsewhere);
+	TestTrue(TEXT("Slide is on Left Ctrl"), bSlideOnCtrl);
 	return true;
 }
 #endif

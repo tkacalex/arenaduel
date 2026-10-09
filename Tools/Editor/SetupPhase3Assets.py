@@ -145,7 +145,7 @@ def configure_mapping_context(move, look, jump, sprint, crouch, slide, aim, fire
     add(look, "Mouse2D")
     add(jump, "SpaceBar")
     add(sprint, "LeftShift")
-    add(crouch, "C")
+    add(crouch, "LeftControl")
     add(slide, "LeftControl")
     add(aim, "RightMouseButton")
     add(fire, "LeftMouseButton")

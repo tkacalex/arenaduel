@@ -37,6 +37,8 @@ public:
 	bool WantsSprintIntent() const { return bWantsSprint; }
 	bool WantsSlideIntent() const { return bWantsSlide; }
 	bool IsSlideQueued() const { return bSlideQueued; }
+	/** True when a press of the slide key right now starts or queues a slide: on the ground and at running speed. Mirrors StartSlide. */
+	bool WouldSlideOnPress() const { return IsMovingOnGround() && (Velocity.Size2D() >= SlideMinSpeed || (bWantsSprint && Velocity.Size2D() >= SlideQueueMinSpeed)); }
 	bool IsSlideBoostReady() const { return TimeSinceSlideEnded >= SlideBoostCooldown; }
 	void SetSprintIntentFromNetwork(bool bWantsSprintIntent);
 	void SetSlideIntentFromNetwork(bool bWantsSlideIntent);

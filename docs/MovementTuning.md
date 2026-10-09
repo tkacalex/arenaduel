@@ -57,3 +57,14 @@ The rule reads only the slide intent that is already part of the saved move (`FL
 ## Reload on the world body
 
 The world body keeps its walk, run or fall clip while reloading. The reload clip is layered onto the bones from `spine_02` upward, stretched to the weapon's reload time. Checked only for a standing player without errors; a reloading opponent in motion was not watched.
+
+## Crouch and slide on Left Ctrl
+
+Crouch moved from C to Left Ctrl, the key the slide already used. `IMC_Gameplay` maps both `IA_Crouch` and `IA_Slide` to it and the character decides what a press means:
+
+- Standing or walking: crouch while the key is held.
+- Running (on the ground at `SlideMinSpeed` 700 or faster, or sprinting above `SlideQueueMinSpeed` 560 and still accelerating): slide. Walk speed is 600, so a slide needs a sprint or carried momentum.
+- Key still held when the slide ends: stay crouched. Key let go during the slide: stand up when it ends.
+- Second press during a slide: slide cancel, the player stands up.
+
+`Tools/Editor/RemapCrouchKey.py` applies the key change to the asset. `ArenaDuel.Slide.CrouchAndSlideShareCtrl` checks the mapping. The behaviour was not tried with real key presses in a play session.
