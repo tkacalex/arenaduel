@@ -585,10 +585,10 @@ void UArenaDuelWeaponComponent::MulticastShotFired_Implementation(const TArray<F
 		Tracer->SetCastShadow(false);
 		Tracer->SetWorldTransform(FTransform(FRotationMatrix::MakeFromZ(Delta).ToQuat(), Muzzle + Delta * 0.5, FVector(0.005, 0.005, Length / 100.0)));
 		Tracer->RegisterComponentWithWorld(World);
-		FActiveTracer& Active = ActiveTracers.AddDefaulted_GetRef();
-		Active.Mesh = Tracer;
-		Active.End = FVector(End);
-		Active.ExpireWorldTime = World->GetTimeSeconds() + CVarTracerSeconds.GetValueOnGameThread();
+		FActiveTracer& NewTracer = ActiveTracers.AddDefaulted_GetRef();
+		NewTracer.Mesh = Tracer;
+		NewTracer.End = FVector(End);
+		NewTracer.ExpireWorldTime = World->GetTimeSeconds() + CVarTracerSeconds.GetValueOnGameThread();
 	}
 	if (ActiveTracers.Num() > 0) SetComponentTickEnabled(true);
 	UPointLightComponent* Flash = NewObject<UPointLightComponent>(GetOwner());
