@@ -386,7 +386,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Weapon|Aim", meta = (ClampMin = "0"))
 	float AimSettleSeconds = 0.12f;
 	void SuspendAim();
-	bool CanAimNow() const;
+	bool CanAimNow(bool bIgnoreSwitchBlock = false) const;
 	void UpdateAimFromIntent();
 
 	UPROPERTY(ReplicatedUsing=OnRep_EquippedWeapon, VisibleInstanceOnly, BlueprintReadOnly, Category="Loadout")

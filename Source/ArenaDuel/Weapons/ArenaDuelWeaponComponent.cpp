@@ -437,7 +437,9 @@ void UArenaDuelWeaponComponent::StartAim()
 	if (GetCurrentDefinition().bHasScope)
 	{
 		// A scope is stepped with presses: first zoom, second zoom, out.
-		if (ScopeLevel == 0 && !CanAimNow()) return;
+		// A press right after a switch is kept and takes effect when the short switch block ends;
+		// a press while reloading, dead or in a menu is dropped.
+		if (ScopeLevel == 0 && !CanAimNow(true)) return;
 		ScopeLevel = static_cast<uint8>((ScopeLevel + 1) % 3);
 		if (ScopeLevel == 0) { StopAim(); return; }
 	}
@@ -493,12 +495,12 @@ void UArenaDuelWeaponComponent::SuspendAim()
 	if (GetOwnerRole() == ROLE_Authority) ServerSetAiming_Implementation(false); else ServerSetAiming(false);
 	SetComponentTickEnabled(true);
 }
-bool UArenaDuelWeaponComponent::CanAimNow() const
+bool UArenaDuelWeaponComponent::CanAimNow(bool bIgnoreSwitchBlock) const
 {
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	return Character && !Character->IsDead() && IsRoundInProgress() && !IsLocalAdminMenuOpen()
 		&& GetActiveSlot() == EArenaDuelLoadoutSlot::Primary && !bReloading
-		&& (!GetWorld() || GetWorld()->GetTimeSeconds() >= AimBlockedUntilWorldTime);
+		&& (bIgnoreSwitchBlock || !GetWorld() || GetWorld()->GetTimeSeconds() >= AimBlockedUntilWorldTime);
 }
 void UArenaDuelWeaponComponent::UpdateAimFromIntent()
 {
