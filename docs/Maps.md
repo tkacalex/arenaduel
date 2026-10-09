@@ -2,7 +2,7 @@
 
 ## L_ArenaDistrict
 
-The default game map and editor startup map. A closed 70 x 50 m hall with a 15 m ceiling, mirrored across the centre line so both players get the same geometry. It is built from engine cubes by `Tools/Editor/SetupArenaDistrict.py`; change the layout there and run the script with the editor closed, as `Tools/Editor/SetupPhase7EAssets.ps1` does for its script.
+The 1v1 map and the editor startup map; the game itself starts on `L_MainMenu` (see `docs/MainMenu.md`). A closed 70 x 50 m hall with a 15 m ceiling, mirrored across the centre line so both players get the same geometry. It is built from engine cubes by `Tools/Editor/SetupArenaDistrict.py`; change the layout there and run the script with the editor closed, as `Tools/Editor/SetupPhase7EAssets.ps1` does for its script.
 
 Sizes follow the movement component: 80 cm cover can be vaulted and crouched behind, steps of at most 140 cm can be mantled, 3.5 m gaps are a sprint jump.
 
@@ -25,6 +25,10 @@ Look: near-black surfaces in slightly different tones, fifteen dim shadowless fi
 `ArenaDuel.Maps.ArenaDistrict` checks the two starts, that they mirror and face each other, that the weapon trace from spawn to spawn is blocked, and that the pieces are there.
 
 Not verified: the layout was looked at from the spawn and from above in a play session, but no round was played on it. Jump gaps, the wall run, the mantle steps and the roof route are sized from the movement values, not run with real input. Sightlines other than spawn to spawn were not checked.
+
+## L_ZombieArena and L_MainMenu
+
+Built by `Tools/Editor/SetupSurvivalAndMenu.py`. `L_ZombieArena` is the Zombie Survival hall: a 64 x 64 m room, a ring of walls 22 m from the middle that hides sixteen tagged spawn points, cover around the centre start, and a navigation bounds volume. See `docs/ZombieSurvival.md`. `L_MainMenu` is empty apart from its game mode.
 
 ## Other maps
 

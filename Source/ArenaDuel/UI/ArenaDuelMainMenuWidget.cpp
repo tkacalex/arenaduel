@@ -190,9 +190,9 @@ void UArenaDuelMainMenuWidget::ShowPage(EPage Page)
 		break;
 	case EPage::Join:
 	{
-		PageTitle->SetText(FText::FromString(TEXT("JOIN A FRIEND  -  ENTER THE ADDRESS THE HOST SEES IN THE LOBBY")));
+		PageTitle->SetText(FText::FromString(TEXT("JOIN A FRIEND")));
 		AddressBox = WidgetTree->ConstructWidget<UEditableTextBox>();
-		AddressBox->SetHintText(FText::FromString(TEXT("192.168.0.12:7777")));
+		AddressBox->SetHintText(FText::FromString(TEXT("Address from the host's lobby, e.g. 192.168.0.12:7777")));
 		UVerticalBoxSlot* AddressSlot = Column->AddChildToVerticalBox(AddressBox);
 		AddressSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 16.0f));
 		AddButton(TEXT("CONNECT"), true)->OnClicked.AddDynamic(this, &ThisClass::OnJoinConfirm);
