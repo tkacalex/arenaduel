@@ -1157,4 +1157,6 @@ bool FArenaDuelGroundFeelCounterStrafeTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Only the opposing component is braked"), FMath::IsNearlyEqual(Diagonal.X, 400.0) && Diagonal.Y < 400.0);
 	TestTrue(TEXT("Counter-strafing is stronger than plain braking"), Move->CounterStrafeDeceleration + Move->GroundAcceleration > Move->GroundBrakingDeceleration);
 	return true;
-}#endif
+}
+
+#endif
