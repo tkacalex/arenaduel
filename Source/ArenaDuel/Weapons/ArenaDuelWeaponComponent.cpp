@@ -659,8 +659,9 @@ void UArenaDuelWeaponComponent::MulticastShotFired_Implementation(const TArray<F
 	if (!MuzzleFlashLight)
 	{
 		MuzzleFlashLight = NewObject<UPointLightComponent>(GetOwner());
-		MuzzleFlashLight->SetIntensity(6000.0f);
-		MuzzleFlashLight->SetAttenuationRadius(300.0f);
+		// Kept dim on purpose: just a hint of light on the gun and hands, no flare on the screen.
+		MuzzleFlashLight->SetIntensity(900.0f);
+		MuzzleFlashLight->SetAttenuationRadius(220.0f);
 		MuzzleFlashLight->SetLightColor(FLinearColor(1.0f, 0.82f, 0.55f));
 		MuzzleFlashLight->SetCastShadows(false);
 		MuzzleFlashLight->SetIndirectLightingIntensity(0.0f);
