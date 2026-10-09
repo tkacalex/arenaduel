@@ -138,10 +138,11 @@ void AArenaDuelZombie::ApplyTypeVisual()
 {
 	SetActorScale3D(FVector(VisualScale));
 	if (GetNetMode() == NM_DedicatedServer || MaterialPath.IsEmpty()) return;
+	// One attempt per path: a missing asset must not be searched for again every frame.
+	bVisualApplied = true;
 	if (UMaterialInterface* Material = LoadObject<UMaterialInterface>(nullptr, *MaterialPath))
 	{
 		for (int32 Index = 0; Index < GetMesh()->GetNumMaterials(); ++Index) GetMesh()->SetMaterial(Index, Material);
-		bVisualApplied = true;
 	}
 }
 
@@ -225,6 +226,7 @@ void AArenaDuelZombie::MulticastTelegraph_Implementation(float Seconds, bool bSl
 void AArenaDuelZombie::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	// The material path can arrive on a client a moment after the actor; apply it once it is there.
 	if (!bVisualApplied && !MaterialPath.IsEmpty()) ApplyTypeVisual();
 	if (WarningLight->IsVisible() && GetWorld() && GetWorld()->GetTimeSeconds() >= WarningLightOffTime) WarningLight->SetVisibility(false);
 	if (!HasAuthority() || bDead) return;

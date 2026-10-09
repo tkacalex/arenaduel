@@ -51,6 +51,8 @@ public:
 	void DevKillAllZombies();
 	/** Development: scale every timer of the run. */
 	void DevSetTimeScale(float Scale) { DevTimeScale = FMath::Clamp(Scale, 0.02f, 1.0f); }
+	/** Development: enemy damage for zombies spawned from now on. 0 lets a run be watched without dying. */
+	void DevSetZombieDamageScale(float Scale) { ZombieDamageScale = FMath::Max(Scale, 0.0f); }
 
 protected:
 	virtual void EnterCharacterSelect() override;

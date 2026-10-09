@@ -24,6 +24,8 @@ namespace
 		FConsoleCommandWithWorldDelegate::CreateLambda([](UWorld* World) { if (AArenaDuelZombieGameMode* Mode = SurvivalMode(World)) Mode->DevKillAllZombies(); }));
 	FAutoConsoleCommandWithWorldAndArgs CmdTimeScale(TEXT("ArenaDuel.Zombie.TimeScale"), TEXT("Scale the countdown, intermission and spawn timers of the run, 0.02 to 1"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World) { if (AArenaDuelZombieGameMode* Mode = SurvivalMode(World); Mode && Args.Num() > 0) Mode->DevSetTimeScale(FCString::Atof(*Args[0])); }));
+	FAutoConsoleCommandWithWorldAndArgs CmdDamage(TEXT("ArenaDuel.Zombie.Damage"), TEXT("Scale the damage of zombies spawned from now on; 0 makes them harmless"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World) { if (AArenaDuelZombieGameMode* Mode = SurvivalMode(World); Mode && Args.Num() > 0) Mode->DevSetZombieDamageScale(FCString::Atof(*Args[0])); }));
 	FAutoConsoleCommandWithWorld CmdRestart(TEXT("ArenaDuel.Zombie.Restart"), TEXT("Restart the survival run"),
 		FConsoleCommandWithWorldDelegate::CreateLambda([](UWorld* World) { if (AArenaDuelZombieGameMode* Mode = SurvivalMode(World)) Mode->RestartSurvival(); }));
 	FAutoConsoleCommandWithWorldAndArgs CmdPoints(TEXT("ArenaDuel.Zombie.Points"), TEXT("Give the first player this many points"),

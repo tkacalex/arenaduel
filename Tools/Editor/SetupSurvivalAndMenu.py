@@ -81,11 +81,19 @@ def set_game_mode(class_path):
 
 
 def build_zombie_materials():
-    make_material('M_ZombieNormal', (0.07, 0.22, 0.06, 1), 0.0, 0.7, (0.012, 0.07, 0.012, 1))
-    make_material('M_ZombieFast', (0.34, 0.30, 0.05, 1), 0.0, 0.6, (0.09, 0.075, 0.008, 1))
-    make_material('M_ZombieArmored', (0.16, 0.18, 0.21, 1), 0.9, 0.35, (0.004, 0.02, 0.03, 1))
-    make_material('M_ZombieMiniBoss', (0.40, 0.14, 0.03, 1), 0.1, 0.5, (0.22, 0.06, 0.008, 1))
-    make_material('M_ZombieBoss', (0.36, 0.03, 0.03, 1), 0.1, 0.45, (0.40, 0.02, 0.015, 1))
+    materials = [
+        make_material('M_ZombieNormal', (0.07, 0.22, 0.06, 1), 0.0, 0.7, (0.012, 0.07, 0.012, 1)),
+        make_material('M_ZombieFast', (0.34, 0.30, 0.05, 1), 0.0, 0.6, (0.09, 0.075, 0.008, 1)),
+        make_material('M_ZombieArmored', (0.16, 0.18, 0.21, 1), 0.9, 0.35, (0.004, 0.02, 0.03, 1)),
+        make_material('M_ZombieMiniBoss', (0.40, 0.14, 0.03, 1), 0.1, 0.5, (0.22, 0.06, 0.008, 1)),
+        make_material('M_ZombieBoss', (0.36, 0.03, 0.03, 1), 0.1, 0.45, (0.40, 0.02, 0.015, 1)),
+    ]
+    # They are drawn on a skinned mesh. Without this flag the engine falls back to the default material in game.
+    for material in materials:
+        if not material.get_editor_property('used_with_skeletal_mesh'):
+            material.set_editor_property('used_with_skeletal_mesh', True)
+            unreal.MaterialEditingLibrary.recompile_material(material)
+            LIB.save_loaded_asset(material)
 
 
 def build_arena():

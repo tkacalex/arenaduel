@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "ArenaDuelHUDWidget.h"
+#include "../Game/ArenaDuelZombieGameState.h"
 #include "../Characters/ArenaDuelCharacter.h"
 #include "../Characters/ArenaDuelCharacterMovementComponent.h"
 #include "../Weapons/ArenaDuelWeaponComponent.h"
@@ -280,7 +281,9 @@ void UArenaDuelHUDWidget::RefreshData()
 		if (ReloadLabel->GetVisibility() != ReloadVisibility) ReloadLabel->SetVisibility(ReloadVisibility);
 	}
 	const AArenaDuelGameState* GameState = GetWorld() ? GetWorld()->GetGameState<AArenaDuelGameState>() : nullptr;
-	const ESlateVisibility DefeatedVisibility = Character->IsDead() && !(GameState && GameState->IsMatchComplete()) ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
+	// Zombie Survival has its own game over panel, so the duel label stays away there.
+	const bool bSurvival = Cast<AArenaDuelZombieGameState>(GameState) != nullptr;
+	const ESlateVisibility DefeatedVisibility = Character->IsDead() && !bSurvival && !(GameState && GameState->IsMatchComplete()) ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
 	if (DefeatedLabel->GetVisibility() != DefeatedVisibility) DefeatedLabel->SetVisibility(DefeatedVisibility);
 }
 
