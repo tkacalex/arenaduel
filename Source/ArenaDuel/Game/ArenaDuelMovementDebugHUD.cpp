@@ -100,13 +100,21 @@ namespace
 		const float Unit = FMath::Max(Height / 1080.0f, 0.5f);
 		const FLinearColor Line(0.0f, 0.0f, 0.0f, Alpha);
 		const float Fine = FMath::Max(1.0f, 1.2f * Unit), Post = 4.0f * Unit, PostStart = 0.36f * Radius;
-		// Fine cross through the centre.
-		Canvas->K2_DrawLine(Center - FVector2D(Radius, 0.0f), Center + FVector2D(Radius, 0.0f), Fine, Line);
-		Canvas->K2_DrawLine(Center - FVector2D(0.0f, Radius), Center + FVector2D(0.0f, Radius), Fine, Line);
-		// Heavy posts left, right and below; the upper half stays open.
-		Canvas->K2_DrawLine(Center - FVector2D(Radius, 0.0f), Center - FVector2D(PostStart, 0.0f), Post, Line);
-		Canvas->K2_DrawLine(Center + FVector2D(PostStart, 0.0f), Center + FVector2D(Radius, 0.0f), Post, Line);
-		Canvas->K2_DrawLine(Center + FVector2D(0.0f, PostStart), Center + FVector2D(0.0f, Radius), Post, Line);
+		// The reticle is black. A faint pale edge is drawn under it first, or it would vanish against a dark scene.
+		const FLinearColor Edge(0.75f, 0.8f, 0.85f, 0.22f * Alpha);
+		const float EdgeExtra = FMath::Max(1.5f, 1.6f * Unit);
+		for (const bool bEdgePass : { true, false })
+		{
+			const FLinearColor& Color = bEdgePass ? Edge : Line;
+			const float Extra = bEdgePass ? EdgeExtra : 0.0f;
+			// Fine cross through the centre.
+			Canvas->K2_DrawLine(Center - FVector2D(Radius, 0.0f), Center + FVector2D(Radius, 0.0f), Fine + Extra, Color);
+			Canvas->K2_DrawLine(Center - FVector2D(0.0f, Radius), Center + FVector2D(0.0f, Radius), Fine + Extra, Color);
+			// Heavy posts left, right and below; the upper half stays open.
+			Canvas->K2_DrawLine(Center - FVector2D(Radius, 0.0f), Center - FVector2D(PostStart, 0.0f), Post + Extra, Color);
+			Canvas->K2_DrawLine(Center + FVector2D(PostStart, 0.0f), Center + FVector2D(Radius, 0.0f), Post + Extra, Color);
+			Canvas->K2_DrawLine(Center + FVector2D(0.0f, PostStart), Center + FVector2D(0.0f, Radius), Post + Extra, Color);
+		}
 	}
 }
 
