@@ -892,7 +892,6 @@ void AArenaDuelCharacter::SprintStarted()
 		if (UArenaDuelCharacterMovementComponent* MovementComponent = GetArenaDuelMovementComponent())
 		{
 			MovementComponent->StartSprint();
-			if (WeaponComponent) WeaponComponent->StopAim();
 		}
 	}
 }

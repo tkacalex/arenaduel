@@ -52,6 +52,7 @@ public:
 	/** A slide is cancelled by a second press: the key was let go during the slide and is down again. */
 	static bool ShouldCancelSlide(bool bSlideKeyDown, bool bReleasedDuringSlide, float Elapsed, float MinTime) { return bSlideKeyDown && bReleasedDuringSlide && Elapsed >= MinTime; }
 	float GetSlideCancelMinTime() const { return SlideCancelMinTime; }
+	float GetAimSprintSpeedScale() const { return AimSprintSpeedScale; }
 	bool TryWallJump();
 	void QueueAdvancedJump(bool bWallJump);
 	void ClearAdvancedJumpIntent();
@@ -163,6 +164,10 @@ public:
 	/** Maximum slide time on flat ground or uphill. Time spent accelerating downhill does not count. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
 	float SlideDuration = 1.5f;
+
+	/** Sprint speed multiplier while aiming down sights. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Ground", meta = (ClampMin = "0.1", ClampMax = "1"))
+	float AimSprintSpeedScale = 0.9f;
 
 	/** Slide cancel: pressing the slide key again ends the slide at once, once it has run this long. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide", meta = (ClampMin = "0"))

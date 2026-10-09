@@ -3,6 +3,7 @@
 #include "ArenaDuelCharacterMovementComponent.h"
 
 #include "ArenaDuelCharacter.h"
+#include "../Weapons/ArenaDuelWeaponComponent.h"
 #include "../Player/ArenaDuelPlayerState.h"
 #include "../Game/ArenaDuelGameState.h"
 #include "Components/CapsuleComponent.h"
@@ -241,7 +242,11 @@ float UArenaDuelCharacterMovementComponent::GetMaxSpeed() const
 	}
 	if (bWantsSprint && IsMovingOnGround())
 	{
-		return SprintSpeed * DirectionScale;
+		// Sprinting with the weapon at the eye costs a little speed. The aim state is replicated by the
+		// weapon component, so the owner and the server use the same value except for the moment it changes.
+		const AArenaDuelCharacter* ArenaCharacter = Cast<AArenaDuelCharacter>(CharacterOwner);
+		const bool bAimingWeapon = ArenaCharacter && ArenaCharacter->GetWeaponComponent() && ArenaCharacter->GetWeaponComponent()->IsAiming();
+		return SprintSpeed * (bAimingWeapon ? AimSprintSpeedScale : 1.0f) * DirectionScale;
 	}
 	return WalkSpeed * DirectionScale;
 }

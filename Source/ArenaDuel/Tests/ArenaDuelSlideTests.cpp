@@ -254,4 +254,12 @@ bool FArenaDuelCrouchSlideKeyTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Slide is on Left Ctrl"), bSlideOnCtrl);
 	return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelAimSprintScaleTest, "ArenaDuel.GroundFeel.AimSprintScale", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FArenaDuelAimSprintScaleTest::RunTest(const FString& Parameters)
+{
+	const float Scale = GetDefault<UArenaDuelCharacterMovementComponent>()->GetAimSprintSpeedScale();
+	TestTrue(TEXT("Aiming slows the sprint only a little"), Scale >= 0.8f && Scale < 1.0f);
+	return true;
+}
 #endif

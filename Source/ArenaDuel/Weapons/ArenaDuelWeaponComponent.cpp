@@ -411,7 +411,7 @@ void UArenaDuelWeaponComponent::EquipWeapon(int32 Index)
 void UArenaDuelWeaponComponent::StartAim()
 {
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
-	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->GetArenaDuelMovementComponent() && Character->GetArenaDuelMovementComponent()->IsSprinting()) return;
+	// Aiming is allowed while sprinting; the movement component slows the sprint a little instead.
 	if (GetActiveSlot() != EArenaDuelLoadoutSlot::Primary)
 	{
 		// Right mouse is the second action: short throw for the flashbang, heavy stab for the knife.
@@ -476,8 +476,7 @@ void UArenaDuelWeaponComponent::ServerSetAiming_Implementation(bool bAimingState
 	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character) return;
 	if (!bAimingState) { bAiming = false; return; }
-	if (!Character->IsDead() && Character->GetController() && IsRoundInProgress()
-		&& (!Character->GetArenaDuelMovementComponent() || !Character->GetArenaDuelMovementComponent()->IsSprinting())) bAiming = true;
+	if (!Character->IsDead() && Character->GetController() && IsRoundInProgress()) bAiming = true;
 }
 void UArenaDuelWeaponComponent::ServerSetFireHeld_Implementation(bool bHeld) { if (bHeld && IsRoundInProgress()) StartAuthoritativeFire(); else StopAuthoritativeFire(); }
 bool UArenaDuelWeaponComponent::IsRoundInProgress() const
@@ -863,9 +862,10 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 	if (DeltaSeconds <= 0.0f) return;
 	const FArenaDuelWeaponVisualDefinition& Visual = WeaponVisualDefinitions[EquippedWeaponIndex];
 	const UArenaDuelCharacterMovementComponent* Movement = Character->GetArenaDuelMovementComponent();
-	const bool bSprint = Movement && Movement->IsSprinting();
+	// Aiming wins over the sprint pose: the weapon comes up to the eye even at a run.
+	const bool bSprint = Movement && Movement->IsSprinting() && !bAiming;
 	const bool bFalling = Movement && Movement->IsFalling();
-	const float AimTarget = bAiming && !bSprint ? 1.0f : 0.0f;
+	const float AimTarget = bAiming ? 1.0f : 0.0f;
 	const float AimDecay = FMath::Exp(-FMath::Max(ViewmodelFeel.AimResponse, 0.01f) * DeltaSeconds);
 	const float MotionDecay = FMath::Exp(-FMath::Max(ViewmodelFeel.MotionResponse, 0.01f) * DeltaSeconds);
 	AimBlend = AimTarget + (AimBlend - AimTarget) * AimDecay;

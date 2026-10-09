@@ -80,3 +80,7 @@ The world body shows what its player is doing with the weapon, from replicated s
 All of it runs on every machine, so the server's hit zones follow the same pose. Console helpers for checking it from the other window: `ArenaDuel.Aim 0|1`, `ArenaDuel.Pitch <degrees>`, `ArenaDuel.Slot 0|1|2`.
 
 Checked in a play session for a standing player: not aiming, aiming, looking up and looking down. A walking or running opponent was not watched.
+
+## Aiming while sprinting
+
+Aiming no longer stops at a sprint and starting a sprint no longer drops the aim. While both are held the sprint speed is multiplied by `AimSprintSpeedScale` (0.9, so 810 instead of 900) and the first-person weapon stays at the eye instead of going to the sprint pose. The aim state comes from the weapon component, which the owner sets at once and the server receives a moment later, so a small position correction is possible in the instant aim is pressed or released at full speed. `ArenaDuel.GroundFeel.AimSprintScale` checks the value; the behaviour was not tried with held keys in a play session.

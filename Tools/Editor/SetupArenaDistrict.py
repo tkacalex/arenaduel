@@ -103,9 +103,10 @@ def spawn_lights():
             # Shadowless movable fills, as in L_ArenaCore: cheap, and the arena stays readable everywhere.
             component.set_mobility(unreal.ComponentMobility.MOVABLE)
             component.set_cast_shadows(False)
-            component.set_editor_property('intensity', 700.0)
-            component.set_editor_property('attenuation_radius', 2400.0)
-            component.set_editor_property('light_color', unreal.Color(150, 170, 255, 255))
+            component.set_editor_property('intensity', 260.0)
+            component.set_editor_property('attenuation_radius', 2200.0)
+            # unreal.Color takes b, g, r, a by position, so name the channels: a cold blue-white.
+            component.set_editor_property('light_color', unreal.Color(r=120, g=150, b=255, a=255))
             component.set_editor_property('use_inverse_squared_falloff', True)
             index += 1
 
