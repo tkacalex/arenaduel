@@ -467,7 +467,7 @@ ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4BhopLandingTest, "ArenaDuel.Phase4.B
 		TestTrue(TEXT("The hop reached the floor"), Move->IsMovingOnGround());
 		// 1200 arrives; the landing takes its share of the 300 above sprint speed and nothing else.
 		const float Expected = Move->SprintSpeed + 300.0f * (1.0f - Move->GetLandingSpeedLoss());
-		TestTrue(TEXT("Right after the landing the speed is still there"), FMath::IsNearlyEqual(static_cast<float>(Move->Velocity.Size2D()), Expected, 15.0f));
+		TestTrue(FString::Printf(TEXT("Right after the landing the speed is still there (expected %.0f, got %.0f at x=%.0f z=%.0f)"), Expected, Move->Velocity.Size2D(), Hopper->GetActorLocation().X, Hopper->GetActorLocation().Z), FMath::IsNearlyEqual(static_cast<float>(Move->Velocity.Size2D()), Expected, 15.0f));
 		for (int32 Index = 0; Index < 60; ++Index) Move->TickComponent(0.016f, LEVELTICK_All, nullptr);
 		TestTrue(TEXT("Without a jump the ground brakes it back to walking pace"), Move->Velocity.Size2D() <= Move->WalkSpeed + 5.0f);
 	}
