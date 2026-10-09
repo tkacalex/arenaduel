@@ -101,8 +101,8 @@ namespace
 		const FLinearColor Line(0.0f, 0.0f, 0.0f, Alpha);
 		const float Fine = FMath::Max(1.0f, 1.2f * Unit), Post = 4.0f * Unit, PostStart = 0.36f * Radius;
 		// The reticle is black. A faint pale edge is drawn under it first, or it would vanish against a dark scene.
-		const FLinearColor Edge(0.75f, 0.8f, 0.85f, 0.22f * Alpha);
-		const float EdgeExtra = FMath::Max(1.5f, 1.6f * Unit);
+		const FLinearColor Edge(0.75f, 0.8f, 0.85f, 0.10f * Alpha);
+		const float EdgeExtra = FMath::Max(1.0f, 1.2f * Unit);
 		for (const bool bEdgePass : { true, false })
 		{
 			const FLinearColor& Color = bEdgePass ? Edge : Line;

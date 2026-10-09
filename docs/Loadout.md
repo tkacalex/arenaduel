@@ -96,3 +96,25 @@ The weapon panel shows the item in hand (name, mode, ammo or flashbang count). A
 - Mouse sensitivity while zoomed is each weapon's `AimSensitivityMultiplier` times `AimSensitivityScale` (0.85), so every weapon turns 15 percent slower in the zoom than before. The player's own ADS setting still applies on top.
 
 - The Rune DMR's `HeadshotMultiplier` is 2.5 (was 1.6): a head shot does 105 and kills from full health; body 42 and limb 34 are unchanged. `ArenaDuel.Loadout.SniperHeadshotKills` checks it on the player Blueprint.
+
+## Telescopic sight
+
+A weapon definition with `bHasScope` gets a telescopic sight; at present that is the Rune DMR. The logic sits in `UArenaDuelWeaponComponent` next to the existing aim code and reuses it: the server still sees one aim state, the world body shows the aim pose, and shots are traced from the eye along the view as always, so the reticle centre is where the shot goes at every zoom.
+
+| Property (`FArenaDuelWeaponDefinition`) | Value | Meaning |
+|---|---|---|
+| `ScopeFOVFirst` / `ScopeFOVSecond` | 40 / 15 | Field of view of the two zoom levels |
+| `ScopeSensitivityScale` | 1.0 | Mouse sensitivity in the scope follows the zoom (ratio of the view tangents); this scales it. The player's ADS setting applies on top |
+| `ScopedMoveSpeedScale` | 0.6 | Ground speed while looking through the scope |
+| `ScopeRezoomSeconds` | 0.16 | After a shot the scope drops this long and returns to the same level |
+
+- Right mouse steps: first zoom, second zoom, out. It is a press, not a hold. Other weapons keep aiming while the key is held.
+- Scope in and out is the existing move of the weapon to the eye with the field of view gliding along; the scope picture fades in over the last quarter and the first-person weapon and arms are hidden inside it. There are no authored scope animations.
+- The picture is drawn on the HUD canvas: black outside a round field of view, a shaded lens edge, a fine black cross and three heavier posts with a faint pale edge so they stay readable on a dark scene. Sizes follow the viewport height.
+- A reload, including the automatic one, a weapon or slot switch, death, round end and opening a menu leave the scope; it does not come back by itself.
+- Spread values are unchanged. Accuracy still depends on speed and on being in the air, and the aim bonus still fades in over `AimSettleSeconds`.
+- Scoped movement uses the replicated aim state, like aiming while sprinting, so a small position correction is possible in the instant the scope is entered or left while moving.
+
+Checked in a play session as the host: hip, first zoom, second zoom and out; the scope gone after a weapon switch and after a slot switch; one shot at the second zoom in slow motion, which showed the scope dropped with the tracer leaving the barrel and then back at the same zoom. `ArenaDuel.Loadout.SniperScope` checks the definition values.
+
+Not verified: real mouse input, the scope as a remote client, movement speed in the scope, the reload case, sensitivity feel, hits on an opponent through the scope, other resolutions and aspect ratios than the 16:9 play window.
