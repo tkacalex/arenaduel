@@ -1163,7 +1163,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelGroundFeelResponseTest, "ArenaDuel.Gr
 bool FArenaDuelGroundFeelResponseTest::RunTest(const FString& Parameters)
 {
 	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap);
-	AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnCharacter(GEditor->GetEditorWorldContext().World(), FVector::ZeroVector);
+	AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnCharacter(GEditor->GetEditorWorldContext().World(), FVector(0.0f, 0.0f, 100.0f));
 	UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character);
 	TestNotNull(TEXT("Ground feel movement"), Move);
 	if (!Move || !Character) return true;
@@ -1171,7 +1171,9 @@ bool FArenaDuelGroundFeelResponseTest::RunTest(const FString& Parameters)
 	Move->bRunPhysicsWithNoController = true;
 	Move->SetMovementMode(MOVE_Walking);
 	const FVector Right = Character->GetActorRightVector();
-
+	// Let the capsule settle on the floor first; a penetrating spawn cannot move and would fake every timing.
+	SimulateUntil(Character, Move, FVector::ZeroVector, [Move]() { return Move->IsMovingOnGround() && Move->Velocity.IsNearlyZero(); }, 1.0f);
+	const FVector Origin = Character->GetActorLocation();
 	const float StartSeconds = SimulateUntil(Character, Move, Right, [Move]() { return Move->Velocity.Size2D() >= 0.95f * Move->WalkSpeed; });
 	TestTrue(FString::Printf(TEXT("Strafe reaches 95 percent speed quickly (%.3f s)"), StartSeconds), StartSeconds <= 0.20f);
 
@@ -1189,6 +1191,7 @@ bool FArenaDuelGroundFeelResponseTest::RunTest(const FString& Parameters)
 	const float ReleaseDistance = FVector::Dist2D(ReleaseStart, Character->GetActorLocation());
 	TestTrue(FString::Printf(TEXT("Releasing input stops without a long slide (%.3f s, %.1f cm)"), ReleaseSeconds, ReleaseDistance), ReleaseSeconds <= 0.16f && ReleaseDistance <= 45.0f);
 	TestTrue(TEXT("Counter-strafing stops sooner than just letting go"), CounterSeconds < ReleaseSeconds);
+	TestTrue(TEXT("The character really travelled during the run"), FVector::Dist2D(Origin, Character->GetActorLocation()) > 50.0f);
 	AddInfo(FString::Printf(TEXT("Ground feel: start %.3f s, counter-strafe %.3f s / %.1f cm, reversal %.3f s, release %.3f s / %.1f cm"), StartSeconds, CounterSeconds, CounterDistance, ReverseSeconds, ReleaseSeconds, ReleaseDistance));
 	return true;
 }
