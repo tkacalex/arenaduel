@@ -362,10 +362,19 @@ void UArenaDuelCharacterMovementComponent::UpdateCharacterStateBeforeMovement(fl
 
 	if (IsSliding())
 	{
+		if (!bWantsSlide) bSlideReleasedDuringSlide = true;
 		if (SlideElapsed >= SlideDuration || (SlideElapsed >= SlideMinDuration && Velocity.Size2D() < SlideEndSpeed))
 		{
 			UE_LOG(LogArenaDuelSlide, Verbose, TEXT("Slide end (time/speed) elapsed=%.2f speed=%.0f"), SlideElapsed, Velocity.Size2D());
 			bSlideConsumedUntilRelease = bWantsSlide;
+			ExitSlide();
+		}
+		else if (ShouldCancelSlide(bWantsSlide, bSlideReleasedDuringSlide, SlideElapsed, SlideCancelMinTime))
+		{
+			// Slide cancel. The player stands up with the speed they have; the held key must be let go
+			// before it can start another slide, and the entry boost keeps its own cooldown.
+			UE_LOG(LogArenaDuelSlide, Verbose, TEXT("Slide cancel elapsed=%.2f speed=%.0f"), SlideElapsed, Velocity.Size2D());
+			bSlideConsumedUntilRelease = true;
 			ExitSlide();
 		}
 	}
@@ -701,6 +710,7 @@ void UArenaDuelCharacterMovementComponent::EnterSlide()
 	}
 	UE_LOG(LogArenaDuelSlide, Verbose, TEXT("Slide enter role=%d speed=%.0f crouched=%d boost=%d"), CharacterOwner ? static_cast<int32>(CharacterOwner->GetLocalRole()) : -1, Velocity.Size2D(), IsCrouching() ? 1 : 0, IsSlideBoostReady() ? 1 : 0);
 	SlideElapsed = 0.0f;
+	bSlideReleasedDuringSlide = false;
 	const FVector HorizontalDirection = Velocity.GetSafeNormal2D();
 	const float CurrentSpeed = Velocity.Size2D();
 	// The entry boost only applies when it has recharged, so slide spam cannot stack speed up to the cap.
@@ -717,6 +727,7 @@ void UArenaDuelCharacterMovementComponent::ExitSlide()
 		return;
 	}
 	SlideElapsed = 0.0f;
+	bSlideReleasedDuringSlide = false;
 	TimeSinceSlideEnded = 0.0f;
 	bool bHasWalkableFloor = false;
 	if (UpdatedComponent)

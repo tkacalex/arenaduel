@@ -47,6 +47,9 @@ public:
 	bool IsMantling() const { return MovementMode == MOVE_Custom && CustomMovementMode == static_cast<uint8>(EArenaDuelCustomMovementMode::Mantle); }
 
 	bool TrySlideJump();
+	/** A slide is cancelled by a second press: the key was let go during the slide and is down again. */
+	static bool ShouldCancelSlide(bool bSlideKeyDown, bool bReleasedDuringSlide, float Elapsed, float MinTime) { return bSlideKeyDown && bReleasedDuringSlide && Elapsed >= MinTime; }
+	float GetSlideCancelMinTime() const { return SlideCancelMinTime; }
 	bool TryWallJump();
 	void QueueAdvancedJump(bool bWallJump);
 	void ClearAdvancedJumpIntent();
@@ -159,6 +162,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
 	float SlideDuration = 1.5f;
 
+	/** Slide cancel: pressing the slide key again ends the slide at once, once it has run this long. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide", meta = (ClampMin = "0"))
+	float SlideCancelMinTime = 0.15f;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Slide")
 	float SlideInputBuffer = 0.3f;
 
@@ -238,6 +245,8 @@ protected:
 	bool bWantsSlide = false;
 	bool bSlideConsumedUntilRelease = false;
 	bool bSlideQueued = false;
+	/** The slide key was let go since this slide began. Read from the replicated slide intent, so client and server agree. */
+	bool bSlideReleasedDuringSlide = false;
 	float SlideInputBufferRemaining = 0.0f;
 	float SlideElapsed = 0.0f;
 	float TimeSinceSlideEnded = 1000.0f;

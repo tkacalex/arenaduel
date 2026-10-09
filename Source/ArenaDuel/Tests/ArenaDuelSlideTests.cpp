@@ -222,4 +222,17 @@ NETWORK_TEST_CLASS(FArenaDuelSlideNetworkTest, "ArenaDuel.Slide.Network")
 	}
 };
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelSlideCancelRuleTest, "ArenaDuel.Slide.CancelRule", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FArenaDuelSlideCancelRuleTest::RunTest(const FString& Parameters)
+{
+	const UArenaDuelCharacterMovementComponent* Movement = GetDefault<UArenaDuelCharacterMovementComponent>();
+	const float MinTime = Movement->GetSlideCancelMinTime();
+	TestTrue(TEXT("The cancel window opens early in the slide"), MinTime >= 0.0f && MinTime < 0.5f);
+	TestFalse(TEXT("Holding the key through the slide does not cancel"), UArenaDuelCharacterMovementComponent::ShouldCancelSlide(true, false, 1.0f, MinTime));
+	TestFalse(TEXT("Letting the key go does not cancel"), UArenaDuelCharacterMovementComponent::ShouldCancelSlide(false, true, 1.0f, MinTime));
+	TestTrue(TEXT("A second press cancels"), UArenaDuelCharacterMovementComponent::ShouldCancelSlide(true, true, MinTime + 0.01f, MinTime));
+	TestFalse(TEXT("A second press before the minimum time waits"), UArenaDuelCharacterMovementComponent::ShouldCancelSlide(true, true, MinTime * 0.5f, MinTime));
+	return true;
+}
 #endif

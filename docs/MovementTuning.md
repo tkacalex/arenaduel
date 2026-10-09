@@ -45,3 +45,15 @@ Duel pawns replicate at 100 Hz with a floor of 60 Hz. Movement still uses the en
 ## Not verified
 
 Strafing, jiggle and wide peeks, direction changes under real input and the directional clips have not been watched in a play session, because the editor tooling cannot hold movement keys. The `ArenaDuel.Phase4.Network.*` and `ArenaDuel.Phase3.Network.*` tests fail, and already failed before these changes.
+
+## Slide cancel
+
+Pressing the slide key a second time during a slide ends it at once. The player stands up and keeps the speed they have, which then settles to walk or sprint speed through normal ground braking. Holding the key or letting it go does not cancel. `SlideCancelMinTime` (0.15 s) is the earliest point a second press takes effect; a press before that is applied when the time is reached.
+
+The rule reads only the slide intent that is already part of the saved move (`FLAG_Custom_1`) and the slide time, so client prediction and the server decide the same way. After a cancel the key has to be let go before it can start another slide, and the entry boost keeps its `SlideBoostCooldown`, so cancelling cannot be used to stack speed.
+
+`ArenaDuel.Slide.CancelRule` checks the rule. The cancel was not tried with real input in a play session.
+
+## Reload on the world body
+
+The world body keeps its walk, run or fall clip while reloading. The reload clip is layered onto the bones from `spine_02` upward, stretched to the weapon's reload time. Checked only for a standing player without errors; a reloading opponent in motion was not watched.
