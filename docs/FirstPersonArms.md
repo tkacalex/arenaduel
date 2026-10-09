@@ -2,13 +2,15 @@
 
 ## Current implementation
 
-The local player sees their own full Manny body (`SKM_Manny_Simple`) on `FirstPersonArms`, rendered as a first person primitive with a 55 degree viewmodel lens. `UArenaDuelVisualAnimInstance` pins the head joint to the component origin every frame, collapses the neck and thighs, and solves a two bone IK for the support hand. The component offset places that joint relative to the eye so the rifle sight sits on the screen centre while aiming. Hip fire adds the per weapon `HipViewmodelLocation` on `FirstPersonViewmodelRoot`. Both the first and third person guns use the same grip fit on `HandGrip_R`. Gameplay aim and the authoritative trace stay separate from these cosmetic offsets.
+The local player sees a second copy of the full Manny body (`FirstPersonArms`, attached to the world mesh), rendered as a first person primitive with Epic's template lens (70 degree viewmodel field of view, first person scale 0.6). It runs Epic's `ABP_FP_Copy`, which copies the world body's pose and applies `CtrlRig_FPWarp` to bend arms and weapon toward the camera. Both assets come from the engine's First Person template and live in `/Game/FirstPerson/Anims`.
 
-`ArenaDuel.Debug.ForceAimPresentation 1` shows the aimed viewmodel without holding the aim input, for captures and tooling.
+The gameplay camera stays on the capsule. `AArenaDuelCharacter::UpdateLocalMovementCamera` slides the local body so its head socket sits under the camera at the template's eye offset, and adds the `FirstPersonViewmodelRoot` offset on top. That offset is zero while aiming and the per weapon `HipViewmodelLocation` for hip fire, plus recoil, bob and landing motion.
+
+Weapons use Epic's template firearms (`/Game/Weapons`), snapped to `HandGrip_R` with no offset. `UArenaDuelVisualAnimInstance` solves a two bone IK for the support hand on the world body, so the first person copy and opponents see the same grip. The grip point is tunable live with `ArenaDuel.Debug.LeftGripX/Y/Z`. `ArenaDuel.Debug.ForceAimPresentation 1` shows the aimed viewmodel without holding the aim input.
 
 ## Known limits
 
-The four generated gun meshes are blocky placeholders and hide most of both hands in hip fire and while aiming. The rifle clips are full body third person clips, so there is no authored first person fire, sprint or equip motion. `SKM_ArenaDuelFPSArms` is no longer used.
+Arc Rifle, Shade SMG and Rune DMR share the rifle model and the Hex Shotgun uses the grenade launcher model. The support hand grip point was fitted for the rifle only. The clips are third person rifle clips, so there is no authored first person fire, reload, sprint or equip motion. The generated `SM_*` gun meshes and `SKM_ArenaDuelFPSArms` are no longer used.
 ## Required artist and animator deliverables
 
 * One sealed first person arm skeletal mesh compatible with the Manny skeleton used by the project, with clean skin weights at shoulder, elbow, wrist and fingers. The camera facing side must have no open cut surface or missing polygons.
