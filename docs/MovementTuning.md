@@ -87,6 +87,6 @@ Aiming no longer stops at a sprint and starting a sprint no longer drops the aim
 
 ## Shadow Step
 
-The dash launches at `DashSpeed` 2200 in the movement direction. Before, it was limited to `GlobalMomentumCap` (1350), only half again as fast as a sprint, and the stronger ground braking from the movement pass stopped it almost at once. Started on the ground it now also lifts off with `DashLift` 200, a hop of about 20 cm that keeps the dash in the air for roughly 0.4 s, which is about 9 m of travel; in the air it keeps its vertical speed. Both values are properties of `UArenaDuelGA_ShadowStep`. The cooldown is still five seconds.
+The dash launches at `DashSpeed` 11000 in the movement direction (raised five times from 2200 on request; the distances below were written for 2200, so at 11000 the roughly 0.4 s of air time is about 45 m and in practice the next wall ends the dash). Before, it was limited to `GlobalMomentumCap` (1350), only half again as fast as a sprint, and the stronger ground braking from the movement pass stopped it almost at once. Started on the ground it now also lifts off with `DashLift` 200, a hop of about 20 cm that keeps the dash in the air for roughly 0.4 s, which is about 9 m of travel; in the air it keeps its vertical speed. Both values are properties of `UArenaDuelGA_ShadowStep`. The cooldown is still five seconds.
 
 `ArenaDuel.Shadow.StepStrength` checks the values. The distance is calculated, not measured in a play session.
