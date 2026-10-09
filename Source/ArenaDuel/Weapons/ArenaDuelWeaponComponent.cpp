@@ -493,29 +493,18 @@ void UArenaDuelWeaponComponent::MulticastShotFired_Implementation(const TArray<F
 		if (Material) Tracer->SetMaterial(0, Material);
 		Tracer->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		Tracer->SetCastShadow(false);
-		Tracer->SetWorldTransform(FTransform(FRotationMatrix::MakeFromZ(Delta).ToQuat(), Muzzle + Delta * 0.5, FVector(0.022, 0.022, Length / 100.0)));
+		Tracer->SetWorldTransform(FTransform(FRotationMatrix::MakeFromZ(Delta).ToQuat(), Muzzle + Delta * 0.5, FVector(0.005, 0.005, Length / 100.0)));
 		Tracer->RegisterComponentWithWorld(World);
 		ExpireAfter(Tracer, CVarTracerSeconds.GetValueOnGameThread());
 	}
 	UPointLightComponent* Flash = NewObject<UPointLightComponent>(GetOwner());
 	Flash->SetWorldLocation(Muzzle);
-	Flash->SetIntensity(26000.0f);
-	Flash->SetAttenuationRadius(700.0f);
+	Flash->SetIntensity(6000.0f);
+	Flash->SetAttenuationRadius(300.0f);
 	Flash->SetLightColor(FLinearColor(1.0f, 0.82f, 0.55f));
 	Flash->SetCastShadows(false);
 	Flash->RegisterComponentWithWorld(World);
 	ExpireAfter(Flash, 0.07f);
-	if (UStaticMesh* Sphere = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere")))
-	{
-		UStaticMeshComponent* Burst = NewObject<UStaticMeshComponent>(GetOwner());
-		Burst->SetStaticMesh(Sphere);
-		if (Material) Burst->SetMaterial(0, Material);
-		Burst->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		Burst->SetCastShadow(false);
-		Burst->SetWorldTransform(FTransform(FQuat::Identity, Muzzle, FVector(0.16)));
-		Burst->RegisterComponentWithWorld(World);
-		ExpireAfter(Burst, 0.05f);
-	}
 	if (FireSound) UGameplayStatics::PlaySoundAtLocation(this, FireSound, Muzzle, Character->IsLocallyControlled() ? 0.55f : 0.9f);
 }
 void UArenaDuelWeaponComponent::CompleteReload(){
