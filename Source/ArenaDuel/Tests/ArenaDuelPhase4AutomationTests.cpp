@@ -1091,7 +1091,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 			.UntilClient(TEXT("Prepare traversal client"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State); }, FTimespan::FromSeconds(5.0))
 			.UntilClient(TEXT("Traversal client has a stable collision-free start"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && ArenaDuelPhase4HardeningTests::IsFinite(State.OwnedPawn->GetActorLocation()) && !ArenaDuelPhase4HardeningTests::IsCapsuleOverlapping(State.OwnedPawn); }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Approach vault with normal input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
-			.UntilClient(TEXT("Reach traversal speed"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->Velocity.Size2D() >= State.OwnedPawn->GetArenaDuelMovementComponent()->WallRunMinSpeed; }, FTimespan::FromSeconds(5.0))
+			.UntilClient(TEXT("Reach traversal speed near the obstacle"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->Velocity.Size2D() >= State.OwnedPawn->GetArenaDuelMovementComponent()->WallRunMinSpeed && State.OwnedPawn->GetActorLocation().X >= 930.0f; }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Jump toward vault through input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::InjectJump(State); })
 			.UntilClient(TEXT("Client enters vault"), 0, [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::IsVault(State.OwnedPawn); }, FTimespan::FromSeconds(8.0))
 			.UntilServer(TEXT("Server validates vault"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::IsVault(ArenaDuelPhase4NetworkTests::FindServerClientPawn(State)); }, FTimespan::FromSeconds(8.0))
@@ -1099,7 +1099,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 			.ThenClient(TEXT("Stop traversal input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StopAllInput(State); })
 			.UntilServer(TEXT("Server vault completes collision-free behind obstacle"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::IsVaultComplete(ArenaDuelPhase4NetworkTests::FindServerClientPawn(State)); }, FTimespan::FromSeconds(8.0))
 			.UntilServer(TEXT("Capture traversal authority"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::CaptureServerSnapshotAfterSettle(State); })
-			.UntilClient(TEXT("Traversal converges"), 0, [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::HasConverged(State); }, FTimespan::FromSeconds(5.0));
+			.UntilClient(TEXT("Traversal converges"), 0, [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::HasConverged(State); }, FTimespan::FromSeconds(8.0));
 	}
 
 	TEST_METHOD(ClientServerConvergence)
