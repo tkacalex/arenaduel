@@ -264,16 +264,18 @@ void UArenaDuelWeaponComponent::UpdateTracers()
 	if (ActiveTracers.Num() == 0 && !bFlashOn && !(Character && Character->IsLocallyControlled() && !Character->IsDead())) SetComponentTickEnabled(false);
 }
 
-bool UArenaDuelWeaponComponent::GetLeftHandGripWorldLocation(FVector& OutLocation) const
+bool UArenaDuelWeaponComponent::GetLeftHandGripWorldLocation(FVector& OutLocation, bool bThirdPerson) const
 {
-	if (!WeaponVisualDefinitions.IsValidIndex(EquippedWeaponIndex) || !FirstPersonWeaponMesh || !FirstPersonWeaponMesh->GetStaticMesh()) return false;
-	if (FirstPersonWeaponMesh->DoesSocketExist(TEXT("LeftHandGrip")))
+	const UStaticMeshComponent* Gun = bThirdPerson ? ThirdPersonWeaponMesh.Get() : FirstPersonWeaponMesh.Get();
+	// Flashbang and knife are one-handed.
+	if (!WeaponVisualDefinitions.IsValidIndex(EquippedWeaponIndex) || !Gun || !Gun->GetStaticMesh() || GetActiveSlot() != EArenaDuelLoadoutSlot::Primary) return false;
+	if (Gun->DoesSocketExist(TEXT("LeftHandGrip")))
 	{
-		OutLocation = FirstPersonWeaponMesh->GetSocketLocation(TEXT("LeftHandGrip"));
+		OutLocation = Gun->GetSocketLocation(TEXT("LeftHandGrip"));
 	}
 	else
 	{
-		OutLocation = FirstPersonWeaponMesh->GetComponentTransform().TransformPosition(WeaponVisualDefinitions[EquippedWeaponIndex].LeftHandGripLocation);
+		OutLocation = Gun->GetComponentTransform().TransformPosition(WeaponVisualDefinitions[EquippedWeaponIndex].LeftHandGripLocation);
 	}
 	return !OutLocation.ContainsNaN();
 }

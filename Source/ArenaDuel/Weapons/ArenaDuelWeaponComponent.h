@@ -237,7 +237,7 @@ public:
 	void GetCurrentViewmodelBaseTransform(FVector& OutLocation, FRotator& OutRotation) const;
 	UStaticMeshComponent* GetFirstPersonWeaponMesh() const { return FirstPersonWeaponMesh; }
 	UStaticMeshComponent* GetThirdPersonWeaponMesh() const { return ThirdPersonWeaponMesh; }
-	bool GetLeftHandGripWorldLocation(FVector& OutLocation) const;
+	bool GetLeftHandGripWorldLocation(FVector& OutLocation, bool bThirdPerson = false) const;
 
 	const FArenaDuelWeaponDefinition& GetCurrentDefinition() const;
 	int32 GetWeaponDefinitionCount() const { return WeaponDefinitions.Num(); }

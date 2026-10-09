@@ -4,6 +4,7 @@
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimSingleNodeInstanceProxy.h"
 #include "TwoBoneIK.h"
+#include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -12,6 +13,17 @@
 
 namespace
 {
+	// First-person support arm. The arm mesh is a forearm and a hand, so the forearm is placed directly:
+	// the wrist sits on the gun's support grip and the elbow lies in this direction from it, in camera
+	// space (X forward, Y right, Z up). Pointing it back and down keeps the open elbow end off screen.
+	TAutoConsoleVariable<float> CVarElbowX(TEXT("ArenaDuel.Arms.LeftElbowX"), -0.75f, TEXT("Support arm, wrist to elbow direction: forward"));
+	TAutoConsoleVariable<float> CVarElbowY(TEXT("ArenaDuel.Arms.LeftElbowY"), -0.25f, TEXT("Support arm, wrist to elbow direction: right"));
+	TAutoConsoleVariable<float> CVarElbowZ(TEXT("ArenaDuel.Arms.LeftElbowZ"), -0.60f, TEXT("Support arm, wrist to elbow direction: up"));
+	TAutoConsoleVariable<float> CVarForearmRoll(TEXT("ArenaDuel.Arms.LeftRoll"), 0.0f, TEXT("Support arm roll around the forearm, degrees"));
+	TAutoConsoleVariable<float> CVarWristX(TEXT("ArenaDuel.Arms.LeftWristX"), 0.0f, TEXT("Support wrist offset from the grip point: forward"));
+	TAutoConsoleVariable<float> CVarWristY(TEXT("ArenaDuel.Arms.LeftWristY"), 0.0f, TEXT("Support wrist offset from the grip point: right"));
+	TAutoConsoleVariable<float> CVarWristZ(TEXT("ArenaDuel.Arms.LeftWristZ"), 0.0f, TEXT("Support wrist offset from the grip point: up"));
+
 	struct FArenaDuelVisualPoseProxy : FAnimSingleNodeInstanceProxy
 	{
 		using FAnimSingleNodeInstanceProxy::FAnimSingleNodeInstanceProxy;
@@ -21,6 +33,10 @@ namespace
 		FVector LeftGripInRightHand = FVector::ZeroVector;
 		bool bHasLeftGrip = false;
 		bool bAlignHead = false;
+		// First-person arms only: place the forearm directly instead of solving the whole arm.
+		bool bRigidForearm = false;
+		FVector ElbowDirection = FVector::ZeroVector;
+		float ForearmRoll = 0;
 		virtual void PreUpdate(UAnimInstance* Instance, float DeltaSeconds) override
 		{
 			FAnimSingleNodeInstanceProxy::PreUpdate(Instance, DeltaSeconds);
@@ -35,13 +51,23 @@ namespace
 			bAlignHead = bThirdPersonBody && !Character->IsDead();
 			const USkeletalMeshComponent* Arms = Character ? Character->GetFirstPersonArms() : nullptr;
 			const UArenaDuelWeaponComponent* Weapon = Character ? Character->GetWeaponComponent() : nullptr;
-			if (Character && !Character->IsDead() && Arms && Instance->GetSkelMeshComponent() == Arms && Weapon)
+			const USkeletalMeshComponent* Body = Instance->GetSkelMeshComponent();
+			bRigidForearm = Body && Body == Arms;
+			if (Character && !Character->IsDead() && Body && (bRigidForearm || bThirdPersonBody) && Weapon)
 			{
 				FVector GripWorld;
-				const int32 RightHandIndex = Arms->GetBoneIndex(TEXT("hand_r"));
-				if (RightHandIndex != INDEX_NONE && Weapon->GetLeftHandGripWorldLocation(GripWorld))
+				const int32 RightHandIndex = Body->GetBoneIndex(TEXT("hand_r"));
+				if (RightHandIndex != INDEX_NONE && Weapon->GetLeftHandGripWorldLocation(GripWorld, bThirdPersonBody))
 				{
-					LeftGripInRightHand = Arms->GetBoneTransform(RightHandIndex).InverseTransformPosition(GripWorld);
+					if (bRigidForearm)
+					{
+						const FRotator View = Character->GetFirstPersonCamera() ? Character->GetFirstPersonCamera()->GetComponentRotation() : Character->GetViewRotation();
+						GripWorld += View.RotateVector(FVector(CVarWristX.GetValueOnGameThread(), CVarWristY.GetValueOnGameThread(), CVarWristZ.GetValueOnGameThread()));
+						const FVector ElbowView(CVarElbowX.GetValueOnGameThread(), CVarElbowY.GetValueOnGameThread(), CVarElbowZ.GetValueOnGameThread());
+						ElbowDirection = Body->GetComponentTransform().InverseTransformVectorNoScale(View.RotateVector(ElbowView)).GetSafeNormal();
+						ForearmRoll = CVarForearmRoll.GetValueOnGameThread();
+					}
+					LeftGripInRightHand = Body->GetBoneTransform(RightHandIndex).InverseTransformPosition(GripWorld);
 					bHasLeftGrip = !LeftGripInRightHand.ContainsNaN();
 				}
 			}
@@ -122,7 +148,18 @@ namespace
 						const FVector JointTarget = Lower.GetLocation() + (Lower.GetLocation() - Upper.GetLocation()).GetSafeNormal() * 30.0f;
 						if (!Effector.ContainsNaN() && !JointTarget.ContainsNaN())
 						{
-							AnimationCore::SolveTwoBoneIK(Upper, Lower, Hand, JointTarget, Effector, false, 1.0, 1.0);
+							const FVector Forearm = OriginalHand.GetLocation() - OriginalLower.GetLocation();
+							if (bRigidForearm && !ElbowDirection.IsNearlyZero() && Forearm.Size() > KINDA_SMALL_NUMBER)
+							{
+								// Forearm and hand move as one piece: wrist on the grip, elbow along the tuned direction.
+								const FVector ToHand = -ElbowDirection;
+								const FQuat Swing = FQuat(ToHand, FMath::DegreesToRadians(ForearmRoll)) * FQuat::FindBetweenNormals(Forearm.GetSafeNormal(), ToHand);
+								Lower.SetRotation(Swing * OriginalLower.GetRotation());
+								Lower.SetLocation(Effector - ToHand * Forearm.Size());
+								Hand.SetRotation(Swing * OriginalHand.GetRotation());
+								Hand.SetLocation(Effector);
+							}
+							else AnimationCore::SolveTwoBoneIK(Upper, Lower, Hand, JointTarget, Effector, false, 1.0, 1.0);
 							if (!Upper.ContainsNaN() && !Lower.ContainsNaN() && !Hand.ContainsNaN())
 							{
 								FTransform BlendedUpper, BlendedLower, BlendedHand;
