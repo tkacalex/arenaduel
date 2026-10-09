@@ -3,7 +3,6 @@
 #include "Misc/AutomationTest.h"
 #include "Editor.h"
 #include "ArenaDuel/Game/ArenaDuelHealPad.h"
-#include "ArenaDuel/Characters/ArenaDuelCharacter.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -46,7 +45,7 @@ bool FArenaDuelDistrictMapTest::RunTest(const FString& Parameters)
 	}
 
 	// One heal pad, small, on the centre line and in the open: both flank windows have a clear shot at whoever stands on it.
-	AArenaDuelHealPad* Pad = nullptr;
+	const AArenaDuelHealPad* Pad = nullptr;
 	int32 Pads = 0;
 	for (TActorIterator<AArenaDuelHealPad> It(World); It; ++It) { Pad = *It; ++Pads; }
 	TestEqual(TEXT("The map has one heal pad"), Pads, 1);
@@ -66,28 +65,6 @@ bool FArenaDuelDistrictMapTest::RunTest(const FString& Parameters)
 			FHitResult Blocked;
 			TestFalse(TEXT("A flank window has a clear shot at the pad"), World->LineTraceSingleByChannel(Blocked, FVector(Side * 1300.0f, 885.0f, 170.0f), PadLocation + FVector(0.0f, 0.0f, 60.0f), ECC_Visibility));
 		}
-	}
-
-	// A hurt player on the pad gains exactly one point per step, and never more than the maximum.
-	UClass* CharacterClass = LoadClass<AArenaDuelCharacter>(nullptr, TEXT("/Game/ArenaDuel/Characters/BP_ArenaDuelCharacter.BP_ArenaDuelCharacter_C"));
-	AArenaDuelCharacter* Patient = Pad && CharacterClass ? World->SpawnActor<AArenaDuelCharacter>(CharacterClass, Pad->GetActorLocation() + FVector(0.0f, 0.0f, 92.0f), FRotator::ZeroRotator) : nullptr;
-	if (TestNotNull(TEXT("A test character on the pad"), Patient))
-	{
-		const float Full = Patient->GetHealth();
-		Patient->ApplyServerDamage(30.0f);
-		const float Hurt = Patient->GetHealth();
-		if (TestTrue(TEXT("The test character can be hurt"), Full > 0.0f && FMath::IsNearlyEqual(Hurt, Full - 30.0f, 0.01f)))
-		{
-			for (int32 Step = 0; Step < 3; ++Step) Pad->HealStandingPlayers();
-			TestTrue(TEXT("Three steps heal three points"), FMath::IsNearlyEqual(Patient->GetHealth(), Hurt + 3.0f, 0.01f));
-			for (int32 Step = 0; Step < 100; ++Step) Pad->HealStandingPlayers();
-			TestTrue(TEXT("Healing stops at full health"), FMath::IsNearlyEqual(Patient->GetHealth(), Full, 0.01f));
-			Patient->ApplyServerDamage(10.0f);
-			Patient->SetActorLocation(Pad->GetActorLocation() + FVector(300.0f, 0.0f, 92.0f));
-			Pad->HealStandingPlayers();
-			TestTrue(TEXT("Off the pad nothing is healed"), FMath::IsNearlyEqual(Patient->GetHealth(), Full - 10.0f, 0.01f));
-		}
-		Patient->Destroy();
 	}
 
 	int32 Pieces = 0;

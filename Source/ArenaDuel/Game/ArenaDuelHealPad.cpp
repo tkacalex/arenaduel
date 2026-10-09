@@ -1,12 +1,26 @@
-﻿#include "ArenaDuelHealPad.h"
+#include "ArenaDuelHealPad.h"
 #include "../Characters/ArenaDuelCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
+
+namespace
+{
+	// Development helper: ArenaDuel.Health <value> sets the health of the local player, to try the pad without a fight.
+	FAutoConsoleCommandWithWorldAndArgs CmdSetHealth(TEXT("ArenaDuel.Health"), TEXT("Set the health of the local player (server or listen host only)"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+			AArenaDuelCharacter* Pawn = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
+			if (Pawn && Args.Num() > 0) Pawn->AdminSetHealth(FCString::Atof(*Args[0]));
+		}));
+}
 
 AArenaDuelHealPad::AArenaDuelHealPad()
 {
