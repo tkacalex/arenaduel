@@ -49,6 +49,8 @@ public:
 	float GetHealth() const;
 	float GetMaxHealth() const;
 	void ApplyServerDamage(float DamageAmount);
+	/** Server only. Adds health up to the maximum; does nothing for the dead or outside a running round. */
+	void ApplyServerHeal(float HealAmount);
 	// Server only. Remembers where and from which direction the latest hit landed, for the death ragdoll push.
 	void RecordServerHit(const FVector& WorldLocation, const FVector& Direction);
 	// Line trace against the animated physics bodies of the world mesh. OutHit.BoneName names the body hit.

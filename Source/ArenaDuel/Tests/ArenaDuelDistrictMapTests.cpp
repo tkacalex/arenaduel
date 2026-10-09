@@ -2,6 +2,7 @@
 
 #include "Misc/AutomationTest.h"
 #include "Editor.h"
+#include "ArenaDuel/Game/ArenaDuelHealPad.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -41,6 +42,29 @@ bool FArenaDuelDistrictMapTest::RunTest(const FString& Parameters)
 	{
 		FHitResult Floor;
 		TestTrue(TEXT("A start stands on the floor"), World->LineTraceSingleByChannel(Floor, Start, Start - FVector(0, 0, 400), ECC_Visibility) && Floor.ImpactPoint.Z > -5.0 && Floor.ImpactPoint.Z < 5.0);
+	}
+
+	// One heal pad, small, on the centre line and in the open: both flank windows have a clear shot at whoever stands on it.
+	const AArenaDuelHealPad* Pad = nullptr;
+	int32 Pads = 0;
+	for (TActorIterator<AArenaDuelHealPad> It(World); It; ++It) { Pad = *It; ++Pads; }
+	TestEqual(TEXT("The map has one heal pad"), Pads, 1);
+	if (Pad)
+	{
+		const FVector PadLocation = Pad->GetActorLocation();
+		TestTrue(TEXT("The pad lies on the centre line, on the floor"), FMath::Abs(PadLocation.X) < 1.0 && PadLocation.Z > -5.0 && PadLocation.Z < 10.0);
+		TestTrue(TEXT("The pad is small"), Pad->GetPadHalfSize() <= 75.0f);
+		TestEqual(TEXT("Five health per second"), Pad->GetHealPerSecond(), 5.0f);
+		TestEqual(TEXT("In steps of one"), Pad->GetHealStep(), 1.0f);
+		TestTrue(TEXT("So a step every fifth of a second"), FMath::IsNearlyEqual(Pad->GetStepInterval(), 0.2f, 0.001f));
+		TestTrue(TEXT("Standing on the pad counts"), Pad->IsOnPad(PadLocation));
+		TestFalse(TEXT("Standing beside the pad does not"), Pad->IsOnPad(PadLocation + FVector(Pad->GetPadHalfSize() + 40.0f, 0.0f, 0.0f)));
+		TestFalse(TEXT("Jumping over the pad does not"), Pad->IsOnPad(PadLocation + FVector(0.0f, 0.0f, 90.0f)));
+		for (const float Side : { -1.0f, 1.0f })
+		{
+			FHitResult Blocked;
+			TestFalse(TEXT("A flank window has a clear shot at the pad"), World->LineTraceSingleByChannel(Blocked, FVector(Side * 1300.0f, 885.0f, 170.0f), PadLocation + FVector(0.0f, 0.0f, 60.0f), ECC_Visibility));
+		}
 	}
 
 	int32 Pieces = 0;

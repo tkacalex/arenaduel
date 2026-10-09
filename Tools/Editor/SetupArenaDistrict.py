@@ -208,6 +208,14 @@ def build():
     cube('SouthBlock', 110, 260, -2050, -2010, 110, 235, concrete)
     count['windows'] += 1
 
+    # --- Heal pad: a small green plate in the open north of the house, on the centre line. Both peek-wall
+    # windows look straight at it, so healing means standing in a crossfire.
+    green = make_material('M_DistrictHealGreen', (0.02, 0.45, 0.10, 1), 0.0, 0.5, (0.03, 0.85, 0.16, 1))
+    pad_class = unreal.load_class(None, '/Script/ArenaDuel.ArenaDuelHealPad')
+    pad = unreal.EditorLevelLibrary.spawn_actor_from_class(pad_class, unreal.Vector(0, 900, 2), unreal.Rotator(roll=0.0, pitch=0.0, yaw=0.0))
+    pad.set_actor_label(PREFIX + 'HealPad')
+    pad.get_component_by_class(unreal.StaticMeshComponent).set_material(0, green)
+
     # The game mode looks for these two tags.
     for x, yaw, name in ((-3050, 0, 'P1'), (3050, 180, 'P2')):
         start = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.PlayerStart, unreal.Vector(x, 0, 100), unreal.Rotator(roll=0.0, pitch=0.0, yaw=yaw))

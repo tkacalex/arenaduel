@@ -322,6 +322,23 @@ void AArenaDuelCharacter::ApplyServerDamage(float DamageAmount)
 	if (GetHealth() <= 0.0f) HandleDeath();
 }
 
+void AArenaDuelCharacter::ApplyServerHeal(float HealAmount)
+{
+	if (!HasAuthority() || bDead || HealAmount <= 0.0f) return;
+	if (const AArenaDuelGameState* State = GetWorld() ? GetWorld()->GetGameState<AArenaDuelGameState>() : nullptr; State && !State->IsRoundInProgress()) return;
+	UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
+	const float Missing = GetMaxHealth() - GetHealth();
+	if (!ASC || Missing <= 0.0f) return;
+	UGameplayEffect* HealEffect = NewObject<UGameplayEffect>(GetTransientPackage(), TEXT("ArenaDuelHealEffect"));
+	HealEffect->DurationPolicy = EGameplayEffectDurationType::Instant;
+	FGameplayModifierInfo Modifier;
+	Modifier.Attribute = UArenaDuelAttributeSet::GetHealthAttribute();
+	Modifier.ModifierOp = EGameplayModOp::Additive;
+	Modifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(FMath::Min(HealAmount, Missing)));
+	HealEffect->Modifiers.Add(Modifier);
+	ASC->ApplyGameplayEffectToSelf(HealEffect, 1.0f, ASC->MakeEffectContext());
+}
+
 void AArenaDuelCharacter::AdminSetHealth(float NewHealth)
 {
 	if (!HasAuthority() || bDead) return;
