@@ -29,5 +29,7 @@ Capture both player views at hip and ADS, every weapon, sprint and reload, and i
 
 - First person: the arm mesh is a forearm and a hand, so the arm is placed as one rigid piece. The wrist sits on the grip point and the elbow lies along a fixed direction in camera space, back, left and down, which keeps the open elbow end below the screen. Console variables `ArenaDuel.Arms.LeftElbowX/Y/Z`, `LeftRoll` and `LeftWristX/Y/Z` change the pose live; their defaults are the tuned values.
 - World body: a two bone IK moves the left hand to the same grip point on the third person weapon. It runs on every machine, so the server's hit zones follow it.
-- Knife and flashbang are one-handed. In first person the free arm rests below the view. This case was not captured in a play session.
+- The weapon arm is treated the same way: the hand keeps its grip and only the forearm behind it is turned (`ArenaDuel.Arms.RightElbowX/Y/Z`).
+- At the hip the viewmodel is lowered by `ArenaDuel.Arms.HipDrop` (5.5 cm), so the screen edge cuts the forearms off and only the hands show. Aiming uses its own location and brings the arms into view.
+- Knife and flashbang are one-handed. The free hand has its own place apart from the weapon hand: a fixed point in camera space in first person (`ArenaDuel.Arms.FreeHandX/Y/Z`, `FreeHandRoll`), a point beside the body on the world mesh.
 - During a reload the support hand is released and the reload clip drives the arm.

@@ -9,7 +9,7 @@
 #include "../Player/ArenaDuelPlayerController.h"
 #include "ArenaDuelWeaponTarget.h"
 #include "ArenaDuelFlashbang.h"
-#include "ArenaDuelKnifeMesh.h"
+#include "ArenaDuelItemMeshes.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -31,7 +31,7 @@
 
 namespace
 {
-	TAutoConsoleVariable<float> CVarHipDrop(TEXT("ArenaDuel.Arms.HipDrop"), 7.0f, TEXT("How far the hip viewmodel is lowered, in centimetres"));
+	TAutoConsoleVariable<float> CVarHipDrop(TEXT("ArenaDuel.Arms.HipDrop"), 5.5f, TEXT("How far the hip viewmodel is lowered, in centimetres"));
 	// Development helper: ArenaDuel.Slot 0|1|2 selects firearm, flashbang or knife for the local player.
 	FAutoConsoleCommandWithWorldAndArgs CmdSelectSlot(TEXT("ArenaDuel.Slot"), TEXT("Select loadout slot 0 to 2 for the local player"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
@@ -780,11 +780,11 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 	if (Slot != EArenaDuelLoadoutSlot::Primary)
 	{
 		const bool bKnife = Slot == EArenaDuelLoadoutSlot::Knife;
-		if (bKnife && !KnifeMesh) KnifeMesh = ArenaDuelKnifeMesh::Build(this);
-		UStaticMesh* ItemMesh = bKnife ? KnifeMesh.Get() : LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
-		// The knife model is in centimetres already; the flashbang is a scaled engine cylinder.
-		const FVector ItemScale = bKnife ? FVector(1.0f) : FVector(0.06f, 0.06f, 0.10f);
-		const FVector ItemOffset = bKnife ? FVector::ZeroVector : FVector(0.0f, 0.0f, 4.0f);
+		// Both models are built in code, in centimetres. The reference keeps the shared mesh alive.
+		ItemModel = bKnife ? ArenaDuelItemMeshes::Knife() : ArenaDuelItemMeshes::Flashbang();
+		UStaticMesh* ItemMesh = ItemModel.Get();
+		const FVector ItemScale(1.0f);
+		const FVector ItemOffset = bKnife ? FVector::ZeroVector : FVector(0.0f, 0.0f, 2.0f);
 		for (UStaticMeshComponent* ItemComponent : { FirstPersonWeaponMesh.Get(), ThirdPersonWeaponMesh.Get() })
 		{
 			const float HandScale = ItemComponent == FirstPersonWeaponMesh.Get() ? 0.6f : 1.0f;
@@ -792,12 +792,9 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 			ItemComponent->SetRelativeScale3D(ItemScale * HandScale);
 			ItemComponent->SetRelativeLocation(ItemOffset * HandScale);
 			if (WeaponBodyMaterial) for (int32 MaterialIndex = 0; MaterialIndex < ItemComponent->GetNumMaterials(); ++MaterialIndex) ItemComponent->SetMaterial(MaterialIndex, WeaponBodyMaterial);
-			if (bKnife)
-			{
-				// Slots: 0 blade, 1 grip, 2 guard and pommel.
-				if (KnifeBladeMaterial) ItemComponent->SetMaterial(0, KnifeBladeMaterial);
-				if (Accent) ItemComponent->SetMaterial(2, Accent);
-			}
+			// Slot 0 is the bright part (blade, canister), slot 2 the accent (guard, lever).
+			if (KnifeBladeMaterial) ItemComponent->SetMaterial(0, KnifeBladeMaterial);
+			if (Accent) ItemComponent->SetMaterial(2, Accent);
 		}
 	}
 	FirstPersonWeaponMesh->SetVisibility(Character->IsLocallyControlled() && !Character->IsDead());

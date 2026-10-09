@@ -1,5 +1,7 @@
 #include "ArenaDuelFlashbang.h"
 #include "../Characters/ArenaDuelCharacter.h"
+#include "ArenaDuelItemMeshes.h"
+#include "Materials/MaterialInterface.h"
 #include "Components/PointLightComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -31,9 +33,6 @@ AArenaDuelFlashbang::AArenaDuelFlashbang()
 	Visual = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Visual"));
 	Visual->SetupAttachment(Collision);
 	Visual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	Visual->SetRelativeScale3D(FVector(0.11f));
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
-	if (Sphere.Succeeded()) Visual->SetStaticMesh(Sphere.Object);
 
 	Movement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("Movement"));
 	Movement->SetUpdatedComponent(Collision);
@@ -44,6 +43,17 @@ AArenaDuelFlashbang::AArenaDuelFlashbang()
 	Movement->bRotationFollowsVelocity = false;
 	Movement->InitialSpeed = 0.0f;
 	Movement->MaxSpeed = 4000.0f;
+}
+
+void AArenaDuelFlashbang::BeginPlay()
+{
+	Super::BeginPlay();
+	if (GetNetMode() == NM_DedicatedServer) return;
+	// Same code-built model as the one held in the hand. Slots: 0 body, 1 bands and fuse, 2 lever and pin.
+	Visual->SetStaticMesh(ArenaDuelItemMeshes::Flashbang());
+	Visual->SetMaterial(0, LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial")));
+	Visual->SetMaterial(1, LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneMetal")));
+	Visual->SetMaterial(2, LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneCyan")));
 }
 
 void AArenaDuelFlashbang::Launch(const FVector& Velocity, float FuseSeconds, float InMaxBlindDistance, float InMaxBlindSeconds)

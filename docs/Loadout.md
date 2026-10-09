@@ -12,7 +12,12 @@ Everything lives on `UArenaDuelWeaponComponent`. Firearm logic (fire, reload, am
 | 4 | Swap firearm | Same as a second press of 1 |
 | Mouse wheel | Next / previous item | Steps through both firearms, the flashbang if left, and the knife |
 
-Left mouse uses whatever is in hand. Reload and aim only apply to firearms.
+Left mouse uses whatever is in hand. Right mouse aims a firearm; with the flashbang or the knife it is the second action. Reload only applies to firearms.
+
+| Item | Left mouse | Right mouse |
+|---|---|---|
+| Flashbang | Long throw | Short lob |
+| Knife | Quick slash, 25 damage | Heavy stab, 70 damage |
 
 ## Loadouts
 
@@ -42,7 +47,8 @@ To add a weapon, add it to `MakeDefinitions` and `WeaponVisualDefinitions` and r
 
 | Property (`FArenaDuelFlashbangDefinition`) | Value |
 |---|---|
-| `ThrowSpeed` / `ThrowUpSpeed` | 1500 / 220 |
+| `ThrowSpeed` / `ThrowUpSpeed` (long throw) | 1500 / 220 |
+| `ShortThrowSpeed` / `ShortThrowUpSpeed` (short lob) | 650 / 260 |
 | `FuseSeconds` | 1.4 |
 | `MaxBlindDistance` | 3500 |
 | `MaxBlindSeconds` | 3.2 |
@@ -54,11 +60,11 @@ On detonation the server checks every living character: strength falls off with 
 | Property (`FArenaDuelKnifeDefinition`) | Value |
 |---|---|
 | `Range` | 175 |
-| `Damage` | 55 |
-| `AttackInterval` | 0.5 |
+| `Damage` / `AttackInterval` (quick slash) | 25 / 0.4 |
+| `HeavyDamage` / `HeavyAttackInterval` (heavy stab) | 70 / 1.0 |
 | `SwingHalfWidth` | 14 |
 
-A swing is a server trace from the eye. A world trace first limits the reach, so walls stop the blade. Five rays fanned across the swing width then test the per-bone hit zones of the opponent. A hit goes through the normal damage path, so health, hit marker and death ragdoll work as with a bullet. Knife damage is flat for every body part.
+A swing is a server trace from the eye. A world trace first limits the reach, so walls stop the blade. Five rays fanned across the swing width then test the per-bone hit zones of the opponent. A hit goes through the normal damage path, so health, hit marker and death ragdoll work as with a bullet. Knife damage is flat for every body part. Both attacks share the reach and the trace; they differ in damage and in the time until the next attack.
 
 ## HUD
 
@@ -71,7 +77,8 @@ The weapon panel shows the item in hand (name, mode, ammo or flashbang count). A
 
 ## Known limits
 
-- Flashbang and knife are shown as simple engine shapes held in the hand. There are no authored models, throw or stab animations.
+- Knife and flashbang models are built in code (`ArenaDuelItemMeshes`), not authored assets. There are no throw or stab animations; an attack only kicks the viewmodel.
+- Short lob distance and the two knife attacks were not tried against an opponent in a play session.
 - There is no flashbang sound and no muffled hearing.
 - No equip animation beyond the existing viewmodel dip.
 - The mouse wheel is bound directly to the scroll keys, not through an input action, so it cannot be rebound in the input mapping yet.

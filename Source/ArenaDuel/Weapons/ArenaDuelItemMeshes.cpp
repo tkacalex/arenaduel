@@ -1,4 +1,4 @@
-#include "ArenaDuelKnifeMesh.h"
+#include "ArenaDuelItemMeshes.h"
 #include "Engine/StaticMesh.h"
 #include "MeshDescription.h"
 #include "StaticMeshAttributes.h"
@@ -10,7 +10,10 @@ namespace
 	{
 		FMeshDescription Description;
 		FStaticMeshAttributes Attributes;
+		/** True turns the builder's X axis upright: parts built along X then stand along Z. */
+		bool bUpright = false;
 		FKnifeBuilder() : Attributes(Description) { Attributes.Register(); }
+		FVector Place(const FVector& Point) const { return bUpright ? FVector(Point.Y, Point.Z, Point.X) : Point; }
 
 		FPolygonGroupID AddGroup(FName Slot)
 		{
@@ -20,8 +23,10 @@ namespace
 		}
 
 		/** Flat shaded triangle, turned so that it faces away from Inside. */
-		void AddTriangle(FPolygonGroupID Group, const FVector& A, FVector B, FVector C, const FVector& Inside)
+		void AddTriangle(FPolygonGroupID Group, const FVector& InA, const FVector& InB, const FVector& InC, const FVector& InInside)
 		{
+			const FVector A = Place(InA), Inside = Place(InInside);
+			FVector B = Place(InB), C = Place(InC);
 			// Engine convention: the front face normal is (C - A) x (B - A).
 			FVector Normal = FVector::CrossProduct(C - A, B - A);
 			if (Normal.SizeSquared() < 1.e-8) return;
@@ -67,21 +72,67 @@ namespace
 			}
 		}
 
-		static TArray<FVector2D> Oval(float HalfWidth, float HalfHeight, float CenterZ = 0.0f)
+		static TArray<FVector2D> Oval(float HalfWidth, float HalfHeight, float CenterZ = 0.0f, int32 Sides = 8)
 		{
 			TArray<FVector2D> Ring;
-			for (int32 Step = 0; Step < 8; ++Step)
+			for (int32 Step = 0; Step < Sides; ++Step)
 			{
-				const float Angle = UE_TWO_PI * (static_cast<float>(Step) + 0.5f) / 8.0f;
+				const float Angle = UE_TWO_PI * (static_cast<float>(Step) + 0.5f) / static_cast<float>(Sides);
 				Ring.Add(FVector2D(FMath::Cos(Angle) * HalfWidth, CenterZ + FMath::Sin(Angle) * HalfHeight));
 			}
 			return Ring;
 		}
+
+		static TArray<FVector2D> Box(float MinA, float MaxA, float MinB, float MaxB)
+		{
+			return { FVector2D(MinA, MinB), FVector2D(MaxA, MinB), FVector2D(MaxA, MaxB), FVector2D(MinA, MaxB) };
+		}
+
+		UStaticMesh* Finish(std::initializer_list<FName> Slots)
+		{
+			UStaticMesh* Mesh = NewObject<UStaticMesh>(GetTransientPackage(), NAME_None, RF_Transient);
+			for (const FName Slot : Slots) Mesh->GetStaticMaterials().Add(FStaticMaterial(nullptr, Slot, Slot));
+			UStaticMesh::FBuildMeshDescriptionsParams Params;
+			Params.bBuildSimpleCollision = false;
+			Params.bFastBuild = true;
+			Params.bAllowCpuAccess = false;
+			Mesh->BuildFromMeshDescriptions({ &Description }, Params);
+			return Mesh;
+		}
 	};
+
+	// Built once and shared. Components keep the mesh alive through their own reference.
+	TWeakObjectPtr<UStaticMesh> CachedKnife;
+	TWeakObjectPtr<UStaticMesh> CachedFlashbang;
 }
 
-UStaticMesh* ArenaDuelKnifeMesh::Build(UObject* Outer)
+UStaticMesh* ArenaDuelItemMeshes::Flashbang()
 {
+	if (CachedFlashbang.IsValid()) return CachedFlashbang.Get();
+	// Parts are stacked along the builder's X axis and stood upright, so X below is height.
+	FKnifeBuilder Builder;
+	Builder.bUpright = true;
+	const FPolygonGroupID Body = Builder.AddGroup(TEXT("Body"));
+	const FPolygonGroupID Band = Builder.AddGroup(TEXT("Band"));
+	const FPolygonGroupID Lever = Builder.AddGroup(TEXT("Lever"));
+	const auto Round = [](float Radius) { return FKnifeBuilder::Oval(Radius, Radius, 0.0f, 12); };
+	Builder.AddPrism(Band, -5.0f, -4.2f, Round(2.85f), Round(2.85f));
+	Builder.AddPrism(Body, -4.2f, 3.2f, Round(2.55f), Round(2.55f));
+	Builder.AddPrism(Band, 3.2f, 4.0f, Round(2.85f), Round(2.85f));
+	Builder.AddPrism(Band, 4.0f, 5.0f, Round(2.3f), Round(1.3f));
+	// Fuse head, then the safety lever running over the top and down the side, and the pin on the other side.
+	Builder.AddPrism(Band, 5.0f, 6.6f, FKnifeBuilder::Box(-1.1f, 1.1f, -0.9f, 0.9f), FKnifeBuilder::Box(-1.1f, 1.1f, -0.9f, 0.9f));
+	Builder.AddPrism(Lever, 6.1f, 6.4f, FKnifeBuilder::Box(-0.8f, 0.8f, 0.6f, 3.3f), FKnifeBuilder::Box(-0.8f, 0.8f, 0.6f, 3.3f));
+	Builder.AddPrism(Lever, -1.5f, 6.1f, FKnifeBuilder::Box(-0.8f, 0.8f, 3.05f, 3.3f), FKnifeBuilder::Box(-0.7f, 0.7f, 3.05f, 3.3f));
+	Builder.AddPrism(Lever, 5.5f, 5.8f, FKnifeBuilder::Box(-0.15f, 0.15f, -2.6f, -0.9f), FKnifeBuilder::Box(-0.15f, 0.15f, -2.6f, -0.9f));
+	Builder.AddPrism(Lever, 4.7f, 6.6f, FKnifeBuilder::Box(-0.15f, 0.15f, -3.0f, -2.6f), FKnifeBuilder::Box(-0.15f, 0.15f, -3.0f, -2.6f));
+	CachedFlashbang = Builder.Finish({ FName(TEXT("Body")), FName(TEXT("Band")), FName(TEXT("Lever")) });
+	return CachedFlashbang.Get();
+}
+
+UStaticMesh* ArenaDuelItemMeshes::Knife()
+{
+	if (CachedKnife.IsValid()) return CachedKnife.Get();
 	// Centimetres, +X towards the tip, +Z towards the spine. The origin is the middle of the grip.
 	FKnifeBuilder Builder;
 	const FPolygonGroupID Blade = Builder.AddGroup(TEXT("Blade"));
@@ -118,12 +169,6 @@ UStaticMesh* ArenaDuelKnifeMesh::Build(UObject* Outer)
 		Builder.AddQuad(Blade, FVector(P.X, P.HalfThickness, P.Z), FVector(Q.X, Q.HalfThickness, Q.Z), FVector(Q.X, -Q.HalfThickness, Q.Z), FVector(P.X, -P.HalfThickness, P.Z), BladeInside);
 	}
 
-	UStaticMesh* Mesh = NewObject<UStaticMesh>(Outer ? Outer : GetTransientPackage(), NAME_None, RF_Transient);
-	for (const FName Slot : { FName(TEXT("Blade")), FName(TEXT("Grip")), FName(TEXT("Guard")) }) Mesh->GetStaticMaterials().Add(FStaticMaterial(nullptr, Slot, Slot));
-	UStaticMesh::FBuildMeshDescriptionsParams Params;
-	Params.bBuildSimpleCollision = false;
-	Params.bFastBuild = true;
-	Params.bAllowCpuAccess = false;
-	Mesh->BuildFromMeshDescriptions({ &Builder.Description }, Params);
-	return Mesh;
+	CachedKnife = Builder.Finish({ FName(TEXT("Blade")), FName(TEXT("Grip")), FName(TEXT("Guard")) });
+	return CachedKnife.Get();
 }

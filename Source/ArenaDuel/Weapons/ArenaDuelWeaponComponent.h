@@ -386,8 +386,8 @@ protected:
 	// at automatic fire rates caused frame time spikes.
 	UPROPERTY(Transient) TArray<TObjectPtr<UStaticMeshComponent>> TracerPool;
 	UPROPERTY(Transient) TObjectPtr<class UPointLightComponent> MuzzleFlashLight;
-	/** Knife model, built in code on first use. */
-	UPROPERTY(Transient) TObjectPtr<UStaticMesh> KnifeMesh;
+	/** Knife or flashbang model in hand, built in code on first use. */
+	UPROPERTY(Transient) TObjectPtr<UStaticMesh> ItemModel;
 	UPROPERTY() TObjectPtr<UMaterialInterface> KnifeBladeMaterial;
 	float MuzzleFlashOffWorldTime = 0.0f;
 	UStaticMeshComponent* AcquireTracerMesh(UMaterialInterface* Material);

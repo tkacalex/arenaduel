@@ -31,6 +31,7 @@ public:
 	static float ComputeBlindStrength(const FVector& BurstLocation, const FVector& Eye, const FVector& ViewDirection, float MaxDistance);
 
 protected:
+	virtual void BeginPlay() override;
 	void Detonate();
 
 	UFUNCTION(NetMulticast, Reliable)
