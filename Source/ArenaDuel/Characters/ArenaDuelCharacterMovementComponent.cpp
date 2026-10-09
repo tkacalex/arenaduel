@@ -697,7 +697,7 @@ void UArenaDuelCharacterMovementComponent::TickComponent(float DeltaSeconds, ELe
 	// Dev.Hop 3 and up: a line per step for every pawn on every machine, to see where speed goes.
 	if (CVarDevHop.GetValueOnGameThread() >= 3 && CharacterOwner)
 	{
-		UE_LOG(LogArenaDuelSlide, Log, TEXT("Hop step %s role=%d mode=%d speed=%.0f z=%.0f sprint=%d grace=%.3f accel=%.0f pending=%d jump=%d"), *CharacterOwner->GetName(), static_cast<int32>(CharacterOwner->GetLocalRole()),
+		UE_LOG(LogArenaDuelSlide, Log, TEXT("Hop step %s role=%d loc=%.0f,%.0f,%.0f custom=%d mode=%d speed=%.0f z=%.0f sprint=%d grace=%.3f accel=%.0f pending=%d jump=%d"), *CharacterOwner->GetName(), static_cast<int32>(CharacterOwner->GetLocalRole()), CharacterOwner->GetActorLocation().X, CharacterOwner->GetActorLocation().Y, CharacterOwner->GetActorLocation().Z, static_cast<int32>(CustomMovementMode),
 			static_cast<int32>(MovementMode.GetValue()), Velocity.Size2D(), Velocity.Z, bWantsSprint ? 1 : 0, TimeSinceLanded, Acceleration.Size2D(), bLandingJumpPending ? 1 : 0, CharacterOwner->bPressedJump ? 1 : 0);
 	}
 #endif
