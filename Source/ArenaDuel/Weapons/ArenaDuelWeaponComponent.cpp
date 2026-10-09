@@ -61,6 +61,18 @@ namespace
 			Pawn->GetWeaponComponent()->GrantAllWeaponsForDevelopment();
 			Pawn->GetWeaponComponent()->EquipWeapon(FCString::Atoi(*Args[0]));
 		}));
+	// ArenaDuel.Fire <seconds>: hold the trigger of the local player for that long (default 0.2).
+	FAutoConsoleCommandWithWorldAndArgs CmdFire(TEXT("ArenaDuel.Fire"), TEXT("Hold fire for the local player for the given seconds"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+			const AArenaDuelCharacter* Pawn = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
+			UArenaDuelWeaponComponent* Weapon = Pawn ? Pawn->GetWeaponComponent() : nullptr;
+			if (!Weapon) return;
+			Weapon->StartFire();
+			FTimerHandle Release;
+			World->GetTimerManager().SetTimer(Release, FTimerDelegate::CreateWeakLambda(Weapon, [Weapon]() { Weapon->StopFire(); }), Args.Num() > 0 ? FMath::Clamp(FCString::Atof(*Args[0]), 0.05f, 10.0f) : 0.2f, false);
+		}));
 	FAutoConsoleCommandWithWorldAndArgs CmdPitch(TEXT("ArenaDuel.Pitch"), TEXT("Set the view pitch of the local player in degrees"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
 		{

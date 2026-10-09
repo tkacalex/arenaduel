@@ -46,6 +46,9 @@ public:
 	float GetCorpseSeconds(bool bBoss) const { return bBoss ? BossCorpseSeconds : CorpseSeconds; }
 	void RestartSurvival();
 	int32 GetCurrentWave() const { return CurrentWave; }
+	const TArray<FArenaDuelWaveDefinition>& GetWaveTable() const { return WaveTable; }
+	const TArray<FArenaDuelZombieTypeConfig>& GetTypeConfigs() const { return TypeConfigs; }
+	int32 GetMaxActiveZombies() const { return MaxActiveZombies; }
 	int32 CountAliveZombies() const;
 	/** Development: kill everything alive, so a run can be fast-forwarded. No points are given. */
 	void DevKillAllZombies();

@@ -55,6 +55,8 @@ public:
 	EArenaDuelZombieType GetZombieType() const { return ZombieType; }
 	bool IsBossType() const { return ZombieType == EArenaDuelZombieType::Boss || ZombieType == EArenaDuelZombieType::MiniBoss; }
 	float GetHealthFraction() const { return MaxHealth > 0.0f ? FMath::Clamp(Health / MaxHealth, 0.0f, 1.0f) : 0.0f; }
+	float GetHealth() const { return Health; }
+	float GetMaxHealth() const { return MaxHealth; }
 	const FString& GetDisplayName() const { return Config.DisplayName; }
 	/** Seconds since this zombie last got closer to its target or attacked. The wave manager moves the ones that are stuck. */
 	float GetSecondsWithoutProgress() const { return SecondsWithoutProgress; }

@@ -82,11 +82,11 @@ def set_game_mode(class_path):
 
 def build_zombie_materials():
     materials = [
-        make_material('M_ZombieNormal', (0.07, 0.22, 0.06, 1), 0.0, 0.7, (0.012, 0.07, 0.012, 1)),
-        make_material('M_ZombieFast', (0.34, 0.30, 0.05, 1), 0.0, 0.6, (0.09, 0.075, 0.008, 1)),
-        make_material('M_ZombieArmored', (0.16, 0.18, 0.21, 1), 0.9, 0.35, (0.004, 0.02, 0.03, 1)),
-        make_material('M_ZombieMiniBoss', (0.40, 0.14, 0.03, 1), 0.1, 0.5, (0.22, 0.06, 0.008, 1)),
-        make_material('M_ZombieBoss', (0.36, 0.03, 0.03, 1), 0.1, 0.45, (0.40, 0.02, 0.015, 1)),
+        make_material('M_SurvivalZombie', (0.05, 0.16, 0.045, 1), 0.0, 0.7, (0.003, 0.016, 0.003, 1)),
+        make_material('M_SurvivalRunner', (0.26, 0.22, 0.04, 1), 0.0, 0.6, (0.02, 0.016, 0.002, 1)),
+        make_material('M_SurvivalArmoured', (0.16, 0.18, 0.21, 1), 0.9, 0.35, (0.001, 0.005, 0.008, 1)),
+        make_material('M_SurvivalBrute', (0.34, 0.12, 0.03, 1), 0.1, 0.5, (0.05, 0.014, 0.002, 1)),
+        make_material('M_SurvivalAbomination', (0.32, 0.03, 0.03, 1), 0.1, 0.45, (0.09, 0.005, 0.004, 1)),
     ]
     # They are drawn on a skinned mesh. Without this flag the engine falls back to the default material in game.
     for material in materials:
