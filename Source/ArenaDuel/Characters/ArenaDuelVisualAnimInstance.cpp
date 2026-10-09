@@ -16,13 +16,13 @@ namespace
 	// First-person support arm. The arm mesh is a forearm and a hand, so the forearm is placed directly:
 	// the wrist sits on the gun's support grip and the elbow lies in this direction from it, in camera
 	// space (X forward, Y right, Z up). Pointing it back and down keeps the open elbow end off screen.
-	TAutoConsoleVariable<float> CVarElbowX(TEXT("ArenaDuel.Arms.LeftElbowX"), -0.75f, TEXT("Support arm, wrist to elbow direction: forward"));
-	TAutoConsoleVariable<float> CVarElbowY(TEXT("ArenaDuel.Arms.LeftElbowY"), -0.25f, TEXT("Support arm, wrist to elbow direction: right"));
-	TAutoConsoleVariable<float> CVarElbowZ(TEXT("ArenaDuel.Arms.LeftElbowZ"), -0.60f, TEXT("Support arm, wrist to elbow direction: up"));
-	TAutoConsoleVariable<float> CVarForearmRoll(TEXT("ArenaDuel.Arms.LeftRoll"), 0.0f, TEXT("Support arm roll around the forearm, degrees"));
+	TAutoConsoleVariable<float> CVarElbowX(TEXT("ArenaDuel.Arms.LeftElbowX"), -0.45f, TEXT("Support arm, wrist to elbow direction: forward"));
+	TAutoConsoleVariable<float> CVarElbowY(TEXT("ArenaDuel.Arms.LeftElbowY"), -0.45f, TEXT("Support arm, wrist to elbow direction: right"));
+	TAutoConsoleVariable<float> CVarElbowZ(TEXT("ArenaDuel.Arms.LeftElbowZ"), -0.80f, TEXT("Support arm, wrist to elbow direction: up"));
+	TAutoConsoleVariable<float> CVarForearmRoll(TEXT("ArenaDuel.Arms.LeftRoll"), 120.0f, TEXT("Support arm roll around the forearm, degrees"));
 	TAutoConsoleVariable<float> CVarWristX(TEXT("ArenaDuel.Arms.LeftWristX"), 0.0f, TEXT("Support wrist offset from the grip point: forward"));
-	TAutoConsoleVariable<float> CVarWristY(TEXT("ArenaDuel.Arms.LeftWristY"), 0.0f, TEXT("Support wrist offset from the grip point: right"));
-	TAutoConsoleVariable<float> CVarWristZ(TEXT("ArenaDuel.Arms.LeftWristZ"), 0.0f, TEXT("Support wrist offset from the grip point: up"));
+	TAutoConsoleVariable<float> CVarWristY(TEXT("ArenaDuel.Arms.LeftWristY"), -2.0f, TEXT("Support wrist offset from the grip point: right"));
+	TAutoConsoleVariable<float> CVarWristZ(TEXT("ArenaDuel.Arms.LeftWristZ"), -1.0f, TEXT("Support wrist offset from the grip point: up"));
 
 	struct FArenaDuelVisualPoseProxy : FAnimSingleNodeInstanceProxy
 	{
@@ -158,6 +158,9 @@ namespace
 								Lower.SetLocation(Effector - ToHand * Forearm.Size());
 								Hand.SetRotation(Swing * OriginalHand.GetRotation());
 								Hand.SetLocation(Effector);
+								// The upper arm follows rigidly, so no skin is stretched between it and the moved forearm.
+								Upper.SetRotation(Swing * OriginalUpper.GetRotation());
+								Upper.SetLocation(Lower.GetLocation() + Swing.RotateVector(OriginalUpper.GetLocation() - OriginalLower.GetLocation()));
 							}
 							else AnimationCore::SolveTwoBoneIK(Upper, Lower, Hand, JointTarget, Effector, false, 1.0, 1.0);
 							if (!Upper.ContainsNaN() && !Lower.ContainsNaN() && !Hand.ContainsNaN())
