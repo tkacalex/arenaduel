@@ -27,10 +27,10 @@ namespace
 	TAutoConsoleVariable<float> CVarRightElbowY(TEXT("ArenaDuel.Arms.RightElbowY"), 0.25f, TEXT("Weapon arm, wrist to elbow direction: right"));
 	TAutoConsoleVariable<float> CVarRightElbowZ(TEXT("ArenaDuel.Arms.RightElbowZ"), -0.83f, TEXT("Weapon arm, wrist to elbow direction: up"));
 	// Free hand with knife or flashbang, position in camera space.
-	TAutoConsoleVariable<float> CVarFreeX(TEXT("ArenaDuel.Arms.FreeHandX"), 30.0f, TEXT("Free hand position: forward of the camera"));
-	TAutoConsoleVariable<float> CVarFreeY(TEXT("ArenaDuel.Arms.FreeHandY"), -14.0f, TEXT("Free hand position: right of the camera"));
-	TAutoConsoleVariable<float> CVarFreeZ(TEXT("ArenaDuel.Arms.FreeHandZ"), -14.0f, TEXT("Free hand position: above the camera"));
-	TAutoConsoleVariable<float> CVarFreeRoll(TEXT("ArenaDuel.Arms.FreeHandRoll"), 0.0f, TEXT("Free hand roll around the forearm, degrees"));
+	TAutoConsoleVariable<float> CVarFreeX(TEXT("ArenaDuel.Arms.FreeHandX"), 28.0f, TEXT("Free hand position: forward of the camera"));
+	TAutoConsoleVariable<float> CVarFreeY(TEXT("ArenaDuel.Arms.FreeHandY"), -15.0f, TEXT("Free hand position: right of the camera"));
+	TAutoConsoleVariable<float> CVarFreeZ(TEXT("ArenaDuel.Arms.FreeHandZ"), -16.0f, TEXT("Free hand position: above the camera"));
+	TAutoConsoleVariable<float> CVarFreeRoll(TEXT("ArenaDuel.Arms.FreeHandRoll"), -80.0f, TEXT("Free hand roll around the forearm, degrees"));
 	TAutoConsoleVariable<float> CVarWristZ(TEXT("ArenaDuel.Arms.LeftWristZ"), -1.0f, TEXT("Support wrist offset from the grip point: up"));
 
 	struct FArenaDuelVisualPoseProxy : FAnimSingleNodeInstanceProxy

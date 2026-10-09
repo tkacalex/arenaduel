@@ -39,6 +39,9 @@ bool FArenaDuelLoadoutDefinitionTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("A component without a player starts on its firearm"), Weapons->GetActiveSlot() == EArenaDuelLoadoutSlot::Primary);
 	const auto* Knife = ArenaDuelLoadoutTests::Property<FArenaDuelKnifeDefinition>(Weapons, TEXT("Knife"));
 	TestTrue(TEXT("Knife reach, damage and pace are positive"), Knife && Knife->Range > 0.0f && Knife->Damage > 0.0f && Knife->AttackInterval > 0.0f);
+	TestTrue(TEXT("Heavy stab hits harder and recovers slower than the quick slash"), Knife && Knife->HeavyDamage > Knife->Damage && Knife->HeavyAttackInterval > Knife->AttackInterval);
+	const auto* Flash = ArenaDuelLoadoutTests::Property<FArenaDuelFlashbangDefinition>(Weapons, TEXT("Flashbang"));
+	TestTrue(TEXT("Short throw is slower than the long throw"), Flash && Flash->ShortThrowSpeed > 0.0f && Flash->ShortThrowSpeed < Flash->ThrowSpeed);
 	return true;
 }
 

@@ -180,9 +180,14 @@ struct FArenaDuelKnifeDefinition
 	GENERATED_BODY()
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0")) float Range = 175.0f;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0")) float Damage = 55.0f;
-	/** Seconds between two swings. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0.05")) float AttackInterval = 0.5f;
+	/** Quick slash, left mouse. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0")) float Damage = 25.0f;
+	/** Seconds until the next attack after a quick slash. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0.05")) float AttackInterval = 0.4f;
+	/** Heavy stab, right mouse. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0")) float HeavyDamage = 70.0f;
+	/** Seconds until the next attack after a heavy stab. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0.05")) float HeavyAttackInterval = 1.0f;
 	/** Half width of the swing at full range. Several rays are fanned across it so a moving target is not missed by a hair. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0")) float SwingHalfWidth = 14.0f;
 };
@@ -194,6 +199,9 @@ struct FArenaDuelFlashbangDefinition
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0")) float ThrowSpeed = 1500.0f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float ThrowUpSpeed = 220.0f;
+	/** Short lob, right mouse. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0")) float ShortThrowSpeed = 650.0f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float ShortThrowUpSpeed = 260.0f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0.1")) float FuseSeconds = 1.4f;
 	/** Beyond this distance the flash has no effect. Large enough that a full-strength throw still blinds the thrower who watches it go off. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "1")) float MaxBlindDistance = 3500.0f;
@@ -282,16 +290,16 @@ protected:
 
 	/** Throws the flashbang or swings the knife, whichever is in hand. */
 	UFUNCTION(Server, Reliable)
-	void ServerUseEquipment();
+	void ServerUseEquipment(bool bAlternate);
 
 	UFUNCTION(NetMulticast, Unreliable)
-	void MulticastKnifeSwing(bool bHit);
+	void MulticastKnifeSwing(bool bHit, bool bHeavy);
 
 	void ApplyLoadoutFromArchetype();
 	bool CanSwitchAuthoritative() const;
 	void SetActiveSlotAuthoritative(EArenaDuelLoadoutSlot Slot);
-	void ThrowFlashbangAuthoritative();
-	void KnifeAttackAuthoritative();
+	void ThrowFlashbangAuthoritative(bool bShort);
+	void KnifeAttackAuthoritative(bool bHeavy);
 
 	void FireAuthoritative();
 	void StartAuthoritativeFire();

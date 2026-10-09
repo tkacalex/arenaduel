@@ -31,7 +31,7 @@
 
 namespace
 {
-	TAutoConsoleVariable<float> CVarHipDrop(TEXT("ArenaDuel.Arms.HipDrop"), 0.0f, TEXT("How far the hip viewmodel is lowered, in centimetres"));
+	TAutoConsoleVariable<float> CVarHipDrop(TEXT("ArenaDuel.Arms.HipDrop"), 7.0f, TEXT("How far the hip viewmodel is lowered, in centimetres"));
 	// Development helper: ArenaDuel.Slot 0|1|2 selects firearm, flashbang or knife for the local player.
 	FAutoConsoleCommandWithWorldAndArgs CmdSelectSlot(TEXT("ArenaDuel.Slot"), TEXT("Select loadout slot 0 to 2 for the local player"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
@@ -351,7 +351,7 @@ void UArenaDuelWeaponComponent::StartFire()
 	if (GetActiveSlot() != EArenaDuelLoadoutSlot::Primary)
 	{
 		// Flashbang and knife are single actions decided on the server.
-		if (GetOwnerRole() == ROLE_Authority) ServerUseEquipment_Implementation(); else ServerUseEquipment();
+		if (GetOwnerRole() == ROLE_Authority) ServerUseEquipment_Implementation(false); else ServerUseEquipment(false);
 		return;
 	}
 	if (bFireHeld) return;
@@ -391,7 +391,13 @@ void UArenaDuelWeaponComponent::StartAim()
 {
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->GetArenaDuelMovementComponent() && Character->GetArenaDuelMovementComponent()->IsSprinting()) return;
-	if (bAiming || GetActiveSlot() != EArenaDuelLoadoutSlot::Primary) return;
+	if (GetActiveSlot() != EArenaDuelLoadoutSlot::Primary)
+	{
+		// Right mouse is the second action: short throw for the flashbang, heavy stab for the knife.
+		if (GetOwnerRole() == ROLE_Authority) ServerUseEquipment_Implementation(true); else ServerUseEquipment(true);
+		return;
+	}
+	if (bAiming) return;
 	bAiming = true;
 	if (GetOwnerRole() == ROLE_Authority) ServerSetAiming_Implementation(true); else ServerSetAiming(true);
 	SetComponentTickEnabled(true);
@@ -899,7 +905,8 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 	const FVector MotionLocation(-5.0f * LocalWeaponKick - ViewmodelFeel.WallPushback * WallBlend,
 		-SwayYaw * 0.3f + FMath::Clamp(LocalVelocity.Y / 900.0f, -1.0f, 1.0f) * MotionWeight,
 		Bob.Z + LandingOffset - ViewmodelFeel.SprintLowering * SprintBlend - 10.0f * EquipDrop - 8.0f * WallBlend);
-	const FVector BaseLocation = FMath::Lerp(Visual.HipViewmodelLocation, GetCurrentDefinition().AimViewmodelLocation, AimBlend);
+	// The hip pose is lowered so the screen edge cuts the forearms off; aiming brings them into view.
+	const FVector BaseLocation = FMath::Lerp(Visual.HipViewmodelLocation - FVector(0.0f, 0.0f, CVarHipDrop.GetValueOnGameThread()), GetCurrentDefinition().AimViewmodelLocation, AimBlend);
 	const FRotator BaseRotation = FMath::Lerp(Visual.HipViewmodelRotation, GetCurrentDefinition().AimViewmodelRotation, AimBlend);
 	const FRotator MotionRotation(SwayPitch - 1.5f * LocalWeaponKick + 5.0f * SprintBlend,
 		SwayYaw + VisualYawKick,
@@ -1033,16 +1040,16 @@ void UArenaDuelWeaponComponent::ServerCycleSlot_Implementation(int8 Direction)
 	else SetActiveSlotAuthoritative(static_cast<EArenaDuelLoadoutSlot>(-Next));
 }
 
-void UArenaDuelWeaponComponent::ServerUseEquipment_Implementation()
+void UArenaDuelWeaponComponent::ServerUseEquipment_Implementation(bool bAlternate)
 {
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character || Character->IsDead() || !Character->GetController() || !IsRoundInProgress() || !GetWorld()) return;
 	if (GetWorld()->GetTimeSeconds() < EquipmentReadyServerTime) return;
-	if (GetActiveSlot() == EArenaDuelLoadoutSlot::Flashbang) ThrowFlashbangAuthoritative();
-	else if (GetActiveSlot() == EArenaDuelLoadoutSlot::Knife) KnifeAttackAuthoritative();
+	if (GetActiveSlot() == EArenaDuelLoadoutSlot::Flashbang) ThrowFlashbangAuthoritative(bAlternate);
+	else if (GetActiveSlot() == EArenaDuelLoadoutSlot::Knife) KnifeAttackAuthoritative(bAlternate);
 }
 
-void UArenaDuelWeaponComponent::ThrowFlashbangAuthoritative()
+void UArenaDuelWeaponComponent::ThrowFlashbangAuthoritative(bool bShort)
 {
 	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character || FlashbangsRemaining == 0) return;
@@ -1059,17 +1066,19 @@ void UArenaDuelWeaponComponent::ThrowFlashbangAuthoritative()
 	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	AArenaDuelFlashbang* Grenade = GetWorld()->SpawnActor<AArenaDuelFlashbang>(AArenaDuelFlashbang::StaticClass(), Start, Direction.Rotation(), Spawn);
 	if (!Grenade) return;
-	Grenade->Launch(Direction * Flashbang.ThrowSpeed + FVector(0.0f, 0.0f, Flashbang.ThrowUpSpeed) + Character->GetVelocity() * 0.5f, Flashbang.FuseSeconds, Flashbang.MaxBlindDistance, Flashbang.MaxBlindSeconds);
+	const float Speed = bShort ? Flashbang.ShortThrowSpeed : Flashbang.ThrowSpeed;
+	const float UpSpeed = bShort ? Flashbang.ShortThrowUpSpeed : Flashbang.ThrowUpSpeed;
+	Grenade->Launch(Direction * Speed + FVector(0.0f, 0.0f, UpSpeed) + Character->GetVelocity() * 0.5f, Flashbang.FuseSeconds, Flashbang.MaxBlindDistance, Flashbang.MaxBlindSeconds);
 	--FlashbangsRemaining;
 	// The hand is empty now, so go straight back to the firearm.
 	SetActiveSlotAuthoritative(EArenaDuelLoadoutSlot::Primary);
 }
 
-void UArenaDuelWeaponComponent::KnifeAttackAuthoritative()
+void UArenaDuelWeaponComponent::KnifeAttackAuthoritative(bool bHeavy)
 {
 	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character) return;
-	EquipmentReadyServerTime = GetWorld()->GetTimeSeconds() + Knife.AttackInterval;
+	EquipmentReadyServerTime = GetWorld()->GetTimeSeconds() + (bHeavy ? Knife.HeavyAttackInterval : Knife.AttackInterval);
 	const FVector Origin = Character->GetPawnViewLocation();
 	const FRotationMatrix Aim(Character->GetControlRotation());
 	const FVector Forward = Aim.GetUnitAxis(EAxis::X);
@@ -1100,20 +1109,21 @@ void UArenaDuelWeaponComponent::KnifeAttackAuthoritative()
 	if (Victim)
 	{
 		Victim->RecordServerHit(BestHit.ImpactPoint, Forward);
-		Victim->ApplyServerDamage(Knife.Damage);
+		Victim->ApplyServerDamage(bHeavy ? Knife.HeavyDamage : Knife.Damage);
 		SetLastShot(EArenaDuelShotResult::Body, BestHit.Distance, Victim);
 	}
 	else SetLastShot(bWorld ? EArenaDuelShotResult::World : EArenaDuelShotResult::Miss, Reach, nullptr);
-	MulticastKnifeSwing(Victim != nullptr);
+	MulticastKnifeSwing(Victim != nullptr, bHeavy);
 }
 
-void UArenaDuelWeaponComponent::MulticastKnifeSwing_Implementation(bool bHit)
+void UArenaDuelWeaponComponent::MulticastKnifeSwing_Implementation(bool bHit, bool bHeavy)
 {
 	// Cosmetic lunge of the owner's viewmodel: a hit bites deeper than a whiff. Negative kick pushes forward.
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character || !Character->IsLocallyControlled()) return;
-	LocalWeaponKick = bHit ? -2.2f : -1.2f;
-	VisualYawKick = bHit ? 1.2f : 0.7f;
+	const float Weight = bHeavy ? 1.8f : 1.0f;
+	LocalWeaponKick = (bHit ? -2.2f : -1.2f) * Weight;
+	VisualYawKick = (bHit ? 1.2f : 0.7f) * Weight;
 	LastCosmeticShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
 	SetComponentTickEnabled(true);
 }
