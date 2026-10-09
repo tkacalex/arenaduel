@@ -9,6 +9,7 @@
 #include "../Player/ArenaDuelPlayerController.h"
 #include "ArenaDuelWeaponTarget.h"
 #include "ArenaDuelFlashbang.h"
+#include "ArenaDuelKnifeMesh.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -30,6 +31,15 @@
 
 namespace
 {
+	TAutoConsoleVariable<float> CVarHipDrop(TEXT("ArenaDuel.Arms.HipDrop"), 0.0f, TEXT("How far the hip viewmodel is lowered, in centimetres"));
+	// Development helper: ArenaDuel.Slot 0|1|2 selects firearm, flashbang or knife for the local player.
+	FAutoConsoleCommandWithWorldAndArgs CmdSelectSlot(TEXT("ArenaDuel.Slot"), TEXT("Select loadout slot 0 to 2 for the local player"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+			const AArenaDuelCharacter* Pawn = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
+			if (Pawn && Pawn->GetWeaponComponent() && Args.Num() > 0) Pawn->GetWeaponComponent()->SelectSlot(static_cast<EArenaDuelLoadoutSlot>(FMath::Clamp(FCString::Atoi(*Args[0]), 0, 2)));
+		}));
 	// Exact critically damped step. Its response does not depend on the frame rate.
 	static void StepSpring(float& Position, float& Velocity, float Target, float Response, float DeltaSeconds)
 	{
@@ -105,6 +115,7 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 	WeaponBodyMaterial=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneMetal"));
 	WeaponAccentCyan=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneCyan"));
 	WeaponAccentViolet=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneViolet"));
+	KnifeBladeMaterial=LoadObject<UMaterialInterface>(nullptr,TEXT("/Engine/BasicShapes/BasicShapeMaterial"));
 	FireSound=LoadObject<USoundBase>(nullptr,TEXT("/Game/Weapons/GrenadeLauncher/Audio/FirstPersonTemplateWeaponFire02"));
 	FirstPersonWeaponMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FirstPersonWeaponMesh"));
 	FirstPersonWeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -763,9 +774,11 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 	if (Slot != EArenaDuelLoadoutSlot::Primary)
 	{
 		const bool bKnife = Slot == EArenaDuelLoadoutSlot::Knife;
-		UStaticMesh* ItemMesh = LoadObject<UStaticMesh>(nullptr, bKnife ? TEXT("/Engine/BasicShapes/Cube.Cube") : TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
-		const FVector ItemScale = bKnife ? FVector(0.26f, 0.012f, 0.045f) : FVector(0.06f, 0.06f, 0.10f);
-		const FVector ItemOffset = bKnife ? FVector(14.0f, 0.0f, 2.0f) : FVector(0.0f, 0.0f, 4.0f);
+		if (bKnife && !KnifeMesh) KnifeMesh = ArenaDuelKnifeMesh::Build(this);
+		UStaticMesh* ItemMesh = bKnife ? KnifeMesh.Get() : LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+		// The knife model is in centimetres already; the flashbang is a scaled engine cylinder.
+		const FVector ItemScale = bKnife ? FVector(1.0f) : FVector(0.06f, 0.06f, 0.10f);
+		const FVector ItemOffset = bKnife ? FVector::ZeroVector : FVector(0.0f, 0.0f, 4.0f);
 		for (UStaticMeshComponent* ItemComponent : { FirstPersonWeaponMesh.Get(), ThirdPersonWeaponMesh.Get() })
 		{
 			const float HandScale = ItemComponent == FirstPersonWeaponMesh.Get() ? 0.6f : 1.0f;
@@ -773,6 +786,12 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 			ItemComponent->SetRelativeScale3D(ItemScale * HandScale);
 			ItemComponent->SetRelativeLocation(ItemOffset * HandScale);
 			if (WeaponBodyMaterial) for (int32 MaterialIndex = 0; MaterialIndex < ItemComponent->GetNumMaterials(); ++MaterialIndex) ItemComponent->SetMaterial(MaterialIndex, WeaponBodyMaterial);
+			if (bKnife)
+			{
+				// Slots: 0 blade, 1 grip, 2 guard and pommel.
+				if (KnifeBladeMaterial) ItemComponent->SetMaterial(0, KnifeBladeMaterial);
+				if (Accent) ItemComponent->SetMaterial(2, Accent);
+			}
 		}
 	}
 	FirstPersonWeaponMesh->SetVisibility(Character->IsLocallyControlled() && !Character->IsDead());
@@ -797,7 +816,9 @@ void UArenaDuelWeaponComponent::GetCurrentViewmodelBaseTransform(FVector& OutLoc
 {
 	const FArenaDuelWeaponDefinition& Definition = GetCurrentDefinition();
 	const FArenaDuelWeaponVisualDefinition Visual = WeaponVisualDefinitions.IsValidIndex(EquippedWeaponIndex) ? WeaponVisualDefinitions[EquippedWeaponIndex] : FArenaDuelWeaponVisualDefinition();
-	const FVector HipLocation = Visual.HipViewmodelLocation;
+	// The hip pose is lowered so that the screen edge cuts the forearms off and only the hands show.
+	// Aiming uses its own location, which brings the arms into view.
+	const FVector HipLocation = Visual.HipViewmodelLocation - FVector(0.0f, 0.0f, CVarHipDrop.GetValueOnGameThread());
 	const FRotator HipRotation = Visual.HipViewmodelRotation;
 	OutLocation = bAiming ? Definition.AimViewmodelLocation : HipLocation;
 	OutRotation = bAiming ? Definition.AimViewmodelRotation : HipRotation;
