@@ -35,7 +35,7 @@ Foundational gameplay lives in C++. Blueprints are thin subclasses for configura
 - `Characters/BP_ArenaDuelCharacter` – the player character Blueprint. `Characters/Common/` – materials and arm meshes.
 - `Game/BP_ArenaDuelGameMode` – global default GameMode.
 - `Input/` – Enhanced Input actions `IA_*` and `IMC_Gameplay`.
-- `Maps/` – `L_ArenaCore` (default game and editor startup map), `L_Phase4MovementTest` (movement playground, used by tests), `L_Phase3Test`, `L_Phase5GunRange`.
+- `Maps/` – `L_ArenaDistrict` (default game and editor startup map, see `docs/Maps.md`), `L_ArenaCore` (empty hall, used by tests), `L_Phase4MovementTest` (movement playground, used by tests), `L_Phase3Test`, `L_Phase5GunRange`.
 - `Weapons/<Weapon>/SM_*` – weapon meshes.
 
 Naming: `BP_` Blueprint, `WBP_` widget Blueprint, `IA_`/`IMC_` input, `M_`/`MI_` material/instance, `SM_`/`SKM_` static/skeletal mesh, `L_` level, `GA_` gameplay ability (C++: `ArenaDuelGA_*`).
