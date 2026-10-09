@@ -24,6 +24,7 @@
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/PlayerState.h"
 #include "GameFramework/GameStateBase.h"
+#include "ArenaDuelTestRound.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/NetConnection.h"
 #include "EnhancedInputSubsystems.h"
@@ -708,6 +709,8 @@ namespace ArenaDuelPhase4NetworkTests
 
 	static bool PlaceServerPawn(FArenaDuelPhase4NetworkState& State, const FVector& Location, const FVector& InitialVelocity = FVector::ZeroVector)
 	{
+		// Input is locked until the lobby has started a round, so every scenario waits for that first.
+		if (!ArenaDuelTestRound::EnsureRoundInProgress(State.World)) return false;
 		if (AArenaDuelCharacter* Pawn = FindServerClientPawn(State))
 		{
 			Pawn->SetActorLocation(Location, false, nullptr, ETeleportType::TeleportPhysics);
@@ -963,7 +966,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 	TEST_METHOD(SprintAndCrouchIntent)
 	{
 		Network
-			.UntilServer(TEXT("Place sprint fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(-2500.0f, 0.0f, 100.0f)); }, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Place sprint fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(-2500.0f, 0.0f, 100.0f)); }, FTimespan::FromSeconds(12.0))
 			.UntilClient(TEXT("Wait for pawns, geometry and Enhanced Input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State); }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Inject sprint intent"), 0, [](FArenaDuelPhase4NetworkState& State)
 			{
@@ -992,7 +995,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 	TEST_METHOD(Slide)
 	{
 		Network
-			.UntilServer(TEXT("Place slide fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(-2500.0f, 0.0f, 100.0f)); }, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Place slide fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(-2500.0f, 0.0f, 100.0f)); }, FTimespan::FromSeconds(12.0))
 			.UntilClient(TEXT("Prepare slide client"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State) && ArenaDuelPhase4NetworkTests::HasInitialReplication(State); }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Build slide speed through Enhanced Input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
 			.UntilClient(TEXT("Client reaches slide speed"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->IsMovingOnGround() && State.OwnedPawn->GetCharacterMovement()->Velocity.Size2D() >= State.OwnedPawn->GetArenaDuelMovementComponent()->SlideMinSpeed; }, FTimespan::FromSeconds(5.0))
@@ -1008,7 +1011,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 	TEST_METHOD(SlideJump)
 	{
 		Network
-			.UntilServer(TEXT("Place slide jump fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(-1200.0f, 0.0f, 100.0f)); }, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Place slide jump fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(-1200.0f, 0.0f, 100.0f)); }, FTimespan::FromSeconds(12.0))
 			.UntilClient(TEXT("Prepare slide jump client"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State) && ArenaDuelPhase4NetworkTests::HasInitialReplication(State); }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Build slide jump speed through Enhanced Input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
 			.UntilClient(TEXT("Client reaches slide speed"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->IsMovingOnGround() && State.OwnedPawn->GetCharacterMovement()->Velocity.Size2D() >= State.OwnedPawn->GetArenaDuelMovementComponent()->SlideMinSpeed; }, FTimespan::FromSeconds(5.0))
@@ -1026,7 +1029,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 	TEST_METHOD(WallRun)
 	{
 		Network
-			.UntilServer(TEXT("Place wall run fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(500.0f, 390.0f, 100.0f)); }, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Place wall run fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(500.0f, 390.0f, 100.0f)); }, FTimespan::FromSeconds(12.0))
 			.UntilClient(TEXT("Prepare wall run client"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State); }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Approach wall under sprint input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
 			.UntilClient(TEXT("Client reaches jumping speed"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->Velocity.Size2D() >= State.OwnedPawn->GetArenaDuelMovementComponent()->WallRunMinSpeed; }, FTimespan::FromSeconds(5.0))
@@ -1041,7 +1044,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 	TEST_METHOD(WallJump)
 	{
 		Network
-			.UntilServer(TEXT("Place wall jump fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(500.0f, 390.0f, 100.0f)); }, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Place wall jump fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(500.0f, 390.0f, 100.0f)); }, FTimespan::FromSeconds(12.0))
 			.UntilClient(TEXT("Prepare wall jump client"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State); }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Approach wall for jump"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
 			.UntilClient(TEXT("Client reaches jumping speed"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && State.OwnedPawn->GetCharacterMovement()->Velocity.Size2D() >= State.OwnedPawn->GetArenaDuelMovementComponent()->WallRunMinSpeed; }, FTimespan::FromSeconds(5.0))
@@ -1059,7 +1062,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 	TEST_METHOD(Stamina)
 	{
 		Network
-			.UntilServer(TEXT("Place stamina fixture"), [](FArenaDuelPhase4NetworkState& State) { if (!ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(500.0f, 390.0f, 100.0f))) return false; if (AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State)) { Pawn->GetArenaDuelMovementComponent()->ConsumeStamina(Pawn->GetArenaDuelMovementComponent()->GetMaxStamina() - 5.0f); State.InitialServerStamina = Pawn->GetArenaDuelMovementComponent()->GetStamina(); State.LowestServerStamina = State.InitialServerStamina; return true; } return false; }, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Place stamina fixture"), [](FArenaDuelPhase4NetworkState& State) { if (!ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(500.0f, 390.0f, 100.0f))) return false; if (AArenaDuelCharacter* Pawn = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State)) { Pawn->GetArenaDuelMovementComponent()->ConsumeStamina(Pawn->GetArenaDuelMovementComponent()->GetMaxStamina() - 5.0f); State.InitialServerStamina = Pawn->GetArenaDuelMovementComponent()->GetStamina(); State.LowestServerStamina = State.InitialServerStamina; return true; } return false; }, FTimespan::FromSeconds(12.0))
 			.UntilClient(TEXT("Prepare stamina client"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State); }, FTimespan::FromSeconds(5.0))
 			.UntilClient(TEXT("Client receives authoritative starting stamina"), 0, [](FArenaDuelPhase4NetworkState& State) { if (!State.OwnedPawn || State.OwnedPawn->GetArenaDuelMovementComponent()->GetStamina() > 60.0f) return false; if (State.InitialClientStamina <= 0.0f || State.InitialClientStamina > 60.0f) { State.InitialClientStamina = State.OwnedPawn->GetArenaDuelMovementComponent()->GetStamina(); State.LowestClientStamina = State.InitialClientStamina; } return true; }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Start network stamina action through Enhanced Input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
@@ -1077,7 +1080,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 	TEST_METHOD(Traversal)
 	{
 		Network
-			.UntilServer(TEXT("Place vault fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(820.0f, 0.0f, 100.0f)); }, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Place vault fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(820.0f, 0.0f, 100.0f)); }, FTimespan::FromSeconds(12.0))
 			.UntilClient(TEXT("Prepare traversal client"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State); }, FTimespan::FromSeconds(5.0))
 			.UntilClient(TEXT("Traversal client has a stable collision-free start"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && ArenaDuelPhase4HardeningTests::IsFinite(State.OwnedPawn->GetActorLocation()) && !ArenaDuelPhase4HardeningTests::IsCapsuleOverlapping(State.OwnedPawn); }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Approach vault with normal input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
@@ -1095,7 +1098,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 	TEST_METHOD(ClientServerConvergence)
 	{
 		Network
-			.UntilServer(TEXT("Place convergence fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(-2500.0f, 0.0f, 100.0f)); }, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Place convergence fixture"), [](FArenaDuelPhase4NetworkState& State) { return ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(-2500.0f, 0.0f, 100.0f)); }, FTimespan::FromSeconds(12.0))
 			.UntilClient(TEXT("Prepare convergence client"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State); }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Drive representative movement through input"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })
 			.UntilClient(TEXT("Client movement settles"), 0, [](FArenaDuelPhase4NetworkState& State) { return State.OwnedPawn && FVector::Dist2D(State.OwnedPawn->GetActorLocation(), State.ClientStart) > 100.0f; }, FTimespan::FromSeconds(5.0))
@@ -1107,7 +1110,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase4NetworkTest, "ArenaDuel.Phase4.Network")
 	TEST_METHOD(CrossControlIsolation)
 	{
 		Network
-			.UntilServer(TEXT("Place cross-control fixture"), [](FArenaDuelPhase4NetworkState& State) { if (!ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(-2500.0f, 0.0f, 100.0f))) return false; AArenaDuelCharacter* Owned = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); AArenaDuelCharacter* Remote = ArenaDuelPhase4NetworkTests::FindRemoteCharacter(State.World, Owned); if (!Remote) return false; Remote->SetActorLocation(FVector(-2500.0f, 300.0f, 100.0f), false, nullptr, ETeleportType::TeleportPhysics); Remote->GetArenaDuelMovementComponent()->Velocity = FVector::ZeroVector; Remote->GetArenaDuelMovementComponent()->SetMovementMode(MOVE_Walking); Remote->GetArenaDuelMovementComponent()->StopSprint(); Remote->GetArenaDuelMovementComponent()->StopSlide(); Remote->ForceNetUpdate(); State.RemoteStartMovementMode = MOVE_None; return true; }, FTimespan::FromSeconds(5.0))
+			.UntilServer(TEXT("Place cross-control fixture"), [](FArenaDuelPhase4NetworkState& State) { if (!ArenaDuelPhase4NetworkTests::PlaceServerPawn(State, FVector(-2500.0f, 0.0f, 100.0f))) return false; AArenaDuelCharacter* Owned = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); AArenaDuelCharacter* Remote = ArenaDuelPhase4NetworkTests::FindRemoteCharacter(State.World, Owned); if (!Remote) return false; Remote->SetActorLocation(FVector(-2500.0f, 300.0f, 100.0f), false, nullptr, ETeleportType::TeleportPhysics); Remote->GetArenaDuelMovementComponent()->Velocity = FVector::ZeroVector; Remote->GetArenaDuelMovementComponent()->SetMovementMode(MOVE_Walking); Remote->GetArenaDuelMovementComponent()->StopSprint(); Remote->GetArenaDuelMovementComponent()->StopSlide(); Remote->ForceNetUpdate(); State.RemoteStartMovementMode = MOVE_None; return true; }, FTimespan::FromSeconds(12.0))
 			.UntilClient(TEXT("Prepare cross-control pawns"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::PrepareClient(State); return State.OwnedPawn && State.RemotePawn && ArenaDuelPhase4NetworkTests::HasInputMapping(State) && ArenaDuelPhase4NetworkTests::HasFixtureGeometry(State); }, FTimespan::FromSeconds(5.0))
 			.UntilServer(TEXT("Stabilize remote pawn before advanced input"), [](FArenaDuelPhase4NetworkState& State) { AArenaDuelCharacter* Owned = ArenaDuelPhase4NetworkTests::FindServerClientPawn(State); AArenaDuelCharacter* Remote = ArenaDuelPhase4NetworkTests::FindRemoteCharacter(State.World, Owned); if (!Remote) return false; Remote->SetActorLocation(FVector(-2500.0f, 300.0f, 100.0f), false, nullptr, ETeleportType::TeleportPhysics); Remote->GetArenaDuelMovementComponent()->Velocity = FVector::ZeroVector; Remote->GetArenaDuelMovementComponent()->SetMovementMode(MOVE_Walking); Remote->GetArenaDuelMovementComponent()->StopSprint(); Remote->GetArenaDuelMovementComponent()->StopSlide(); Remote->ForceNetUpdate(); State.RemoteStartLocation = Remote->GetActorLocation(); State.RemoteStartVelocity = Remote->GetArenaDuelMovementComponent()->Velocity; State.RemoteStartMovementMode = Remote->GetArenaDuelMovementComponent()->MovementMode; State.RemoteStartCustomMovementMode = Remote->GetArenaDuelMovementComponent()->CustomMovementMode; State.RemoteStartSprintIntent = false; State.RemoteStartCrouchIntent = false; return true; }, FTimespan::FromSeconds(5.0))
 			.ThenClient(TEXT("Build advanced movement speed on owning pawn"), 0, [](FArenaDuelPhase4NetworkState& State) { ArenaDuelPhase4NetworkTests::StartInput(State); })

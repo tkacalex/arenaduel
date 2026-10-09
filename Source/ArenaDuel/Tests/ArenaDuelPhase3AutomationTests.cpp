@@ -7,6 +7,7 @@
 #include "ArenaDuel/Characters/ArenaDuelCharacter.h"
 #include "ArenaDuel/Game/ArenaDuelGameMode.h"
 #include "ArenaDuel/Player/ArenaDuelPlayerController.h"
+#include "ArenaDuelTestRound.h"
 
 #include "Camera/CameraComponent.h"
 #include "Engine/Engine.h"
@@ -112,6 +113,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase3NetworkTest, "ArenaDuel.Phase3.Network")
 	TEST_METHOD(FrameworkAndInputOwnership)
 	{
 		Network
+			.UntilServer(TEXT("Both players are ready and the round is live"), [](FArenaDuelPhase3NetworkState& State) { return ArenaDuelTestRound::EnsureRoundInProgress(State.World); }, FTimespan::FromSeconds(12.0))
 			.ThenServer(TEXT("Validate server framework"), [this](FArenaDuelPhase3NetworkState& State)
 			{
 				TArray<AArenaDuelCharacter*> Characters;
