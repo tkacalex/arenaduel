@@ -57,12 +57,21 @@ namespace
 			{
 				FVector GripWorld;
 				const int32 RightHandIndex = Body->GetBoneIndex(TEXT("hand_r"));
-				if (RightHandIndex != INDEX_NONE && Weapon->GetLeftHandGripWorldLocation(GripWorld, bThirdPersonBody))
+				const FRotator View = Character->GetFirstPersonCamera() ? Character->GetFirstPersonCamera()->GetComponentRotation() : Character->GetViewRotation();
+				bool bGrip = RightHandIndex != INDEX_NONE && Weapon->GetLeftHandGripWorldLocation(GripWorld, bThirdPersonBody);
+				const bool bOneHanded = Weapon->GetActiveSlot() != EArenaDuelLoadoutSlot::Primary;
+				if (!bGrip && bRigidForearm && bOneHanded && RightHandIndex != INDEX_NONE)
+				{
+					// Flashbang and knife are held in one hand. The free arm rests below the view instead of
+					// falling back to the rifle clip, which would lay it across the screen.
+					GripWorld = Body->GetBoneTransform(RightHandIndex).GetLocation() + View.RotateVector(FVector(-6.0f, -16.0f, -45.0f));
+					bGrip = true;
+				}
+				if (bGrip)
 				{
 					if (bRigidForearm)
 					{
-						const FRotator View = Character->GetFirstPersonCamera() ? Character->GetFirstPersonCamera()->GetComponentRotation() : Character->GetViewRotation();
-						GripWorld += View.RotateVector(FVector(CVarWristX.GetValueOnGameThread(), CVarWristY.GetValueOnGameThread(), CVarWristZ.GetValueOnGameThread()));
+						if (!bOneHanded) GripWorld += View.RotateVector(FVector(CVarWristX.GetValueOnGameThread(), CVarWristY.GetValueOnGameThread(), CVarWristZ.GetValueOnGameThread()));
 						const FVector ElbowView(CVarElbowX.GetValueOnGameThread(), CVarElbowY.GetValueOnGameThread(), CVarElbowZ.GetValueOnGameThread());
 						ElbowDirection = Body->GetComponentTransform().InverseTransformVectorNoScale(View.RotateVector(ElbowView)).GetSafeNormal();
 						ForearmRoll = CVarForearmRoll.GetValueOnGameThread();
