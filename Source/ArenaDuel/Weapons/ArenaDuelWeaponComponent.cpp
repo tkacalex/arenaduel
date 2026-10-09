@@ -487,6 +487,14 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 	const EArenaDuelShotResult Aggregate = HeadPellets > 0 ? EArenaDuelShotResult::Head : BodyPellets > 0 ? EArenaDuelShotResult::Body : LimbPellets > 0 ? EArenaDuelShotResult::Limb : WorldPellets > 0 ? EArenaDuelShotResult::World : EArenaDuelShotResult::Miss;
 	SetLastShot(Aggregate, ClosestDistance, LastTarget);
 	MulticastShotFired(TraceEnds);
+	// Auto reload: the shot that empties the magazine starts the normal server reload at once, as long
+	// as reserve ammo is left. It runs through the same request as the reload key, so its guards against
+	// a second reload, a dead owner and a finished round apply here too.
+	if (State->MagazineAmmo <= 0 && State->ReserveAmmo > 0)
+	{
+		StopAuthoritativeFire();
+		ServerRequestReload_Implementation();
+	}
 }
 void UArenaDuelWeaponComponent::MulticastShotFired_Implementation(const TArray<FVector_NetQuantize>& TraceEnds)
 {
