@@ -1141,7 +1141,9 @@ namespace ArenaDuelGroundFeelTests
 	}
 }
 
-ARENA_PHASE4_COMPONENT_TEST(FArenaDuelGroundFeelTuningTest, "ArenaDuel.GroundFeel.CentralTuning", {
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelGroundFeelTuningTest, "ArenaDuel.GroundFeel.CentralTuning", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FArenaDuelGroundFeelTuningTest::RunTest(const FString& Parameters)
+{
 	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap);
 	AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnCharacter(GEditor->GetEditorWorldContext().World(), FVector::ZeroVector);
 	UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character);
@@ -1155,9 +1157,11 @@ ARENA_PHASE4_COMPONENT_TEST(FArenaDuelGroundFeelTuningTest, "ArenaDuel.GroundFee
 	TestEqual(TEXT("Air control keeps its own acceleration"), Move->GetMaxAcceleration(), Move->AirAcceleration);
 	TestEqual(TEXT("Remote smoothing follows its tunable"), Move->NetworkSimulatedSmoothLocationTime, Move->RemoteSmoothLocationTime);
 	return true;
-})
+}
 
-ARENA_PHASE4_COMPONENT_TEST(FArenaDuelGroundFeelResponseTest, "ArenaDuel.GroundFeel.StartStopAndCounterStrafe", {
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelGroundFeelResponseTest, "ArenaDuel.GroundFeel.StartStopAndCounterStrafe", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FArenaDuelGroundFeelResponseTest::RunTest(const FString& Parameters)
+{
 	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap);
 	AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnCharacter(GEditor->GetEditorWorldContext().World(), FVector::ZeroVector);
 	UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character);
@@ -1187,5 +1191,5 @@ ARENA_PHASE4_COMPONENT_TEST(FArenaDuelGroundFeelResponseTest, "ArenaDuel.GroundF
 	TestTrue(TEXT("Counter-strafing stops sooner than just letting go"), CounterSeconds < ReleaseSeconds);
 	AddInfo(FString::Printf(TEXT("Ground feel: start %.3f s, counter-strafe %.3f s / %.1f cm, reversal %.3f s, release %.3f s / %.1f cm"), StartSeconds, CounterSeconds, CounterDistance, ReverseSeconds, ReleaseSeconds, ReleaseDistance));
 	return true;
-})
+}
 #endif
