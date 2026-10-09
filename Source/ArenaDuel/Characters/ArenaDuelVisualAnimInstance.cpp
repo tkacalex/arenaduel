@@ -53,6 +53,14 @@ namespace
 		float ReloadTime = 0;
 		float ReloadWeight = 0;
 		bool bWasReloading = false;
+		// World body: aim pose, low ready and view pitch, so an opponent can read the stance.
+		bool bWorldBodyPose = false;
+		const UAnimSequence* AimOverlay = nullptr;
+		float AimTime = 0;
+		float AimWeight = 0;
+		float LowReadyWeight = 0;
+		float LookPitch = 0;
+		static constexpr float LowReadyDegrees = 26.0f;
 		float ForearmRoll = 0;
 		virtual void PreUpdate(UAnimInstance* Instance, float DeltaSeconds) override
 		{
@@ -112,6 +120,16 @@ namespace
 				ReloadTime = bWasReloading ? FMath::Min(ReloadTime + FMath::Max(DeltaSeconds, 0.0f) * Rate, ReloadOverlay->GetPlayLength()) : 0.0f;
 			}
 			bWasReloading = bReloadingBody;
+			// What the opponent is doing with the weapon and where they look, read from replicated state.
+			bWorldBodyPose = bThirdPersonBody && Character && !Character->IsDead();
+			AimOverlay = Visual ? Visual->GetIdleClip() : nullptr;
+			const bool bAimingBody = bWorldBodyPose && Weapon && Weapon->IsAiming() && Weapon->GetActiveSlot() == EArenaDuelLoadoutSlot::Primary;
+			AimWeight = (bAimingBody ? 1.0f : 0.0f) + (AimWeight - (bAimingBody ? 1.0f : 0.0f)) * Decay;
+			if (AimOverlay && AimOverlay->GetPlayLength() > 0.0f) AimTime = FMath::Fmod(AimTime + FMath::Max(DeltaSeconds, 0.0f), AimOverlay->GetPlayLength());
+			const float LowTarget = bWorldBodyPose && !bAimingBody && !bReloadingBody ? 1.0f : 0.0f;
+			LowReadyWeight = LowTarget + (LowReadyWeight - LowTarget) * Decay;
+			const float PitchTarget = bWorldBodyPose ? FMath::Clamp(FRotator::NormalizeAxis(Character->GetBaseAimRotation().Pitch), -80.0f, 80.0f) : 0.0f;
+			LookPitch = PitchTarget + (LookPitch - PitchTarget) * FMath::Exp(-20.0f * FMath::Max(DeltaSeconds, 0.0f));
 			ReloadWeight = (bReloadingBody ? 1.0f : 0.0f) + (ReloadWeight - (bReloadingBody ? 1.0f : 0.0f)) * Decay;
 			const float TargetBlend = bHasLeftGrip && Weapon && !Weapon->IsReloading() ? 1.0f : 0.0f;
 			LeftHandIKBlend = TargetBlend + (LeftHandIKBlend - TargetBlend) * Decay;
@@ -119,25 +137,57 @@ namespace
 		virtual bool Evaluate(FPoseContext& Output) override
 		{
 			const bool bResult = FAnimSingleNodeInstanceProxy::Evaluate(Output);
-			if (ReloadOverlay && ReloadWeight > KINDA_SMALL_NUMBER)
+			if (bWorldBodyPose)
 			{
 				const FBoneContainer& OverlayBones = Output.Pose.GetBoneContainer();
-				const int32 SpineSkeletonIndex = OverlayBones.GetReferenceSkeleton().FindBoneIndex(TEXT("spine_02"));
-				const FCompactPoseBoneIndex SpineIndex = SpineSkeletonIndex == INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : OverlayBones.MakeCompactPoseIndex(FMeshPoseBoneIndex(SpineSkeletonIndex));
-				if (SpineIndex.GetInt() != INDEX_NONE)
+				const auto FindBone = [&OverlayBones](const TCHAR* Name)
 				{
-					FCompactPose ReloadPose;
-					ReloadPose.SetBoneContainer(&OverlayBones);
-					FBlendedCurve ReloadCurve;
-					ReloadCurve.InitFrom(Output.Curve);
-					UE::Anim::FStackAttributeContainer ReloadAttributes;
-					FAnimationPoseData ReloadData(ReloadPose, ReloadCurve, ReloadAttributes);
-					ReloadOverlay->GetAnimationPose(ReloadData, FAnimExtractContext(static_cast<double>(ReloadTime), false));
-					// Everything from the chest up takes the reload; hips and legs keep the locomotion clip.
+					const int32 SkeletonIndex = OverlayBones.GetReferenceSkeleton().FindBoneIndex(Name);
+					return SkeletonIndex == INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : OverlayBones.MakeCompactPoseIndex(FMeshPoseBoneIndex(SkeletonIndex));
+				};
+				const FCompactPoseBoneIndex ChestIndex = FindBone(TEXT("spine_02"));
+				// Plays a clip on everything from the chest up; hips and legs keep the locomotion clip.
+				const auto LayerUpperBody = [&Output, &OverlayBones, ChestIndex](const UAnimSequence* Clip, float Time, float Weight)
+				{
+					if (!Clip || Weight <= KINDA_SMALL_NUMBER || ChestIndex.GetInt() == INDEX_NONE) return;
+					FCompactPose ClipPose;
+					ClipPose.SetBoneContainer(&OverlayBones);
+					FBlendedCurve ClipCurve;
+					ClipCurve.InitFrom(Output.Curve);
+					UE::Anim::FStackAttributeContainer ClipAttributes;
+					FAnimationPoseData ClipData(ClipPose, ClipCurve, ClipAttributes);
+					Clip->GetAnimationPose(ClipData, FAnimExtractContext(static_cast<double>(Time), false));
 					for (const FCompactPoseBoneIndex BoneIndex : Output.Pose.ForEachBoneIndex())
 					{
-						if (BoneIndex == SpineIndex || OverlayBones.BoneIsChildOf(BoneIndex, SpineIndex)) Output.Pose[BoneIndex].Blend(Output.Pose[BoneIndex], ReloadPose[BoneIndex], ReloadWeight);
+						if (BoneIndex == ChestIndex || OverlayBones.BoneIsChildOf(BoneIndex, ChestIndex)) Output.Pose[BoneIndex].Blend(Output.Pose[BoneIndex], ClipPose[BoneIndex], Weight);
 					}
+				};
+				// Aiming raises the rifle to the eye whatever the legs do; not aiming leaves the carry pose of the clip.
+				LayerUpperBody(AimOverlay, AimTime, AimWeight);
+				LayerUpperBody(ReloadOverlay, ReloadTime, ReloadWeight);
+				// Mesh space: X is the character's left, Y forward, Z up. A turn about X by a positive angle tips forward up.
+				const FCompactPoseBoneIndex LowSpineIndex = FindBone(TEXT("spine_03")), HighSpineIndex = FindBone(TEXT("spine_05")), WeaponArmIndex = FindBone(TEXT("upperarm_r"));
+				const bool bLook = FMath::Abs(LookPitch) > 0.5f && LowSpineIndex.GetInt() != INDEX_NONE && HighSpineIndex.GetInt() != INDEX_NONE;
+				const bool bLower = LowReadyWeight > KINDA_SMALL_NUMBER && WeaponArmIndex.GetInt() != INDEX_NONE;
+				if (bLook || bLower)
+				{
+					FCSPose<FCompactPose> LookPose;
+					LookPose.InitPose(Output.Pose);
+					const auto Turn = [&LookPose](FCompactPoseBoneIndex BoneIndex, float Degrees)
+					{
+						FTransform Bone = LookPose.GetComponentSpaceTransform(BoneIndex);
+						Bone.SetRotation(FQuat(FVector::XAxisVector, FMath::DegreesToRadians(Degrees)) * Bone.GetRotation());
+						if (!Bone.ContainsNaN()) LookPose.SetComponentSpaceTransform(BoneIndex, Bone);
+					};
+					if (bLook)
+					{
+						// The view pitch is spread over two spine joints, so chest, arms, weapon and head all follow the look.
+						Turn(LowSpineIndex, LookPitch * 0.5f);
+						Turn(HighSpineIndex, LookPitch * 0.5f);
+					}
+					// Not aiming: the weapon arm drops to a low ready. The support hand follows through its grip target.
+					if (bLower) Turn(WeaponArmIndex, -LowReadyDegrees * LowReadyWeight);
+					FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(MoveTemp(LookPose), Output.Pose);
 				}
 			}
 			// Peek fairness: the rifle clips lean the head ahead of the capsule, while the camera sits on

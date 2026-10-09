@@ -15,6 +15,7 @@ public:
 	UArenaDuelVisualAnimInstance();
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 	const UAnimSequence* GetReloadClip() const { return Reload; }
+	const UAnimSequence* GetIdleClip() const { return Idle; }
 protected:
 	virtual FAnimInstanceProxy* CreateAnimInstanceProxy() override;
 private:
