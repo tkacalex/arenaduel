@@ -95,19 +95,17 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 	ThirdPersonWeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	ThirdPersonWeaponMesh->SetOwnerNoSee(true);
 	ThirdPersonWeaponMesh->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::WorldSpaceRepresentation;
-	for (const TCHAR* Name : {TEXT("ArcRifle"), TEXT("ShadeSMG"), TEXT("RuneDMR"), TEXT("HexShotgun")})
+	// Epic's template firearms are authored for Manny's HandGrip_R socket, so they snap on with no
+	// offset at full scale and line up with the rifle clips and the first person warp rig. Three
+	// weapons share the rifle model until each has its own mesh.
+	for (const TCHAR* Path : {TEXT("/Game/Weapons/Rifle/Meshes/SM_Rifle.SM_Rifle"), TEXT("/Game/Weapons/Rifle/Meshes/SM_Rifle.SM_Rifle"),
+		TEXT("/Game/Weapons/Rifle/Meshes/SM_Rifle.SM_Rifle"), TEXT("/Game/Weapons/GrenadeLauncher/Meshes/SM_GrenadeLauncher.SM_GrenadeLauncher")})
 	{
 		FArenaDuelWeaponVisualDefinition Visual;
-		Visual.Mesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(FString::Printf(TEXT("/Game/ArenaDuel/Weapons/%s/SM_%s.SM_%s"), Name, Name, Name)));
-		// Generated firearm meshes use +X for muzzle forward. The measured rifle
-		// idle pose rotates HandGrip_R to -78.4 degrees after Manny's mesh basis
-		// correction, so this local yaw brings the muzzle back onto actor/camera +X.
-		// Keep FP and TP values independent because they use different parents.
-		Visual.FirstPersonGripRotation = FRotator(0.0f, 78.4f, 0.0f);
-		Visual.ThirdPersonGripRotation = FRotator(0.0f, 78.4f, 0.0f);
+		Visual.Mesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(Path));
+		Visual.ThirdPersonScale = FVector::OneVector;
 		WeaponVisualDefinitions.Add(Visual);
-	}
-	// Offsets of the whole first-person body from its aimed rest pose: forward, lowered and to the right for hip fire.
+	}	// Offsets of the whole first-person body from its aimed rest pose: forward, lowered and to the right for hip fire.
 	WeaponVisualDefinitions[0].HipViewmodelLocation=FVector(10,8.2,-4);
 	WeaponVisualDefinitions[1].HipViewmodelLocation=FVector(10,8.5,-4);
 	WeaponVisualDefinitions[1].HipViewmodelRotation = FRotator(0, 0, -2);
@@ -124,7 +122,7 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 	WeaponVisualDefinitions[1].LeftHandGripLocation=FVector(11,-5,-3);
 	WeaponVisualDefinitions[2].LeftHandGripLocation=FVector(27,-5,-3);
 	WeaponVisualDefinitions[3].LeftHandGripLocation=FVector(17,-6,-3);
-	for (FArenaDuelWeaponVisualDefinition& Visual : WeaponVisualDefinitions) Visual.ThirdPersonScale = FVector(0.75f);
+
 	// Visual alignment only; approved FOV, sensitivity, spread and recoil are unchanged.
 	for (auto& Definition : WeaponDefinitions) Definition.AimViewmodelLocation.Z -= 19.0f;
 }
@@ -457,7 +455,8 @@ void UArenaDuelWeaponComponent::MulticastShotFired_Implementation(const TArray<F
 	// The shooter sees the viewmodel gun, everyone else the world gun. Weapon meshes point +X at the muzzle.
 	const UStaticMeshComponent* Gun = Character->IsLocallyControlled() ? FirstPersonWeaponMesh : ThirdPersonWeaponMesh;
 	FVector Muzzle = Character->GetPawnViewLocation();
-	if (Gun && Gun->GetStaticMesh())
+	if (Gun && Gun->DoesSocketExist(TEXT("Muzzle"))) Muzzle = Gun->GetSocketLocation(TEXT("Muzzle"));
+	else if (Gun && Gun->GetStaticMesh())
 	{
 		const FBoxSphereBounds Bounds = Gun->GetStaticMesh()->GetBounds();
 		Muzzle = Gun->GetComponentTransform().TransformPosition(Bounds.Origin + FVector(Bounds.BoxExtent.X, 0.0f, 0.0f));
@@ -593,14 +592,6 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 		WeaponMesh->SetRelativeLocation(Visual.ThirdPersonGripLocation);
 		WeaponMesh->SetRelativeRotation(Visual.ThirdPersonGripRotation);
 		WeaponMesh->SetRelativeScale3D(Visual.ThirdPersonScale);
-		if (WeaponBodyMaterial) for (int32 I=0;I<WeaponMesh->GetNumMaterials();++I) WeaponMesh->SetMaterial(I,WeaponBodyMaterial);
-	}
-	const AArenaDuelPlayerState* Player=Character->GetPlayerState<AArenaDuelPlayerState>();
-	UMaterialInterface* Accent=Player && Player->GetCharacterArchetype()==EArenaDuelCharacterArchetype::Warden?WeaponAccentCyan.Get():WeaponAccentViolet.Get();
-	if(Accent)
-	{
-		if(FirstPersonWeaponMesh->GetNumMaterials()>1)FirstPersonWeaponMesh->SetMaterial(1,Accent);
-		if(ThirdPersonWeaponMesh->GetNumMaterials()>1)ThirdPersonWeaponMesh->SetMaterial(1,Accent);
 	}
 	FirstPersonWeaponMesh->SetRelativeScale3D(Visual.ThirdPersonScale);
 	ThirdPersonWeaponMesh->SetRelativeScale3D(Visual.ThirdPersonScale);
