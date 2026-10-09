@@ -18,7 +18,7 @@ Sizes follow the movement component: 80 cm cover can be vaulted and crouched beh
 
 One small green plate (1.2 x 1.2 m) lies in the open north of the centre house, on the centre line. A living player standing on it gets 5 health per second, added one point every 0.2 s, up to the maximum. Both flank windows look straight at it, so healing means standing in a crossfire. `AArenaDuelHealPad` does it on the server; `HealPerSecond`, `HealStep` and `PadHalfSize` are properties of the actor. The plate has no collision.
 
-Not verified: a player was not healed on the pad in a play session.
+Checked in a play session with the host standing on the pad (`ArenaDuel.Health <value>` sets the health for such a check): at one tenth game speed the health went 22, 31, 39, 48 at captures about 19.2 real seconds apart, which is roughly 4.5 per game second in single steps against the configured 5; the capture timing is not exact. Standing beside the pad at 50 health, it stayed at 50. A second player and a crouching player were not tried.
 
 Look: near-black surfaces in slightly different tones, fifteen dim shadowless fill lights, no sky.
 
