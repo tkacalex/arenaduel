@@ -200,7 +200,7 @@ public:
 
 	/** Air strafe acceleration, as a multiple of WalkSpeed per second. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0"))
-	float AirStrafeAccelerate = 2.5f;
+	float AirStrafeAccelerate = 3.0f;
 
 	/** Below this speed the air is steered plainly and input may accelerate up to it, so a jump at walking pace handles like before. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0"))
