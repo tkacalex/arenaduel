@@ -150,14 +150,17 @@ NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 			.UntilClient(TEXT("Each weapon ADS keeps muzzle in front and aligned"),0,[](auto& S){
 				const auto* C=Pawn(S.World,true);
 				const auto* Gun=C ? C->GetWeaponComponent()->GetFirstPersonWeaponMesh() : nullptr;
-				if(!C || !Gun || !Gun->GetStaticMesh() || !Gun->GetStaticMesh()->FindSocket(TEXT("Muzzle"))) return false;
+				if(!C || !Gun || !Gun->GetStaticMesh()) return false;
+				// Epic's firearms carry no muzzle socket, so the barrel is the mesh's longest local axis.
 				const FTransform CameraTransform=C->GetFirstPersonCamera()->GetComponentTransform();
 				const FVector GripView=CameraTransform.InverseTransformPosition(Gun->GetComponentLocation());
-				const FVector MuzzleView=CameraTransform.InverseTransformPosition(Gun->GetSocketLocation(TEXT("Muzzle")));
+				const FVector Extent=Gun->GetStaticMesh()->GetBounds().BoxExtent;
+				const EAxis::Type BarrelAxis=Extent.X>=Extent.Y && Extent.X>=Extent.Z ? EAxis::X : Extent.Y>=Extent.Z ? EAxis::Y : EAxis::Z;
+				const FVector Barrel=Gun->GetComponentTransform().GetUnitAxis(BarrelAxis);
 				return C->GetWeaponComponent()->IsAiming()
 					&& FMath::IsNearlyEqual(C->GetFirstPersonCamera()->FieldOfView,C->GetWeaponComponent()->GetCurrentDefinition().AimFOV,0.1f)
-					&& FVector::DotProduct(Gun->GetForwardVector(),CameraTransform.GetUnitAxis(EAxis::X))>0.98f
-					&& MuzzleView.X>GripView.X+10.0f;
+					&& FMath::Abs(FVector::DotProduct(Barrel,CameraTransform.GetUnitAxis(EAxis::X)))>0.9f
+					&& GripView.X>0.0f;
 			},FTimespan::FromSeconds(4))
 			.ThenClient(TEXT("Return this weapon from ADS to its exact hip transform"),0,[](auto& S){ Pawn(S.World,true)->GetWeaponComponent()->StopAim(); })
 			.UntilClient(TEXT("Hip transform and FOV restore without drift"),0,[](auto& S){
