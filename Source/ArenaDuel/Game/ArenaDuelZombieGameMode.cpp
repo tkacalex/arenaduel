@@ -12,6 +12,7 @@
 #include "HAL/IConsoleManager.h"
 #include "NavigationSystem.h"
 #include "TimerManager.h"
+#include "UObject/ConstructorHelpers.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogArenaDuelSurvival, Log, All);
 
@@ -48,6 +49,10 @@ namespace
 AArenaDuelZombieGameMode::AArenaDuelZombieGameMode()
 {
 	GameStateClass = AArenaDuelZombieGameState::StaticClass();
+	// The input mapping, the input actions and the meshes are set on the character Blueprint. The duel gets it
+	// from BP_ArenaDuelGameMode; this mode is used as a native class by its map and has to name it itself.
+	static ConstructorHelpers::FClassFinder<APawn> PlayerPawn(TEXT("/Game/ArenaDuel/Characters/BP_ArenaDuelCharacter"));
+	if (PlayerPawn.Succeeded()) DefaultPawnClass = PlayerPawn.Class;
 	WaveTable = DefaultWaveTable();
 
 	TypeConfigs.SetNum(5);
