@@ -11,6 +11,9 @@
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/App.h"
+#include "Components/BrushComponent.h"
+#include "NavMesh/NavMeshBoundsVolume.h"
+#include "PhysicsEngine/BodySetup.h"
 #include "NavigationPath.h"
 #include "NavigationSystem.h"
 #include "GameFramework/PlayerStart.h"
@@ -160,9 +163,9 @@ void AArenaDuelZombieGameMode::BeginPlay()
 
 void AArenaDuelZombieGameMode::EnsureNavigationBounds()
 {
-	// The navigation mesh is only built inside registered bounds. The arena's extent is known from its
-	// spawn points and player starts, so the bounds are registered here and do not depend on a volume
-	// in the map having a usable brush.
+	// The navigation mesh is only built inside the bounds of a volume. The arena's extent is known from
+	// its spawn points and player starts, so a volume of that size is made here; the run does not depend
+	// on a volume in the map having a usable brush.
 	UNavigationSystemV1* Navigation = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
 	if (!Navigation) return;
 	FBox Area(ForceInit);
@@ -172,12 +175,15 @@ void AArenaDuelZombieGameMode::EnsureNavigationBounds()
 	Area = Area.ExpandBy(FVector(600.0f, 600.0f, 0.0f));
 	Area.Min.Z -= 300.0f;
 	Area.Max.Z += 700.0f;
-	FNavigationBoundsUpdateRequest Request;
-	Request.NavBounds.UniqueID = GetUniqueID();
-	Request.NavBounds.AreaBox = Area;
-	Request.NavBounds.Level = GetWorld()->PersistentLevel;
-	Request.UpdateRequest = FNavigationBoundsUpdateRequest::Added;
-	Navigation->AddNavigationBoundsUpdateRequest(Request);
+	ANavMeshBoundsVolume* Volume = GetWorld()->SpawnActor<ANavMeshBoundsVolume>(Area.GetCenter(), FRotator::ZeroRotator);
+	UBrushComponent* Brush = Volume ? Volume->GetBrushComponent() : nullptr;
+	if (!Brush) return;
+	UBodySetup* Body = NewObject<UBodySetup>(Brush);
+	const FVector Size = Area.GetSize();
+	Body->AggGeom.BoxElems.Add(FKBoxElem(Size.X, Size.Y, Size.Z));
+	Brush->BrushBodySetup = Body;
+	Brush->UpdateBounds();
+	Navigation->OnNavigationBoundsUpdated(Volume);
 	UE_LOG(LogArenaDuelSurvival, Log, TEXT("Survival navigation bounds registered: %s"), *Area.ToString());
 }
 
