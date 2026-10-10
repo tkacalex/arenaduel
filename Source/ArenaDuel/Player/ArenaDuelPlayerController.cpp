@@ -94,6 +94,10 @@ void AArenaDuelPlayerController::BeginPlay()
 				LocalSettings.WindowMode=static_cast<int32>(Display->GetFullscreenMode()); LocalSettings.bVSync=Display->IsVSyncEnabled(); LocalSettings.FPSLimit=FMath::RoundToInt(Display->GetFrameRateLimit());
 			}
 		ApplyLocalSettings(LocalSettings, false);
+		// A map can be entered from the main menu, which leaves the viewport in menu input with the cursor
+		// showing. Every game starts in game input; the lobby and the menus switch away from it themselves.
+		bShowMouseCursor = false;
+		SetInputMode(FInputModeGameOnly());
 		GetWorldTimerManager().SetTimer(MatchPresentationTimer, this, &AArenaDuelPlayerController::RefreshMatchPresentation, 0.2f, true);
 		RefreshMatchPresentation();
 	}
