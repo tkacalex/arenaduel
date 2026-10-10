@@ -22,6 +22,16 @@
 
 namespace VisualSmoke
 {
+	// Aiming: the weapon points along the view and its top rear edge lies just under the line of sight.
+	bool SightOnLine(const AArenaDuelCharacter* Character)
+	{
+		const UStaticMeshComponent* Gun = Character ? Character->GetWeaponComponent()->GetFirstPersonWeaponMesh() : nullptr;
+		const UCameraComponent* Camera = Character ? Character->GetFirstPersonCamera() : nullptr;
+		if (!Gun || !Gun->GetStaticMesh() || !Camera) return false;
+		const FBoxSphereBounds Bounds = Gun->GetStaticMesh()->GetBounds();
+		const FVector Sight = Camera->GetComponentTransform().InverseTransformPosition(Gun->GetComponentTransform().TransformPosition(FVector(Bounds.Origin.X - Bounds.BoxExtent.X, Bounds.Origin.Y, Bounds.Origin.Z + Bounds.BoxExtent.Z)));
+		return FVector::DotProduct(Gun->GetForwardVector(), Camera->GetForwardVector()) > 0.995f && FMath::Abs(Sight.Y) < 1.0 && Sight.Z < 0.5 && Sight.Z > -6.0 && Sight.X > 10.0;
+	}
 	// The corpse is a physics ragdoll on the world body.
 	bool PlaysDeath(const AArenaDuelCharacter* Character)
 	{
@@ -200,7 +210,7 @@ NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 		.UntilClient(TEXT("ADS FOV and visual alignment settle"),0,[](auto& S){
 			const auto* C=Pawn(S.World,true); const auto* W=C->GetWeaponComponent();
 			return W->IsAiming() && FMath::IsNearlyEqual(C->GetFirstPersonCamera()->FieldOfView,W->GetActiveAimFOV(),0.1f)
-				&& C->GetFirstPersonViewmodelRoot()->GetRelativeLocation().Equals(W->GetCurrentDefinition().AimViewmodelLocation,0.1f);
+				&& VisualSmoke::SightOnLine(C);
 		},FTimespan::FromSeconds(4))
 		.ThenClient(TEXT("Leave ADS"),0,[](auto& S){ Pawn(S.World,true)->GetWeaponComponent()->StopAim(); })
 		.UntilClient(TEXT("User-selected hip FOV restored"),0,[](auto& S){const auto* C=Pawn(S.World,true);const auto* Controller=VisualSmoke::PC(S.World);return C&&Controller&&FMath::IsNearlyEqual(C->GetFirstPersonCamera()->FieldOfView,Controller->GetLocalSettings().FOV,0.1f);},FTimespan::FromSeconds(4))

@@ -33,6 +33,8 @@
 namespace
 {
 	TAutoConsoleVariable<float> CVarHipDrop(TEXT("ArenaDuel.Arms.HipDrop"), 5.5f, TEXT("How far the hip viewmodel is lowered, in centimetres"));
+	TAutoConsoleVariable<float> CVarAimEyeDistance(TEXT("ArenaDuel.Aim.EyeDistance"), 30.0f, TEXT("Aiming: distance from the camera to the rear of the weapon, in centimetres"));
+	TAutoConsoleVariable<float> CVarAimSightDrop(TEXT("ArenaDuel.Aim.SightDrop"), 1.2f, TEXT("Aiming: how far the top of the weapon sits below the line of sight, in centimetres"));
 	// Development helper: ArenaDuel.Slot 0|1|2 selects firearm, flashbang or knife for the local player.
 	FAutoConsoleCommandWithWorldAndArgs CmdSelectSlot(TEXT("ArenaDuel.Slot"), TEXT("Select loadout slot 0 to 2 for the local player"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
@@ -1005,6 +1007,28 @@ void UArenaDuelWeaponComponent::GetCurrentViewmodelBaseTransform(FVector& OutLoc
 	OutLocation = bAiming ? Definition.AimViewmodelLocation : HipLocation;
 	OutRotation = bAiming ? Definition.AimViewmodelRotation : HipRotation;
 }
+bool UArenaDuelWeaponComponent::SolveAimSightTransform(FVector& OutLocation, FQuat& OutRotation) const
+{
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	const USceneComponent* Root = Character ? Character->GetFirstPersonViewmodelRoot() : nullptr;
+	const UStaticMesh* Mesh = FirstPersonWeaponMesh ? FirstPersonWeaponMesh->GetStaticMesh() : nullptr;
+	if (!Root || !Mesh || !FirstPersonWeaponMesh->GetAttachParent()) return false;
+	// Where the weapon sits relative to the viewmodel root follows from the arm pose and the hand socket.
+	// The root is placed so that the weapon itself ends up straight ahead: its top rear edge just under
+	// the line of sight, its barrel along the view. Meshes point down their local X with Z up.
+	const FTransform GunInRoot = FirstPersonWeaponMesh->GetComponentTransform().GetRelativeTransform(Root->GetComponentTransform());
+	const FVector Scale = GunInRoot.GetScale3D();
+	if (Scale.IsNearlyZero() || GunInRoot.ContainsNaN()) return false;
+	const FBoxSphereBounds Bounds = Mesh->GetBounds();
+	const FVector SightLocal(Bounds.Origin.X - Bounds.BoxExtent.X, Bounds.Origin.Y, Bounds.Origin.Z + Bounds.BoxExtent.Z);
+	const FTransform GunInCamera(FQuat::Identity, FVector(CVarAimEyeDistance.GetValueOnGameThread(), 0.0f, -CVarAimSightDrop.GetValueOnGameThread()) - SightLocal * Scale, Scale);
+	const FTransform RootInCamera = GunInRoot.Inverse() * GunInCamera;
+	if (RootInCamera.ContainsNaN()) return false;
+	OutLocation = RootInCamera.GetLocation();
+	OutRotation = RootInCamera.GetRotation();
+	return true;
+}
+
 void UArenaDuelWeaponComponent::UpdateAimVisual()
 {
 	TickLocalPresentation(GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.0f);
@@ -1099,8 +1123,13 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 		-SwayYaw * 0.3f + FMath::Clamp(LocalVelocity.Y / 900.0f, -1.0f, 1.0f) * MotionWeight,
 		Bob.Z + LandingOffset - ViewmodelFeel.SprintLowering * SprintBlend - 10.0f * EquipDrop - 8.0f * WallBlend);
 	// The hip pose is lowered so the screen edge cuts the forearms off; aiming brings them into view.
-	const FVector BaseLocation = FMath::Lerp(Visual.HipViewmodelLocation - FVector(0.0f, 0.0f, CVarHipDrop.GetValueOnGameThread()), GetCurrentDefinition().AimViewmodelLocation, AimBlend);
-	const FRotator BaseRotation = FMath::Lerp(Visual.HipViewmodelRotation, GetCurrentDefinition().AimViewmodelRotation, AimBlend);
+	// Aiming puts the weapon itself on the line of sight, whatever the arm pose does to it; the fixed
+	// aim location is only the fallback for a weapon without a mesh.
+	FVector AimLocation = GetCurrentDefinition().AimViewmodelLocation;
+	FQuat AimRotation = GetCurrentDefinition().AimViewmodelRotation.Quaternion();
+	if (AimBlend > 0.001f) SolveAimSightTransform(AimLocation, AimRotation);
+	const FVector BaseLocation = FMath::Lerp(Visual.HipViewmodelLocation - FVector(0.0f, 0.0f, CVarHipDrop.GetValueOnGameThread()), AimLocation, AimBlend);
+	const FRotator BaseRotation = FQuat::Slerp(Visual.HipViewmodelRotation.Quaternion(), AimRotation, AimBlend).Rotator();
 	const FRotator MotionRotation(SwayPitch - 1.5f * LocalWeaponKick + 5.0f * SprintBlend,
 		SwayYaw + VisualYawKick,
 		-SwayYaw * 0.35f + FMath::Sin(BobPhase) * BobAmount * 0.3f);

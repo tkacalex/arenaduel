@@ -271,6 +271,8 @@ public:
 	void RefreshWeaponVisual();
 	void SetUserHipFOV(float NewFOV);
 	void GetCurrentViewmodelBaseTransform(FVector& OutLocation, FRotator& OutRotation) const;
+	/** The viewmodel root transform, relative to the camera, that puts the first person weapon on the line of sight. False without a weapon mesh. */
+	bool SolveAimSightTransform(FVector& OutLocation, FQuat& OutRotation) const;
 	UStaticMeshComponent* GetFirstPersonWeaponMesh() const { return FirstPersonWeaponMesh; }
 	UStaticMeshComponent* GetThirdPersonWeaponMesh() const { return ThirdPersonWeaponMesh; }
 	bool GetLeftHandGripWorldLocation(FVector& OutLocation, bool bThirdPerson = false) const;
