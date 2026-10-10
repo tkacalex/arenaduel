@@ -70,6 +70,7 @@ AArenaDuelZombieGameMode::AArenaDuelZombieGameMode()
 	FArenaDuelZombieTypeConfig& Normal = TypeConfigs[static_cast<int32>(EArenaDuelZombieType::Normal)];
 	Normal.DisplayName = TEXT("ZOMBIE"); Normal.Health = 100.0f; Normal.MoveSpeed = 340.0f; Normal.Damage = 12.0f; Normal.Points = 100;
 	Normal.MaterialPath = TEXT("/Game/ArenaDuel/Characters/Common/M_SurvivalZombie.M_SurvivalZombie");
+	Normal.MeshPath = TEXT("/Game/ArenaDuel/Characters/Zombies/SKM_Zombie_Normal.SKM_Zombie_Normal");
 
 	FArenaDuelZombieTypeConfig& Fast = TypeConfigs[static_cast<int32>(EArenaDuelZombieType::Fast)];
 	Fast.DisplayName = TEXT("RUNNER"); Fast.Health = 55.0f; Fast.MoveSpeed = 760.0f; Fast.Damage = 9.0f; Fast.AttackInterval = 0.8f; Fast.AttackWindup = 0.25f; Fast.Scale = 0.9f; Fast.Points = 150;

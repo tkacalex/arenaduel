@@ -24,12 +24,15 @@ class ARENADUEL_API UArenaDuelZombieAnimInstance : public UAnimSingleNodeInstanc
 public:
 	UArenaDuelZombieAnimInstance();
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
+	/** One-handed swings and, last, the two-handed one for slams and bosses. */
+	const UAnimSequence* GetAttackClip(int32 Index) const { return AttackClips[FMath::Clamp(Index, 0, 2)]; }
 protected:
 	virtual FAnimInstanceProxy* CreateAnimInstanceProxy() override;
 private:
 	UPROPERTY() TObjectPtr<UAnimSequence> Idle;
 	UPROPERTY() TObjectPtr<UAnimSequence> Walk;
 	UPROPERTY() TObjectPtr<UAnimSequence> Run;
+	UPROPERTY() TObjectPtr<UAnimSequence> AttackClips[3];
 };
 
 /** A short spray of droplets where a shot lands on a zombie. Local and cosmetic; it removes itself. */
@@ -95,6 +98,9 @@ public:
 	bool IsDirectChasing() const { return bDirectChase; }
 	/** Progress of the swing being shown, 0 to 1, or below zero when there is none. Cosmetic. */
 	float GetAttackPhase() const;
+	/** When the swing being shown began and how long it takes to land, in world seconds. Cosmetic. */
+	float GetAttackStartTime() const { return AttackAnimStart; }
+	float GetAttackDuration() const { return AttackAnimEnd - AttackAnimStart; }
 	/** True when the swing being shown uses both arms: the slam, and everything a boss does. */
 	bool IsTwoArmedAttack() const { return bAttackBothArms || IsBossType(); }
 	/** How often this zombie had to free itself from standing still. */
@@ -126,6 +132,7 @@ protected:
 	UPROPERTY(Replicated) float MaxHealth = 100.0f;
 	UPROPERTY(Replicated) float VisualScale = 1.0f;
 	UPROPERTY(Replicated) FString MaterialPath;
+	UPROPERTY(Replicated) FString MeshPath;
 	UPROPERTY(ReplicatedUsing = OnRep_Dead) bool bDead = false;
 	UPROPERTY(Replicated) FVector_NetQuantize DeathHitLocation;
 	UPROPERTY(Replicated) FVector_NetQuantizeNormal DeathHitDirection;

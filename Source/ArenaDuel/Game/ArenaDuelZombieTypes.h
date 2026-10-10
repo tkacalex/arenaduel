@@ -36,6 +36,8 @@ struct FArenaDuelZombieTypeConfig
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0")) int32 Points = 100;
 	/** Asset path of the material that marks the type. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FString MaterialPath;
+	/** Asset path of the type's own body. It brings its own materials; without it the mannequin is used and tinted with MaterialPath. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FString MeshPath;
 };
 
 /** How many of each type one wave brings in total, not how many are alive at once. */

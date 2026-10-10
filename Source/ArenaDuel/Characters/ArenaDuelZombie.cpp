@@ -5,6 +5,8 @@
 #include "AIController.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimSingleNodeInstanceProxy.h"
+#include "Animation/AnimationPoseData.h"
+#include "Animation/AttributesRuntime.h"
 #include "BonePose.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
@@ -75,6 +77,12 @@ namespace
 		bool bActive = false;
 		bool bStarted = false;
 		float Seconds = 0.0f;
+		// The swing clip, played on the upper body so that its hit lands when the server's does.
+		const UAnimSequence* AttackClip = nullptr;
+		float AttackStart = -1.0f;
+		float AttackTime = 0.0f;
+		float AttackWeight = 0.0f;
+		static constexpr float ImpactShare = 0.42f;
 		// Left upper arm, left forearm, right upper arm, right forearm: the direction each one points.
 		FVector Directions[4] = { FVector::ForwardVector, FVector::ForwardVector, FVector::ForwardVector, FVector::ForwardVector };
 
@@ -104,6 +112,23 @@ namespace
 					Targets[Arm * 2 + 1] = Phase < 0.7f ? FMath::Lerp(Targets[Arm * 2 + 1], RaisedFore, Raise) : FMath::Lerp(RaisedFore, DownFore, Strike);
 				}
 			}
+			const UArenaDuelZombieAnimInstance* Clips = Cast<UArenaDuelZombieAnimInstance>(Instance);
+			if (Phase >= 0.0f && Clips && !FMath::IsNearlyEqual(Zombie->GetAttackStartTime(), AttackStart))
+			{
+				AttackStart = Zombie->GetAttackStartTime();
+				AttackClip = Clips->GetAttackClip(Zombie->IsTwoArmedAttack() ? 2 : static_cast<int32>(Zombie->GetUniqueID() % 2));
+				AttackTime = 0.0f;
+			}
+			if (AttackClip && AttackClip->GetPlayLength() > 0.0f)
+			{
+				const float Length = AttackClip->GetPlayLength(), Impact = Length * ImpactShare;
+				// Up to the impact the clip runs at whatever speed makes it land with the server's hit, then at its own.
+				if (Phase >= 0.0f) AttackTime = FMath::Max(AttackTime, Impact * FMath::Clamp(Phase / 0.78f, 0.0f, 1.0f));
+				else AttackTime += Step;
+				const float Target = AttackTime < Length - 0.2f ? 1.0f : 0.0f;
+				AttackWeight = Target + (AttackWeight - Target) * FMath::Exp(-14.0f * Step);
+				if (AttackTime >= Length && AttackWeight < 0.02f) { AttackClip = nullptr; AttackWeight = 0.0f; }
+			}
 			const float Follow = bStarted ? 1.0f - FMath::Exp(-(Phase >= 0.0f ? 26.0f : 9.0f) * Step) : 1.0f;
 			for (int32 Index = 0; Index < 4; ++Index) Directions[Index] = FMath::Lerp(Directions[Index], Targets[Index].GetSafeNormal(), Follow).GetSafeNormal();
 			bStarted = true;
@@ -114,6 +139,26 @@ namespace
 			const bool bResult = FAnimSingleNodeInstanceProxy::Evaluate(Output);
 			if (!bActive || !bStarted) return bResult;
 			const FBoneContainer& Bones = Output.Pose.GetBoneContainer();
+			if (AttackClip && AttackWeight > 0.01f)
+			{
+				const int32 ChestSkeletonIndex = Bones.GetReferenceSkeleton().FindBoneIndex(TEXT("spine_02"));
+				const FCompactPoseBoneIndex Chest = ChestSkeletonIndex == INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(ChestSkeletonIndex));
+				if (Chest.GetInt() != INDEX_NONE)
+				{
+					FCompactPose ClipPose;
+					ClipPose.SetBoneContainer(&Bones);
+					FBlendedCurve ClipCurve;
+					ClipCurve.InitFrom(Output.Curve);
+					UE::Anim::FStackAttributeContainer ClipAttributes;
+					FAnimationPoseData ClipData(ClipPose, ClipCurve, ClipAttributes);
+					AttackClip->GetAnimationPose(ClipData, FAnimExtractContext(static_cast<double>(FMath::Min(AttackTime, AttackClip->GetPlayLength())), false));
+					// From the chest up; hips and legs keep walking.
+					for (const FCompactPoseBoneIndex BoneIndex : Output.Pose.ForEachBoneIndex())
+					{
+						if (BoneIndex == Chest || Bones.BoneIsChildOf(BoneIndex, Chest)) Output.Pose[BoneIndex].Blend(Output.Pose[BoneIndex], ClipPose[BoneIndex], AttackWeight);
+					}
+				}
+			}
 			const auto Find = [&Bones](const TCHAR* Name)
 			{
 				const int32 SkeletonIndex = Bones.GetReferenceSkeleton().FindBoneIndex(Name);
@@ -121,9 +166,10 @@ namespace
 			};
 			const FCompactPoseBoneIndex Chains[2][3] = { { Find(TEXT("upperarm_l")), Find(TEXT("lowerarm_l")), Find(TEXT("hand_l")) }, { Find(TEXT("upperarm_r")), Find(TEXT("lowerarm_r")), Find(TEXT("hand_r")) } };
 			for (const FCompactPoseBoneIndex (&Chain)[3] : Chains) for (const FCompactPoseBoneIndex Bone : Chain) if (Bone.GetInt() == INDEX_NONE) return bResult;
+			const float ReachWeight = 1.0f - AttackWeight;
 			FCSPose<FCompactPose> Pose;
 			Pose.InitPose(Output.Pose);
-			for (int32 Arm = 0; Arm < 2; ++Arm)
+			for (int32 Arm = 0; Arm < 2 && ReachWeight > 0.01f; ++Arm)
 			{
 				FTransform Upper = Pose.GetComponentSpaceTransform(Chains[Arm][0]);
 				FTransform Lower = Pose.GetComponentSpaceTransform(Chains[Arm][1]);
@@ -139,6 +185,10 @@ namespace
 				Lower.SetLocation(Upper.GetLocation() + UpperDirection * UpperBone.Size());
 				Hand.SetRotation(ForeTurn * Hand.GetRotation());
 				Hand.SetLocation(Lower.GetLocation() + ForeDirection * ForeBone.Size());
+				// While a swing clip plays, the arms belong to the clip.
+				Upper.Blend(Pose.GetComponentSpaceTransform(Chains[Arm][0]), Upper, ReachWeight);
+				Lower.Blend(Pose.GetComponentSpaceTransform(Chains[Arm][1]), Lower, ReachWeight);
+				Hand.Blend(Pose.GetComponentSpaceTransform(Chains[Arm][2]), Hand, ReachWeight);
 				if (Upper.ContainsNaN() || Lower.ContainsNaN() || Hand.ContainsNaN()) continue;
 				Pose.SetComponentSpaceTransform(Chains[Arm][0], Upper);
 				Pose.SetComponentSpaceTransform(Chains[Arm][1], Lower);
@@ -165,10 +215,15 @@ float AArenaDuelZombie::GetAttackPhase() const
 
 UArenaDuelZombieAnimInstance::UArenaDuelZombieAnimInstance()
 {
-	static ConstructorHelpers::FObjectFinder<UAnimSequence> IdleAsset(TEXT("/Game/Characters/Mannequins/Anims/Rifle/MF_Rifle_Idle_ADS"));
-	static ConstructorHelpers::FObjectFinder<UAnimSequence> WalkAsset(TEXT("/Game/Characters/Mannequins/Anims/Rifle/Walk/MF_Rifle_Walk_Fwd"));
-	static ConstructorHelpers::FObjectFinder<UAnimSequence> RunAsset(TEXT("/Game/Characters/Mannequins/Anims/Rifle/Jog/MF_Rifle_Jog_Fwd"));
+	// Unarmed clips of the mannequin: a zombie carries nothing.
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> IdleAsset(TEXT("/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> WalkAsset(TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> RunAsset(TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> SwingA(TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Attack/MM_Attack_01"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> SwingB(TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Attack/MM_Attack_02"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> Slam(TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Attack/MM_ChargedAttack"));
 	Idle = IdleAsset.Object; Walk = WalkAsset.Object; Run = RunAsset.Object;
+	AttackClips[0] = SwingA.Object; AttackClips[1] = SwingB.Object; AttackClips[2] = Slam.Object;
 	SetRootMotionMode(ERootMotionMode::IgnoreRootMotion);
 }
 
@@ -305,6 +360,7 @@ void AArenaDuelZombie::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME(AArenaDuelZombie, MaxHealth);
 	DOREPLIFETIME(AArenaDuelZombie, VisualScale);
 	DOREPLIFETIME(AArenaDuelZombie, MaterialPath);
+	DOREPLIFETIME(AArenaDuelZombie, MeshPath);
 	DOREPLIFETIME(AArenaDuelZombie, bDead);
 	DOREPLIFETIME(AArenaDuelZombie, DeathHitLocation);
 	DOREPLIFETIME(AArenaDuelZombie, DeathHitDirection);
@@ -347,6 +403,7 @@ void AArenaDuelZombie::InitializeZombie(EArenaDuelZombieType InType, const FAren
 	Health = MaxHealth;
 	VisualScale = Config.Scale;
 	MaterialPath = Config.MaterialPath;
+	MeshPath = Config.MeshPath;
 	// No two walk exactly alike: a group stretches out instead of arriving as one block.
 	const float Variance = InType == EArenaDuelZombieType::Normal ? FMath::FRandRange(0.86f, 1.12f) : FMath::FRandRange(0.95f, 1.05f);
 	BaseMoveSpeed = Config.MoveSpeed * FMath::Max(SpeedScale, 0.1f) * Variance;
@@ -369,9 +426,19 @@ void AArenaDuelZombie::OnRep_ZombieType()
 void AArenaDuelZombie::ApplyTypeVisual()
 {
 	SetActorScale3D(FVector(VisualScale));
-	if (GetNetMode() == NM_DedicatedServer || MaterialPath.IsEmpty()) return;
+	if (MaterialPath.IsEmpty() && MeshPath.IsEmpty()) return;
 	// One attempt per path: a missing asset must not be searched for again every frame.
 	bVisualApplied = true;
+	// A type with its own body brings its own skin and clothes; nothing is painted over them.
+	if (USkeletalMesh* Body = MeshPath.IsEmpty() ? nullptr : LoadObject<USkeletalMesh>(nullptr, *MeshPath, nullptr, LOAD_NoWarn | LOAD_Quiet))
+	{
+		if (GetMesh()->GetSkeletalMeshAsset() != Body)
+		{
+			GetMesh()->EmptyOverrideMaterials();
+			GetMesh()->SetSkeletalMeshAsset(Body);
+		}
+		return;
+	}
 	if (UMaterialInterface* Material = LoadObject<UMaterialInterface>(nullptr, *MaterialPath))
 	{
 		for (int32 Index = 0; Index < GetMesh()->GetNumMaterials(); ++Index) GetMesh()->SetMaterial(Index, Material);
