@@ -45,3 +45,13 @@ Not checked: aiming with real mouse input while moving and firing, other fields 
 ## State of the hand model (2026-10-10)
 
 Still the placeholder described above: forearms and hands cut from the mannequin, placed rigidly, with the full body rifle clips. A hand model of game quality, grip poses per weapon and first person animations are not made. Two things are missing for that: a model to work from (the engine templates only carry the mannequin, and nothing may be taken from other games), and a working modelling tool in this session (Blender is installed, but its MCP add-on was not reachable on port 9876).
+
+## Gloved hands (2026-10-10)
+
+`SKM_ArenaDuelFPHands` replaces the cut-out mannequin forearms as the first person mesh.
+
+- **Source**: a human made with MPFB 2.0.17 (the MakeHuman add-on from extensions.blender.org; its assets are CC0). In Blender its arms were posed joint by joint onto the mannequin's bind pose, thickened to the mannequin's proportions, cut off at the shoulder and closed, given three material regions (sleeve, glove, cuff and knuckle trim, each pushed out a few millimetres), subdivided once and bound to the mannequin armature. 16,912 vertices, both arms.
+- **Files**: `Tools/Art/fp_arms.blend` (editable), `Tools/Art/SKM_ArenaDuelFPHands.fbx` (export), `Tools/Editor/SetupFirstPersonHands.py` (import onto `SK_Mannequin` and the three materials `M_FPSleeve`, `M_FPGlove`, `M_FPTrim`). Run the script with the editor closed, like the other setup scripts.
+- **Why it fits**: the mesh shares the mannequin skeleton and bind pose, so the clips, the `HandGrip_R` socket and the existing arm placement work unchanged. `ArenaDuel.VisualAssetSetup.Arms` now assigns this mesh and only falls back to the old forearms when it is missing.
+- **Checked**: all four firearms at the hip and aiming, flashbang and knife, in a play session (`docs/media/fp_2026-10-10_hands.png`); fingers follow the clips, the knife hand closes, the free hand is open. Visual, loadout, hit zone and survival tests pass (13 of 13), the network smoke test among them.
+- **Not done**: no textures (plain materials with a soft rim), no grip pose per weapon, no first person animation set, the arm is still placed as one rigid piece, the cuff and knuckle patches have blocky edges, and the left wrist shows a kink when aiming. Nothing was checked in motion.
