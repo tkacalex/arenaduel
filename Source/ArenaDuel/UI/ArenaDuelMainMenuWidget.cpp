@@ -120,9 +120,9 @@ void UArenaDuelMainMenuWidget::BuildTree()
 	Root = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("Root"));
 	WidgetTree->RootWidget = Root;
 
-	UBorder* Background = WidgetTree->ConstructWidget<UBorder>();
-	Background->SetBrushColor(FLinearColor(0.006f, 0.008f, 0.014f, 1.0f));
-	MainMenuPlace(Root, Background, FAnchors(0.0f, 0.0f, 1.0f, 1.0f), FMargin(0.0f));
+	UBorder* MenuBackdrop = WidgetTree->ConstructWidget<UBorder>();
+	MenuBackdrop->SetBrushColor(FLinearColor(0.006f, 0.008f, 0.014f, 1.0f));
+	MainMenuPlace(Root, MenuBackdrop, FAnchors(0.0f, 0.0f, 1.0f, 1.0f), FMargin(0.0f));
 
 	// A dim panel behind the column and a thin accent line give the page its shape.
 	UBorder* Panel = WidgetTree->ConstructWidget<UBorder>();
