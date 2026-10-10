@@ -28,7 +28,7 @@ Not verified: the layout was looked at from the spawn and from above in a play s
 
 ## L_ZombieArena and L_MainMenu
 
-Built by `Tools/Editor/SetupSurvivalAndMenu.py`. `L_ZombieArena` is the Zombie Survival hall: a 64 x 64 m room, a ring of walls 22 m from the middle that hides sixteen tagged spawn points, cover around the centre start, and a navigation bounds volume. See `docs/ZombieSurvival.md`. `L_MainMenu` is empty apart from its game mode.
+Built by `Tools/Editor/SetupSurvivalAndMenu.py`. `L_ZombieArena` is the Zombie Survival hall, 84 x 84 m. A perimeter wall 8 m inside the shell hides twenty tagged spawn points in the corridor behind it; zombies come in through twelve gates, three per side, each marked by a red light. Inside are five areas: an open plaza around the start, a container yard with lanes in the north, a building with rooms and doorways in the east, a raised deck with two ramps in the south and a hall of pillars in the west. Dim fog and a looping ambience set the mood. See `docs/ZombieSurvival.md`. `L_MainMenu` is empty apart from its game mode.
 
 ## Other maps
 
