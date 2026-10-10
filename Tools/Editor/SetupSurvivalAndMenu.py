@@ -21,6 +21,7 @@ ARENA = '/Game/ArenaDuel/Maps/L_ZombieArena'
 MENU = '/Game/ArenaDuel/Maps/L_MainMenu'
 ASSETS = '/Game/ArenaDuel/Characters/Common'
 AUDIO = '/Game/ArenaDuel/Audio'
+PROPS = '/Game/ArenaDuel/Props'
 LIB = unreal.EditorAssetLibrary
 PREFIX = 'Survival_'
 RATE = 22050
@@ -63,8 +64,24 @@ def box(label, centre, size, material, pitch=0.0, yaw=0.0):
     count['pieces'] += 1
 
 
+def prop(label, centre, mesh_path, yaw=0.0):
+    actor = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.StaticMeshActor, unreal.Vector(*centre), unreal.Rotator(roll=0.0, pitch=0.0, yaw=yaw))
+    actor.set_actor_label('%s%s_%03d' % (PREFIX, label, count['pieces']))
+    component = actor.static_mesh_component
+    component.set_static_mesh(unreal.load_asset(mesh_path))
+    component.set_mobility(unreal.ComponentMobility.STATIC)
+    component.set_collision_profile_name('BlockAll')
+    count['pieces'] += 1
+
+
 def cube(label, x0, x1, y0, y1, z0, z1, material):
-    box(label, ((x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5), (x1 - x0, y1 - y0, z1 - z0), material)
+    centre, size = ((x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5), (round(x1 - x0), round(y1 - y0), round(z1 - z0))
+    # A block of exactly a prop's size becomes the modelled prop (Tools/Editor/SetupProps.py): same place, same size.
+    if size == (140, 140, 140) and LIB.does_asset_exist(PROPS + '/SM_Crate'):
+        return prop(label, centre, PROPS + '/SM_Crate')
+    if size in ((900, 240, 260), (240, 900, 260)) and LIB.does_asset_exist(PROPS + '/SM_Container'):
+        return prop(label, centre, PROPS + '/SM_Container', yaw=0.0 if size[0] == 900 else 90.0)
+    box(label, centre, (x1 - x0, y1 - y0, z1 - z0), material)
 
 
 def wall_with_gaps(label, axis, at, a0, a1, height, material, gaps, thickness=40.0):

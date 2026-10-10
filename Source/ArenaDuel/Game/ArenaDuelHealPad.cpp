@@ -32,9 +32,20 @@ AArenaDuelHealPad::AArenaDuelHealPad()
 	Visual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Visual->SetCastShadow(false);
 	Visual->SetMobility(EComponentMobility::Static);
+	// The modelled pad is 120 cm across, as wide as the area that heals. Its slot 0 is the ring and the
+	// cross, which is where the placed pads carry their green.
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> Pad(TEXT("/Game/ArenaDuel/Props/SM_HealPad.SM_HealPad"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
-	if (Cube.Succeeded()) Visual->SetStaticMesh(Cube.Object);
-	Visual->SetRelativeScale3D(FVector(PadHalfSize * 0.02f, PadHalfSize * 0.02f, 0.03f));
+	if (Pad.Succeeded())
+	{
+		Visual->SetStaticMesh(Pad.Object);
+		Visual->SetRelativeScale3D(FVector(PadHalfSize / 60.0f, PadHalfSize / 60.0f, 1.0f));
+	}
+	else
+	{
+		if (Cube.Succeeded()) Visual->SetStaticMesh(Cube.Object);
+		Visual->SetRelativeScale3D(FVector(PadHalfSize * 0.02f, PadHalfSize * 0.02f, 0.03f));
+	}
 }
 
 void AArenaDuelHealPad::BeginPlay()
