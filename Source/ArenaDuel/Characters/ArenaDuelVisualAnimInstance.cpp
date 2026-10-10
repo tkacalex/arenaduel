@@ -33,6 +33,7 @@ namespace
 	TAutoConsoleVariable<float> CVarFreeY(TEXT("ArenaDuel.Arms.FreeHandY"), -15.0f, TEXT("Free hand position: right of the camera"));
 	TAutoConsoleVariable<float> CVarFreeZ(TEXT("ArenaDuel.Arms.FreeHandZ"), -16.0f, TEXT("Free hand position: above the camera"));
 	TAutoConsoleVariable<float> CVarFreeRoll(TEXT("ArenaDuel.Arms.FreeHandRoll"), -80.0f, TEXT("Free hand roll around the forearm, degrees"));
+	TAutoConsoleVariable<int32> CVarRigidArms(TEXT("ArenaDuel.Arms.Rigid"), 0, TEXT("1: place the first person arms as rigid pieces, as before the full arm mesh; 0: solve them as arms"));
 	TAutoConsoleVariable<float> CVarWristZ(TEXT("ArenaDuel.Arms.LeftWristZ"), -1.0f, TEXT("Support wrist offset from the grip point: up"));
 
 	struct FArenaDuelVisualPoseProxy : FAnimSingleNodeInstanceProxy
@@ -275,20 +276,47 @@ namespace
 					ComponentPose.SetComponentSpaceTransform(Hand, BlendedHand);
 					bChanged = true;
 				};
+				// First person: the arm mesh reaches up to the shoulder, so each arm is solved as a real arm. The
+				// shoulder stays where the clip has it, the wrist goes to its target and the elbow bends towards
+				// ElbowFromWrist. With bTurnHand the hand turns with the forearm and is rolled about it.
+				const auto SolveArm = [&ComponentPose, &bChanged](FCompactPoseBoneIndex Upper, FCompactPoseBoneIndex Lower, FCompactPoseBoneIndex Hand, const FVector& Wrist, const FVector& ElbowFromWrist, float RollDegrees, bool bTurnHand, float Blend)
+				{
+					FTransform NewUpper = ComponentPose.GetComponentSpaceTransform(Upper);
+					FTransform NewLower = ComponentPose.GetComponentSpaceTransform(Lower);
+					FTransform NewHand = ComponentPose.GetComponentSpaceTransform(Hand);
+					const FTransform OldUpper = NewUpper, OldLower = NewLower, OldHand = NewHand;
+					const FVector OldForearm = (OldHand.GetLocation() - OldLower.GetLocation()).GetSafeNormal();
+					if (OldForearm.IsNearlyZero() || ElbowFromWrist.IsNearlyZero() || Wrist.ContainsNaN()) return;
+					AnimationCore::SolveTwoBoneIK(NewUpper, NewLower, NewHand, Wrist + ElbowFromWrist * 60.0f, Wrist, false, 1.0, 1.0);
+					const FVector NewForearm = (NewHand.GetLocation() - NewLower.GetLocation()).GetSafeNormal();
+					if (bTurnHand && !NewForearm.IsNearlyZero()) NewHand.SetRotation(FQuat(NewForearm, FMath::DegreesToRadians(RollDegrees)) * FQuat::FindBetweenNormals(OldForearm, NewForearm) * OldHand.GetRotation());
+					else NewHand.SetRotation(OldHand.GetRotation());
+					FTransform BlendedUpper, BlendedLower, BlendedHand;
+					BlendedUpper.Blend(OldUpper, NewUpper, Blend);
+					BlendedLower.Blend(OldLower, NewLower, Blend);
+					BlendedHand.Blend(OldHand, NewHand, Blend);
+					if (BlendedUpper.ContainsNaN() || BlendedLower.ContainsNaN() || BlendedHand.ContainsNaN()) return;
+					ComponentPose.SetComponentSpaceTransform(Upper, BlendedUpper);
+					ComponentPose.SetComponentSpaceTransform(Lower, BlendedLower);
+					ComponentPose.SetComponentSpaceTransform(Hand, BlendedHand);
+					bChanged = true;
+				};
 				const bool bLeftValid = UpperIndex.GetInt() != INDEX_NONE && LowerIndex.GetInt() != INDEX_NONE && HandIndex.GetInt() != INDEX_NONE;
 				const bool bRightValid = RightUpperIndex.GetInt() != INDEX_NONE && RightLowerIndex.GetInt() != INDEX_NONE && RightIndex.GetInt() != INDEX_NONE;
 				// The support target is read before the right forearm is turned; the right hand itself stays put.
 				const FVector Effector = RightIndex.GetInt() != INDEX_NONE ? ComponentPose.GetComponentSpaceTransform(RightIndex).TransformPosition(LeftGripInRightHand) : FVector::ZeroVector;
 				if (bRigidForearm && bRightValid)
 				{
-					// The weapon hand keeps its place and grip; only the forearm behind it is turned.
-					PlaceArm(RightUpperIndex, RightLowerIndex, RightIndex, ComponentPose.GetComponentSpaceTransform(RightIndex).GetLocation(), -RightElbowDirection, 0.0f, false, 1.0f);
+					// The weapon hand keeps its place and its grip; the elbow behind it is bent the chosen way.
+					if (CVarRigidArms.GetValueOnAnyThread() != 0) PlaceArm(RightUpperIndex, RightLowerIndex, RightIndex, ComponentPose.GetComponentSpaceTransform(RightIndex).GetLocation(), -RightElbowDirection, 0.0f, false, 1.0f);
+					else SolveArm(RightUpperIndex, RightLowerIndex, RightIndex, ComponentPose.GetComponentSpaceTransform(RightIndex).GetLocation(), RightElbowDirection, 0.0f, false, 1.0f);
 				}
 				if (bSupportHand && bLeftValid && RightIndex.GetInt() != INDEX_NONE && !Effector.ContainsNaN())
 				{
 					if (bRigidForearm)
 					{
-						PlaceArm(UpperIndex, LowerIndex, HandIndex, Effector, -ElbowDirection, ForearmRoll, true, LeftHandIKBlend);
+						if (CVarRigidArms.GetValueOnAnyThread() != 0) PlaceArm(UpperIndex, LowerIndex, HandIndex, Effector, -ElbowDirection, ForearmRoll, true, LeftHandIKBlend);
+						else SolveArm(UpperIndex, LowerIndex, HandIndex, Effector, ElbowDirection, ForearmRoll, true, LeftHandIKBlend);
 					}
 					else
 					{
