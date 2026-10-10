@@ -122,3 +122,15 @@ Not verified: real mouse input, the scope as a remote client, movement speed in 
 ## Where shots start
 
 Shots, knife swings and throws start at `AArenaDuelCharacter::GetPawnViewLocation`, which is where the camera settles: a fixed height above the capsule centre, standing or crouched, and a little lower in a slide. The engine's default uses the crouched eye height instead, 32 cm below this camera, so crouched shots left from under the crosshair. `ArenaDuel.Loadout.CrouchedShotOrigin` checks it. Not checked with real crouched shots at a target in a play session.
+
+## Knife and flashbang: models, motion, sound (2026-10-10)
+
+Rules, damage, ranges, timings and the server's part are unchanged. What changed is how the two items look, move and sound.
+
+- **Models**: `Tools/Art/build_equipment.py` builds both in Blender (`Tools/Art/equipment.blend`, `Tools/Art/Equipment/SM_*.fbx`): a combat knife with a ribbed grip, a guard longer on the edge side, a clip point blade with a fuller and a pommel with a lanyard ring; a stun grenade with hexagonal end caps and vent holes, two bands, fuse head, safety lever, pin and pull ring. They keep the sizes and axes of the code-built models, which remain as the fallback (`ArenaDuelItemMeshes`).
+- **Materials and sounds**: `Tools/Editor/SetupEquipmentAssets.py` (two editor runs, the second with `ARENADUEL_EQUIPMENT_FINISH=1`) makes six plain materials under `/Game/ArenaDuel/Weapons/Equipment` and synthesises seven sounds into `/Game/ArenaDuel/Audio`: knife swing, stab and hit, pin, bounce, bang, and the ringing in the ears.
+- **Knife motion** (first person, cosmetic): a light attack is a slash from the right across the view, 0.26 s; a heavy one is drawn back and driven straight forward, 0.42 s. Both start with the server's swing, as before; nothing waits for them.
+- **Throw**: the grenade leaves at once, as before. The arm then follows through for a third of a second, over and down for a long throw, an underhand flick for a short one.
+- **Flashbang in the world**: a clink on each real bounce (the server sees the bounce, everyone hears it, at most a few a second), a bang and a burst of sparks at the detonation next to the existing flash of light, and for a blinded player a ringing that is louder the stronger the blindness.
+
+Checked in a play session: both items in the hand in first person, a short throw that blinded the thrower, light and heavy knife attacks with real mouse buttons without errors in the log; 13 of 13 visual, loadout, hit zone and survival tests. Not checked: the sounds (nobody listened), the swing and throw motion as motion (no capture caught them), the sparks, the bounce sound, any of it from the other player's side, quick switching, and the hand's fingers on the new shapes, which still come from the rifle clip. The world body has no knife or throw animation.

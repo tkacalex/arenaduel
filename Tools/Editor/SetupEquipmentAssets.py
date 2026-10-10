@@ -29,7 +29,7 @@ MESHES = (('Knife', ('M_KnifeSteel', 'M_KnifeGrip', 'M_KnifeFittings')), ('Flash
 def material(name, color, roughness, metallic):
     path = DEST + '/' + name
     if LIB.does_asset_exist(path):
-        return unreal.load_asset(path)
+        LIB.delete_asset(path)
     mat = unreal.AssetToolsHelpers.get_asset_tools().create_asset(name, DEST, unreal.Material, unreal.MaterialFactoryNew())
     base = EDIT.create_material_expression(mat, unreal.MaterialExpressionConstant3Vector, -500, 0)
     base.set_editor_property('constant', unreal.LinearColor(color[0], color[1], color[2], 1.0))
@@ -153,7 +153,7 @@ def import_file(source, destination, name, options=None):
 
 report = []
 if not FINISH:
-    for name, color, roughness, metallic in (('M_KnifeSteel', (0.52, 0.54, 0.57), 0.24, 1.0), ('M_KnifeGrip', (0.012, 0.012, 0.014), 0.72, 0.0), ('M_KnifeFittings', (0.10, 0.11, 0.12), 0.38, 1.0),
+    for name, color, roughness, metallic in (('M_KnifeSteel', (0.66, 0.68, 0.72), 0.30, 0.55), ('M_KnifeGrip', (0.012, 0.012, 0.014), 0.72, 0.0), ('M_KnifeFittings', (0.10, 0.11, 0.12), 0.38, 1.0),
                                              ('M_FlashBody', (0.045, 0.060, 0.048), 0.55, 0.6), ('M_FlashBand', (0.42, 0.50, 0.56), 0.5, 0.3), ('M_FlashLever', (0.20, 0.21, 0.22), 0.34, 1.0)):
         material(name, color, roughness, metallic)
     folder = os.path.join(unreal.Paths.project_saved_dir(), 'EquipmentAudio')
