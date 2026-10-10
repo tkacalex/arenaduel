@@ -26,6 +26,8 @@ public:
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 	/** One-handed swings and, last, the two-handed one for slams and bosses. */
 	const UAnimSequence* GetAttackClip(int32 Index) const { return AttackClips[FMath::Clamp(Index, 0, 2)]; }
+	/** A light and a heavy flinch. */
+	const UAnimSequence* GetHitClip(bool bHeavy) const { return HitClips[bHeavy ? 1 : 0]; }
 protected:
 	virtual FAnimInstanceProxy* CreateAnimInstanceProxy() override;
 private:
@@ -33,6 +35,7 @@ private:
 	UPROPERTY() TObjectPtr<UAnimSequence> Walk;
 	UPROPERTY() TObjectPtr<UAnimSequence> Run;
 	UPROPERTY() TObjectPtr<UAnimSequence> AttackClips[3];
+	UPROPERTY() TObjectPtr<UAnimSequence> HitClips[2];
 };
 
 /** A short spray of droplets where a shot lands on a zombie. Local and cosmetic; it removes itself. */
@@ -101,6 +104,9 @@ public:
 	/** When the swing being shown began and how long it takes to land, in world seconds. Cosmetic. */
 	float GetAttackStartTime() const { return AttackAnimStart; }
 	float GetAttackDuration() const { return AttackAnimEnd - AttackAnimStart; }
+	/** When the last hit was shown, in world seconds, and whether it was a heavy one. Cosmetic. */
+	float GetHitShownTime() const { return HitShownTime; }
+	bool WasHitHeavy() const { return bHitShownHeavy; }
 	/** True when the swing being shown uses both arms: the slam, and everything a boss does. */
 	bool IsTwoArmedAttack() const { return bAttackBothArms || IsBossType(); }
 	/** How often this zombie had to free itself from standing still. */
@@ -172,6 +178,8 @@ protected:
 	float AttackAnimEnd = 0.0f;
 	float AttackLean = 0.0f;
 	bool bAttackBothArms = false;
+	float HitShownTime = -100.0f;
+	bool bHitShownHeavy = false;
 	float HitLean = 0.0f;
 	float HitLeanYaw = 0.0f;
 	bool bPoseDirty = false;

@@ -84,6 +84,11 @@ namespace
 		float AttackTime = 0.0f;
 		float AttackWeight = 0.0f;
 		static constexpr float ImpactShare = 0.42f;
+		// The flinch clip, on the upper body. Bosses shrug hits off.
+		const UAnimSequence* HitClip = nullptr;
+		float HitStart = -100.0f;
+		float HitTime = 0.0f;
+		float HitWeight = 0.0f;
 		// Posture: a zombie stoops, carries its head askew and rocks from side to side as it walks.
 		float Hunch = 0.0f;
 		float HeadTilt = 0.0f;
@@ -139,6 +144,23 @@ namespace
 				AttackWeight = Target + (AttackWeight - Target) * FMath::Exp(-14.0f * Step);
 				if (AttackTime >= Length && AttackWeight < 0.02f) { AttackClip = nullptr; AttackWeight = 0.0f; }
 			}
+			if (Clips && !Zombie->IsBossType() && Zombie->GetHitShownTime() > HitStart + 0.05f)
+			{
+				// A new hit restarts the flinch only once the last one is mostly through: automatic fire must not freeze the body in frame one.
+				if (!HitClip || HitTime > 0.18f)
+				{
+					HitClip = Clips->GetHitClip(Zombie->WasHitHeavy());
+					HitTime = 0.0f;
+				}
+				HitStart = Zombie->GetHitShownTime();
+			}
+			if (HitClip && HitClip->GetPlayLength() > 0.0f)
+			{
+				HitTime += Step * 1.25f;
+				const float Target = HitTime < HitClip->GetPlayLength() - 0.2f ? 0.85f : 0.0f;
+				HitWeight = Target + (HitWeight - Target) * FMath::Exp(-16.0f * Step);
+				if (HitTime >= HitClip->GetPlayLength() && HitWeight < 0.02f) { HitClip = nullptr; HitWeight = 0.0f; }
+			}
 			const float Follow = bStarted ? 1.0f - FMath::Exp(-(Phase >= 0.0f ? 26.0f : 9.0f) * Step) : 1.0f;
 			for (int32 Index = 0; Index < 4; ++Index) Directions[Index] = FMath::Lerp(Directions[Index], Targets[Index].GetSafeNormal(), Follow).GetSafeNormal();
 			bStarted = true;
@@ -171,6 +193,25 @@ namespace
 				Turn(TEXT("head"), FVector::YAxisVector, HeadTilt);
 				FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(MoveTemp(Posture), Output.Pose);
 			}
+			if (HitClip && HitWeight > 0.01f)
+			{
+				const int32 WaistSkeletonIndex = Bones.GetReferenceSkeleton().FindBoneIndex(TEXT("spine_01"));
+				const FCompactPoseBoneIndex Waist = WaistSkeletonIndex == INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(WaistSkeletonIndex));
+				if (Waist.GetInt() != INDEX_NONE)
+				{
+					FCompactPose FlinchPose;
+					FlinchPose.SetBoneContainer(&Bones);
+					FBlendedCurve FlinchCurve;
+					FlinchCurve.InitFrom(Output.Curve);
+					UE::Anim::FStackAttributeContainer FlinchAttributes;
+					FAnimationPoseData FlinchData(FlinchPose, FlinchCurve, FlinchAttributes);
+					HitClip->GetAnimationPose(FlinchData, FAnimExtractContext(static_cast<double>(FMath::Min(HitTime, HitClip->GetPlayLength())), false));
+					for (const FCompactPoseBoneIndex BoneIndex : Output.Pose.ForEachBoneIndex())
+					{
+						if (BoneIndex == Waist || Bones.BoneIsChildOf(BoneIndex, Waist)) Output.Pose[BoneIndex].Blend(Output.Pose[BoneIndex], FlinchPose[BoneIndex], HitWeight);
+					}
+				}
+			}
 			if (AttackClip && AttackWeight > 0.01f)
 			{
 				const int32 ChestSkeletonIndex = Bones.GetReferenceSkeleton().FindBoneIndex(TEXT("spine_02"));
@@ -198,7 +239,7 @@ namespace
 			};
 			const FCompactPoseBoneIndex Chains[2][3] = { { Find(TEXT("upperarm_l")), Find(TEXT("lowerarm_l")), Find(TEXT("hand_l")) }, { Find(TEXT("upperarm_r")), Find(TEXT("lowerarm_r")), Find(TEXT("hand_r")) } };
 			for (const FCompactPoseBoneIndex (&Chain)[3] : Chains) for (const FCompactPoseBoneIndex Bone : Chain) if (Bone.GetInt() == INDEX_NONE) return bResult;
-			const float ReachWeight = 1.0f - AttackWeight;
+			const float ReachWeight = (1.0f - AttackWeight) * (1.0f - HitWeight);
 			FCSPose<FCompactPose> Pose;
 			Pose.InitPose(Output.Pose);
 			for (int32 Arm = 0; Arm < 2 && ReachWeight > 0.01f; ++Arm)
@@ -256,6 +297,9 @@ UArenaDuelZombieAnimInstance::UArenaDuelZombieAnimInstance()
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> Slam(TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Attack/MM_ChargedAttack"));
 	Idle = IdleAsset.Object; Walk = WalkAsset.Object; Run = RunAsset.Object;
 	AttackClips[0] = SwingA.Object; AttackClips[1] = SwingB.Object; AttackClips[2] = Slam.Object;
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> HitLight(TEXT("/Game/Characters/Mannequins/Anims/Rifle/HitReact/MM_HitReact_Front_Lgt_01"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> HitHeavy(TEXT("/Game/Characters/Mannequins/Anims/Rifle/HitReact/MM_HitReact_Front_Hvy_01"));
+	HitClips[0] = HitLight.Object; HitClips[1] = HitHeavy.Object;
 	SetRootMotionMode(ERootMotionMode::IgnoreRootMotion);
 }
 
@@ -621,6 +665,8 @@ void AArenaDuelZombie::MulticastHitReact_Implementation(FVector_NetQuantize Loca
 	const FVector Local = GetActorRotation().UnrotateVector(FVector(Direction));
 	HitLeanYaw = FMath::RadiansToDegrees(FMath::Atan2(Local.Y, Local.X));
 	const float Knock = bHead ? 20.0f : bHeavy ? 16.0f : 9.0f;
+	HitShownTime = GetWorld()->GetTimeSeconds();
+	bHitShownHeavy = bHead || bHeavy;
 	HitLean = FMath::Max(HitLean, Knock * (ZombieType == EArenaDuelZombieType::Boss ? 0.2f : ZombieType == EArenaDuelZombieType::MiniBoss ? 0.4f : 1.0f));
 	AArenaDuelHitBurst::Spawn(GetWorld(), FVector(Location), FVector(Direction), bHead || bHeavy);
 	if (const float Now = GetWorld()->GetTimeSeconds(); Now >= NextHitSoundTime)
