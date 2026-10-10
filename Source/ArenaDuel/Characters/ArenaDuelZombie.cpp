@@ -4,6 +4,8 @@
 #include "../Weapons/ArenaDuelWeaponComponent.h"
 #include "AIController.h"
 #include "Animation/AnimSequence.h"
+#include "Animation/AnimSingleNodeInstanceProxy.h"
+#include "BonePose.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
@@ -58,6 +60,107 @@ namespace
 		}
 		return Attenuation;
 	}
+}
+
+namespace
+{
+	/**
+	 * Replaces the arms of the rifle clip. Mesh space: X is the character's left, Y forward, Z up.
+	 * At rest both arms reach forward, one a little lower than the other, and sway. A swing raises
+	 * the striking arm while the hit winds up and brings it down as it lands.
+	 */
+	struct FArenaDuelZombiePoseProxy : FAnimSingleNodeInstanceProxy
+	{
+		using FAnimSingleNodeInstanceProxy::FAnimSingleNodeInstanceProxy;
+		bool bActive = false;
+		bool bStarted = false;
+		float Seconds = 0.0f;
+		// Left upper arm, left forearm, right upper arm, right forearm: the direction each one points.
+		FVector Directions[4] = { FVector::ForwardVector, FVector::ForwardVector, FVector::ForwardVector, FVector::ForwardVector };
+
+		virtual void PreUpdate(UAnimInstance* Instance, float DeltaSeconds) override
+		{
+			FAnimSingleNodeInstanceProxy::PreUpdate(Instance, DeltaSeconds);
+			const AArenaDuelZombie* Zombie = Cast<AArenaDuelZombie>(Instance->GetOwningActor());
+			bActive = Zombie && !Zombie->IsDead();
+			if (!bActive) return;
+			const float Step = FMath::Clamp(DeltaSeconds, 0.0f, 0.1f);
+			Seconds += Step;
+			// Every zombie sways on its own beat.
+			const float Sway = 0.09f * FMath::Sin(Seconds * 1.7f + static_cast<float>(Zombie->GetUniqueID() % 97));
+			FVector Targets[4] = { FVector(0.30f, 0.80f, -0.42f + Sway), FVector(0.05f, 0.95f, 0.08f + Sway), FVector(-0.30f, 0.76f, -0.55f - Sway), FVector(-0.05f, 0.93f, -0.10f - Sway) };
+			const float Phase = Zombie->GetAttackPhase();
+			if (Phase >= 0.0f)
+			{
+				const bool bBoth = Zombie->IsTwoArmedAttack();
+				for (int32 Arm = bBoth ? 0 : 1; Arm < 2; ++Arm)
+				{
+					const float Side = Arm == 0 ? 1.0f : -1.0f;
+					const FVector RaisedUpper(Side * 0.35f, 0.15f, 0.90f), RaisedFore(Side * 0.10f, -0.35f, 0.90f);
+					const FVector DownUpper(Side * 0.10f, 0.85f, -0.45f), DownFore(0.0f, 0.75f, -0.65f);
+					const float Raise = FMath::InterpEaseOut(0.0f, 1.0f, FMath::Clamp(Phase / 0.7f, 0.0f, 1.0f), 2.0f);
+					const float Strike = FMath::Clamp((Phase - 0.7f) / 0.3f, 0.0f, 1.0f);
+					Targets[Arm * 2] = Phase < 0.7f ? FMath::Lerp(Targets[Arm * 2], RaisedUpper, Raise) : FMath::Lerp(RaisedUpper, DownUpper, Strike);
+					Targets[Arm * 2 + 1] = Phase < 0.7f ? FMath::Lerp(Targets[Arm * 2 + 1], RaisedFore, Raise) : FMath::Lerp(RaisedFore, DownFore, Strike);
+				}
+			}
+			const float Follow = bStarted ? 1.0f - FMath::Exp(-(Phase >= 0.0f ? 26.0f : 9.0f) * Step) : 1.0f;
+			for (int32 Index = 0; Index < 4; ++Index) Directions[Index] = FMath::Lerp(Directions[Index], Targets[Index].GetSafeNormal(), Follow).GetSafeNormal();
+			bStarted = true;
+		}
+
+		virtual bool Evaluate(FPoseContext& Output) override
+		{
+			const bool bResult = FAnimSingleNodeInstanceProxy::Evaluate(Output);
+			if (!bActive || !bStarted) return bResult;
+			const FBoneContainer& Bones = Output.Pose.GetBoneContainer();
+			const auto Find = [&Bones](const TCHAR* Name)
+			{
+				const int32 SkeletonIndex = Bones.GetReferenceSkeleton().FindBoneIndex(Name);
+				return SkeletonIndex == INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(SkeletonIndex));
+			};
+			const FCompactPoseBoneIndex Chains[2][3] = { { Find(TEXT("upperarm_l")), Find(TEXT("lowerarm_l")), Find(TEXT("hand_l")) }, { Find(TEXT("upperarm_r")), Find(TEXT("lowerarm_r")), Find(TEXT("hand_r")) } };
+			for (const FCompactPoseBoneIndex (&Chain)[3] : Chains) for (const FCompactPoseBoneIndex Bone : Chain) if (Bone.GetInt() == INDEX_NONE) return bResult;
+			FCSPose<FCompactPose> Pose;
+			Pose.InitPose(Output.Pose);
+			for (int32 Arm = 0; Arm < 2; ++Arm)
+			{
+				FTransform Upper = Pose.GetComponentSpaceTransform(Chains[Arm][0]);
+				FTransform Lower = Pose.GetComponentSpaceTransform(Chains[Arm][1]);
+				FTransform Hand = Pose.GetComponentSpaceTransform(Chains[Arm][2]);
+				const FVector UpperBone = Lower.GetLocation() - Upper.GetLocation(), ForeBone = Hand.GetLocation() - Lower.GetLocation();
+				const FVector UpperDirection = Directions[Arm * 2], ForeDirection = Directions[Arm * 2 + 1];
+				if (UpperBone.IsNearlyZero() || ForeBone.IsNearlyZero() || UpperDirection.IsNearlyZero() || ForeDirection.IsNearlyZero()) continue;
+				// Each bone is turned the short way onto its direction; the lengths stay as they are.
+				const FQuat UpperTurn = FQuat::FindBetweenNormals(UpperBone.GetSafeNormal(), UpperDirection);
+				const FQuat ForeTurn = FQuat::FindBetweenNormals(ForeBone.GetSafeNormal(), ForeDirection);
+				Upper.SetRotation(UpperTurn * Upper.GetRotation());
+				Lower.SetRotation(ForeTurn * Lower.GetRotation());
+				Lower.SetLocation(Upper.GetLocation() + UpperDirection * UpperBone.Size());
+				Hand.SetRotation(ForeTurn * Hand.GetRotation());
+				Hand.SetLocation(Lower.GetLocation() + ForeDirection * ForeBone.Size());
+				if (Upper.ContainsNaN() || Lower.ContainsNaN() || Hand.ContainsNaN()) continue;
+				Pose.SetComponentSpaceTransform(Chains[Arm][0], Upper);
+				Pose.SetComponentSpaceTransform(Chains[Arm][1], Lower);
+				Pose.SetComponentSpaceTransform(Chains[Arm][2], Hand);
+			}
+			FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(MoveTemp(Pose), Output.Pose);
+			return bResult;
+		}
+	};
+}
+
+FAnimInstanceProxy* UArenaDuelZombieAnimInstance::CreateAnimInstanceProxy()
+{
+	return new FArenaDuelZombiePoseProxy(this);
+}
+
+float AArenaDuelZombie::GetAttackPhase() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || AttackAnimEnd <= AttackAnimStart) return -1.0f;
+	const float Now = World->GetTimeSeconds();
+	return Now < AttackAnimEnd ? (Now - AttackAnimStart) / (AttackAnimEnd - AttackAnimStart) : -1.0f;
 }
 
 UArenaDuelZombieAnimInstance::UArenaDuelZombieAnimInstance()
@@ -401,6 +504,7 @@ void AArenaDuelZombie::MulticastTelegraph_Implementation(float Seconds, bool bSl
 	WarningLightOffTime = Now + Seconds;
 	AttackAnimStart = Now;
 	AttackAnimEnd = Now + FMath::Max(Seconds, 0.05f);
+	bAttackBothArms = bSlam;
 	PlayZombieSound(ZombieAttackSound, bSlam ? 1.0f : 0.7f, FMath::FRandRange(0.9f, 1.1f));
 }
 

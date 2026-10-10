@@ -1,5 +1,6 @@
 #include "ArenaDuelZombieGameMode.h"
 #include "ArenaDuelZombieGameState.h"
+#include "ArenaDuelAmmoPickup.h"
 #include "../Characters/ArenaDuelCharacter.h"
 #include "../Characters/ArenaDuelZombie.h"
 #include "../Player/ArenaDuelPlayerState.h"
@@ -220,6 +221,8 @@ void AArenaDuelZombieGameMode::BeginRun()
 	GetWorldTimerManager().ClearTimer(WaveTimer);
 	GetWorldTimerManager().ClearTimer(SpawnTimer);
 	for (TActorIterator<AArenaDuelZombie> It(GetWorld()); It; ++It) It->Destroy();
+	for (TActorIterator<AArenaDuelAmmoPickup> It(GetWorld()); It; ++It) It->Destroy();
+	NextAmmoPickupTime = GetWorld()->GetTimeSeconds() + AmmoPickupInterval * 0.6f;
 	SpawnQueue.Reset();
 	NextSwingAllowed.Reset();
 	CurrentWave = 0;
@@ -467,6 +470,7 @@ void AArenaDuelZombieGameMode::WatchTick()
 			if (!It->IsDead() && It->GetHealth() < It->GetMaxHealth()) It->ApplyServerHeal(IntermissionRegenPerSecond * 0.5f);
 		}
 	}
+	SpawnAmmoPickupIfDue();
 	if (bDevAutoPlay) DevAutoPlayTick();
 	RefreshGameState();
 	FinishWaveIfDone();
@@ -540,6 +544,47 @@ void AArenaDuelZombieGameMode::DevKillAllZombies()
 	for (TActorIterator<AArenaDuelZombie> It(GetWorld()); It; ++It) It->KillSilently();
 	// Fast-forwarding also empties the queue down to what the alive limit lets through per tick, so the
 	// queue itself is left alone: the wave still has to spawn every enemy before it can end.
+}
+
+void AArenaDuelZombieGameMode::SpawnAmmoPickupIfDue()
+{
+	UWorld* World = GetWorld();
+	if (CurrentWave < 1 || MaxAmmoPickups <= 0 || World->GetTimeSeconds() < NextAmmoPickupTime) return;
+	int32 Lying = 0;
+	for (TActorIterator<AArenaDuelAmmoPickup> It(World); It; ++It) ++Lying;
+	UNavigationSystemV1* Navigation = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World);
+	if (Lying >= MaxAmmoPickups || !Navigation) return;
+	// Anywhere a player can walk inside the perimeter, but not at a player's feet: a box is worth a detour.
+	FVector Centre = FVector::ZeroVector;
+	int32 Starts = 0;
+	for (TActorIterator<APlayerStart> It(World); It; ++It) { Centre += It->GetActorLocation(); ++Starts; }
+	if (Starts > 0) Centre /= Starts;
+	for (int32 Attempt = 0; Attempt < 8; ++Attempt)
+	{
+		FNavLocation Point;
+		if (!Navigation->GetRandomReachablePointInRadius(Centre, 3000.0f, Point)) continue;
+		bool bTooClose = false;
+		for (TActorIterator<AArenaDuelCharacter> It(World); It; ++It) if (!It->IsDead() && It->GetController() && FVector::Dist2D(It->GetActorLocation(), Point.Location) < 600.0f) bTooClose = true;
+		for (TActorIterator<AArenaDuelAmmoPickup> It(World); It; ++It) if (FVector::Dist2D(It->GetActorLocation(), Point.Location) < 800.0f) bTooClose = true;
+		if (bTooClose) continue;
+		if (AArenaDuelAmmoPickup* Box = World->SpawnActor<AArenaDuelAmmoPickup>(AArenaDuelAmmoPickup::StaticClass(), Point.Location + FVector(0.0f, 0.0f, 40.0f), FRotator::ZeroRotator))
+		{
+			Box->SetAmmoShare(AmmoPickupShare);
+			Box->SetLifeSpan(AmmoPickupLifeSeconds);
+			NextAmmoPickupTime = World->GetTimeSeconds() + AmmoPickupInterval * FMath::FRandRange(0.75f, 1.25f);
+			UE_LOG(LogArenaDuelSurvival, Log, TEXT("Survival ammo box at %s"), *Point.Location.ToCompactString());
+		}
+		return;
+	}
+}
+
+void AArenaDuelZombieGameMode::DevFinishWave()
+{
+	if (!bWaveActive || bRunOver) return;
+	SpawnQueue.Reset();
+	DevKillAllZombies();
+	RefreshGameState();
+	FinishWaveIfDone();
 }
 
 void AArenaDuelZombieGameMode::DevAutoPlayTick()

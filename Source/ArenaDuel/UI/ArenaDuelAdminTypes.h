@@ -27,6 +27,11 @@ enum class EArenaDuelAdminCommand : uint8
 	SetArchetypeShadow,
 	SetArchetypeWarden,
 	SetArchetypeRift,
+	SurvivalKillAll,
+	SurvivalFinishWave,
+	SurvivalAddPoints,
+	SurvivalToggleHarmless,
+	SurvivalRestart,
 	ToggleDebugOverlay,
 	ToggleHitZones,
 	SelectPlayer1,
@@ -36,5 +41,6 @@ enum class EArenaDuelAdminCommand : uint8
 	SelectWeaponsPage,
 	SelectRoundPage,
 	SelectMovementPage,
-	SelectDebugPage
+	SelectDebugPage,
+	SelectSurvivalPage
 };

@@ -149,6 +149,15 @@ void AArenaDuelCharacter::BeginPlay()
 	if (HasAuthority()) bAlwaysRelevant = true;
 }
 
+FVector AArenaDuelCharacter::GetPawnViewLocation() const
+{
+	// The camera sits at a fixed height above the capsule centre, standing or crouched. The engine's
+	// default switches to the crouched eye height instead, 32 cm below this camera, so crouched shots
+	// left from under the crosshair. A slide lowers the camera a little further.
+	const UArenaDuelCharacterMovementComponent* Movement = GetArenaDuelMovementComponent();
+	return GetActorLocation() + FVector(0.0f, 0.0f, CameraBaseRelativeLocation.Z - (Movement && Movement->IsSliding() ? SlideCameraExtraDrop : 0.0f));
+}
+
 void AArenaDuelCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
 	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);

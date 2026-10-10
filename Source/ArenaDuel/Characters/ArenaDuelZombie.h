@@ -13,7 +13,10 @@ class UInstancedStaticMeshComponent;
 class UPointLightComponent;
 enum class EArenaDuelShotResult : uint8;
 
-/** Locomotion for a zombie body: idle, walk or run by speed. Cosmetic only. */
+/**
+ * Locomotion for a zombie body: idle, walk or run by speed, with the arms taken off the clip. The clips
+ * are rifle clips; a zombie holds nothing, so its arms reach forward and it strikes with them. Cosmetic only.
+ */
 UCLASS(Transient)
 class ARENADUEL_API UArenaDuelZombieAnimInstance : public UAnimSingleNodeInstance
 {
@@ -21,6 +24,8 @@ class ARENADUEL_API UArenaDuelZombieAnimInstance : public UAnimSingleNodeInstanc
 public:
 	UArenaDuelZombieAnimInstance();
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
+protected:
+	virtual FAnimInstanceProxy* CreateAnimInstanceProxy() override;
 private:
 	UPROPERTY() TObjectPtr<UAnimSequence> Idle;
 	UPROPERTY() TObjectPtr<UAnimSequence> Walk;
@@ -88,6 +93,10 @@ public:
 	void ResetProgress() { SecondsWithoutProgress = 0.0f; BestTargetDistance = TNumericLimits<float>::Max(); }
 	/** True while it steers straight at the player because no path was found. */
 	bool IsDirectChasing() const { return bDirectChase; }
+	/** Progress of the swing being shown, 0 to 1, or below zero when there is none. Cosmetic. */
+	float GetAttackPhase() const;
+	/** True when the swing being shown uses both arms: the slam, and everything a boss does. */
+	bool IsTwoArmedAttack() const { return bAttackBothArms || IsBossType(); }
 	/** How often this zombie had to free itself from standing still. */
 	int32 GetUnstickCount() const { return UnstickCount; }
 	/** How long a hit slows a zombie down, and to which share of its speed. Pure, for tests. */
@@ -155,6 +164,7 @@ protected:
 	float AttackAnimStart = 0.0f;
 	float AttackAnimEnd = 0.0f;
 	float AttackLean = 0.0f;
+	bool bAttackBothArms = false;
 	float HitLean = 0.0f;
 	float HitLeanYaw = 0.0f;
 	bool bPoseDirty = false;

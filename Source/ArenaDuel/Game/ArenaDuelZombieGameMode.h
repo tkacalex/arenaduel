@@ -60,6 +60,9 @@ public:
 	void DevSetTimeScale(float Scale) { DevTimeScale = FMath::Clamp(Scale, 0.02f, 1.0f); }
 	/** Development: enemy damage for zombies spawned from now on. 0 lets a run be watched without dying. */
 	void DevSetZombieDamageScale(float Scale) { ZombieDamageScale = FMath::Max(Scale, 0.0f); }
+	float GetZombieDamageScale() const { return ZombieDamageScale; }
+	/** Development: ends the running wave at once: nothing more spawns and everything alive dies. */
+	void DevFinishWave();
 	/** Development: zombies that reach a player are killed and credited, so whole waves play themselves and prove that enemies arrive. */
 	void DevSetAutoPlay(bool bEnabled) { bDevAutoPlay = bEnabled; }
 	/** Development: one line about the run to the log: alive, pathing, steering straight, freed, moved, frame time. */
@@ -92,6 +95,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Survival|Balance", meta = (ClampMin = "0")) float IntermissionRegenPerSecond = 6.0f;
 	/** Share of every weapon's reserve that a cleared wave gives back, so a run cannot end for lack of ammunition. */
 	UPROPERTY(EditDefaultsOnly, Category = "Survival|Balance", meta = (ClampMin = "0", ClampMax = "1")) float WaveClearAmmoShare = 0.35f;
+	/** Seconds between two ammunition boxes appearing somewhere on the floor; the actual gap varies by a quarter. */
+	UPROPERTY(EditDefaultsOnly, Category = "Survival|Pickups", meta = (ClampMin = "1")) float AmmoPickupInterval = 22.0f;
+	/** Boxes lying around at the same time. */
+	UPROPERTY(EditDefaultsOnly, Category = "Survival|Pickups", meta = (ClampMin = "0")) int32 MaxAmmoPickups = 3;
+	/** A box that nobody takes disappears after this long. */
+	UPROPERTY(EditDefaultsOnly, Category = "Survival|Pickups", meta = (ClampMin = "1")) float AmmoPickupLifeSeconds = 60.0f;
+	/** Share of every weapon's reserve one box gives. */
+	UPROPERTY(EditDefaultsOnly, Category = "Survival|Pickups", meta = (ClampMin = "0", ClampMax = "1")) float AmmoPickupShare = 0.5f;
 	/** With no spawn for this long although the wave has room, the distance rule is relaxed so a wave cannot stall. */
 	UPROPERTY(EditDefaultsOnly, Category = "Survival|Spawning", meta = (ClampMin = "0.5")) float SpawnStallSeconds = 4.0f;
 	UPROPERTY(EditDefaultsOnly, Category = "Survival|Rewards", meta = (ClampMin = "0")) int32 HeadshotBonusPoints = 50;
@@ -113,6 +124,7 @@ protected:
 	bool PickSpawnLocation(FVector& OutLocation, FRotator& OutRotation, bool bRelaxed = false, bool bUnseenOnly = false);
 	bool IsSeenByAnyPlayer(const FVector& Location) const;
 	void DevAutoPlayTick();
+	void SpawnAmmoPickupIfDue();
 	void RefreshGameState();
 	AArenaDuelZombieGameState* GetSurvivalState() const;
 	float Scaled(float Seconds) const { return FMath::Max(0.02f, Seconds * DevTimeScale); }
@@ -127,6 +139,7 @@ protected:
 	bool bDevAutoPlay = false;
 	TMap<TWeakObjectPtr<const AActor>, float> NextSwingAllowed;
 	float LastSpawnWorldTime = 0.0f;
+	float NextAmmoPickupTime = 0.0f;
 	float WaveStartWorldTime = 0.0f;
 	int32 StatRelocated = 0;
 	int32 StatFellOut = 0;

@@ -73,6 +73,8 @@ public:
 	void PlayRiftCameraImpulse();
 	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult) override;
 	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	/** Where the camera settles, on every machine. Shots, throws and sight checks start here. */
+	virtual FVector GetPawnViewLocation() const override;
 	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	float GetSlideCameraBlend() const { return SlideCameraBlend; }
 

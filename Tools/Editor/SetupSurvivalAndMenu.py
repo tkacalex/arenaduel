@@ -133,6 +133,7 @@ def build_zombie_materials():
             material.set_editor_property('used_with_skeletal_mesh', True)
             unreal.MaterialEditingLibrary.recompile_material(material)
             LIB.save_loaded_asset(material)
+    make_material('M_SurvivalAmmo', (0.45, 0.26, 0.03, 1), 0.3, 0.45, (0.55, 0.28, 0.02, 1))
     # The droplets of a hit are instances of one sphere.
     blood = make_material('M_SurvivalBlood', (0.20, 0.004, 0.004, 1), 0.0, 0.25, (0.03, 0.0, 0.0, 1))
     if not blood.get_editor_property('used_with_instanced_static_meshes'):
@@ -370,6 +371,15 @@ def build_arena(ambience_sound):
             cube('Pillar', x - 60, x + 60, y - 60, y + 60, 0, 320, metal)
     cube('WestBlock', -2150, -1950, -1150, -1050, 0, 210, concrete)
     cube('WestBlock', -2750, -2550, 450, 550, 0, 210, concrete)
+
+    # Two heal pads, as in the duel map: small green plates in the open, 5 health a second while standing on one.
+    green = make_material('M_DistrictHealGreen', (0.02, 0.45, 0.10, 1), 0.0, 0.5, (0.03, 0.85, 0.16, 1))
+    pad_class = unreal.load_class(None, '/Script/ArenaDuel.ArenaDuelHealPad')
+    for index, (x, y) in enumerate(((-1250, -1250), (1250, 1150))):
+        pad = unreal.EditorLevelLibrary.spawn_actor_from_class(pad_class, unreal.Vector(x, y, 2), unreal.Rotator(roll=0.0, pitch=0.0, yaw=0.0))
+        pad.set_actor_label('%sHealPad_%d' % (PREFIX, index))
+        pad.get_component_by_class(unreal.StaticMeshComponent).set_material(0, green)
+        light(x, y, 180, 40.0, 420.0, 60, 255, 90)
 
     # The game mode looks for these two tags. The second start is there for a later co-op run.
     for x, name in ((-160, 'P1'), (160, 'P2')):

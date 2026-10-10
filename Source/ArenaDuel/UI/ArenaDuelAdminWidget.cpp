@@ -208,8 +208,8 @@ void UArenaDuelAdminWidget::BuildWidgetTree()
 	UVerticalBox* Sidebar = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	SidebarBorder->SetContent(Sidebar);
 	Sidebar->AddChildToVerticalBox(MakeText(WidgetTree, FText::FromString(TEXT("CONTROL MODULES")), 11.0f, MutedText))->SetPadding(FMargin(10, 2, 8, 14));
-	const FText NavLabels[] = { FText::FromString(TEXT("PLAYER")), FText::FromString(TEXT("WEAPONS")), FText::FromString(TEXT("ROUND")), FText::FromString(TEXT("MOVEMENT")), FText::FromString(TEXT("DEBUG / NET")) };
-	const EArenaDuelAdminCommand NavCommands[] = { EArenaDuelAdminCommand::SelectPlayerPage, EArenaDuelAdminCommand::SelectWeaponsPage, EArenaDuelAdminCommand::SelectRoundPage, EArenaDuelAdminCommand::SelectMovementPage, EArenaDuelAdminCommand::SelectDebugPage };
+	const FText NavLabels[] = { FText::FromString(TEXT("PLAYER")), FText::FromString(TEXT("WEAPONS")), FText::FromString(TEXT("ROUND")), FText::FromString(TEXT("MOVEMENT")), FText::FromString(TEXT("DEBUG / NET")), FText::FromString(TEXT("SURVIVAL")) };
+	const EArenaDuelAdminCommand NavCommands[] = { EArenaDuelAdminCommand::SelectPlayerPage, EArenaDuelAdminCommand::SelectWeaponsPage, EArenaDuelAdminCommand::SelectRoundPage, EArenaDuelAdminCommand::SelectMovementPage, EArenaDuelAdminCommand::SelectDebugPage, EArenaDuelAdminCommand::SelectSurvivalPage };
 	for (int32 Index = 0; Index < UE_ARRAY_COUNT(NavLabels); ++Index)
 	{
 		UHorizontalBox* NavRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
@@ -372,6 +372,19 @@ void UArenaDuelAdminWidget::BuildWidgetTree()
 	NetworkStatusValues.Add(AddStatusCard(NetRow2, FText::FromString(TEXT("LAST WINNER")), SecondaryText));
 	AddHelperText(NetworkCard, FText::FromString(TEXT("Hit-zone display is local debug drawing only. Collision remains unchanged.")));
 
+	UVerticalBox* SurvivalPage = CreatePage(TEXT("ZOMBIE SURVIVAL"), TEXT("Control a survival run. These do nothing in a duel."));
+	UVerticalBox* WaveCard = AddCard(SurvivalPage, FText::FromString(TEXT("WAVE")), FText::FromString(TEXT("Finish Wave empties the queue and kills what is alive; the next wave follows after the break.")));
+	UHorizontalBox* WaveRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	WaveCard->AddChildToVerticalBox(WaveRow)->SetPadding(FMargin(0, 8, 0, 0));
+	AddButton(WaveRow, FText::FromString(TEXT("KILL ALL ZOMBIES")), EArenaDuelAdminCommand::SurvivalKillAll, 0.0f, ElevatedColor, 220.0f);
+	AddButton(WaveRow, FText::FromString(TEXT("FINISH WAVE")), EArenaDuelAdminCommand::SurvivalFinishWave, 0.0f, Active, 220.0f);
+	AddButton(WaveRow, FText::FromString(TEXT("RESTART RUN")), EArenaDuelAdminCommand::SurvivalRestart, 0.0f, Danger, 220.0f);
+	UVerticalBox* SurvivalPlayerCard = AddCard(SurvivalPage, FText::FromString(TEXT("PLAYER AND ENEMIES")), FText::FromString(TEXT("Points go to the selected player. Harmless applies to zombies spawned from then on.")));
+	UHorizontalBox* SurvivalPlayerRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	SurvivalPlayerCard->AddChildToVerticalBox(SurvivalPlayerRow)->SetPadding(FMargin(0, 8, 0, 0));
+	AddButton(SurvivalPlayerRow, FText::FromString(TEXT("+5000 POINTS")), EArenaDuelAdminCommand::SurvivalAddPoints, 0.0f, ElevatedColor, 220.0f);
+	AddButton(SurvivalPlayerRow, FText::FromString(TEXT("TOGGLE ZOMBIE DAMAGE")), EArenaDuelAdminCommand::SurvivalToggleHarmless, 0.0f, ElevatedColor, 260.0f);
+
 	UHorizontalBox* Footer = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 	Shell->AddChildToVerticalBox(Footer)->SetPadding(FMargin(8, 8, 8, 0));
 	StatusReadout = MakeText(WidgetTree, FText::FromString(TEXT("SERVER AUTHORIZED")), 11.0f, Cyan);
@@ -505,6 +518,7 @@ void UArenaDuelAdminWidget::HandleAction(EArenaDuelAdminCommand Command, float V
 	case EArenaDuelAdminCommand::SelectRoundPage: SelectPage(2); return;
 	case EArenaDuelAdminCommand::SelectMovementPage: SelectPage(3); return;
 	case EArenaDuelAdminCommand::SelectDebugPage: SelectPage(4); return;
+	case EArenaDuelAdminCommand::SelectSurvivalPage: SelectPage(5); return;
 	case EArenaDuelAdminCommand::CloseMenu:
 		if (AArenaDuelPlayerController* PC = Cast<AArenaDuelPlayerController>(GetOwningPlayer())) PC->CloseAdminMenu();
 		return;

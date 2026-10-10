@@ -51,7 +51,7 @@ bool FArenaDuelAdminWidgetConstructionTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Widget uses a fullscreen overlay root"), Cast<UOverlay>(Widget->GetRootWidget()) != nullptr);
 	TestTrue(TEXT("Player selector has both duel slots"), Widget->HasPlayerSelector());
 	TestTrue(TEXT("Player page contains Shadow and Warden archetype controls"), Widget->HasImplementedArchetypeSelector());
-	TestEqual(TEXT("All five useful admin sections are constructed"), Widget->GetAdminSectionCount(), 5);
+	TestEqual(TEXT("All six admin sections are constructed"), Widget->GetAdminSectionCount(), 6);
 	TestFalse(TEXT("Repeated initialization does not rebuild the admin tree"), Widget->Initialize());
 	return true;
 }

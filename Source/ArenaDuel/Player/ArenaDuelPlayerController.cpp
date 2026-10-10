@@ -23,6 +23,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Pawn.h"
 #include "InputCoreTypes.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "TimerManager.h"
 
 void AArenaDuelPlayerController::SetupInputComponent()
@@ -169,8 +171,11 @@ bool AArenaDuelPlayerController::CanUseDevelopmentAdmin() const
 #if UE_BUILD_SHIPPING
 	return false;
 #else
+	// The admin menu is a development tool, not part of the game: it exists in the editor and in a game
+	// started with -ArenaDuelAdmin. Anywhere else the key does nothing and nothing on screen mentions it.
+	static const bool bUnlocked = GIsEditor || FParse::Param(FCommandLine::Get(), TEXT("ArenaDuelAdmin"));
 	const ENetMode NetMode = GetNetMode();
-	return HasAuthority() && IsLocalController() && (NetMode == NM_Standalone || NetMode == NM_ListenServer);
+	return bUnlocked && HasAuthority() && IsLocalController() && (NetMode == NM_Standalone || NetMode == NM_ListenServer);
 #endif
 }
 
@@ -407,6 +412,21 @@ void AArenaDuelPlayerController::ExecuteAdminCommandAuthoritatively(EArenaDuelAd
 		break;
 	case EArenaDuelAdminCommand::SetArchetypeRift:
 		if (TargetState) TargetState->SetCharacterArchetypeForDevelopment(EArenaDuelCharacterArchetype::Rift);
+		break;
+	case EArenaDuelAdminCommand::SurvivalKillAll:
+		if (AArenaDuelZombieGameMode* Survival = Cast<AArenaDuelZombieGameMode>(GameMode)) Survival->DevKillAllZombies();
+		break;
+	case EArenaDuelAdminCommand::SurvivalFinishWave:
+		if (AArenaDuelZombieGameMode* Survival = Cast<AArenaDuelZombieGameMode>(GameMode)) Survival->DevFinishWave();
+		break;
+	case EArenaDuelAdminCommand::SurvivalAddPoints:
+		if (TargetState && Cast<AArenaDuelZombieGameMode>(GameMode)) TargetState->AddSurvivalPoints(5000);
+		break;
+	case EArenaDuelAdminCommand::SurvivalToggleHarmless:
+		if (AArenaDuelZombieGameMode* Survival = Cast<AArenaDuelZombieGameMode>(GameMode)) Survival->DevSetZombieDamageScale(Survival->GetZombieDamageScale() > 0.0f ? 0.0f : 1.0f);
+		break;
+	case EArenaDuelAdminCommand::SurvivalRestart:
+		if (AArenaDuelZombieGameMode* Survival = Cast<AArenaDuelZombieGameMode>(GameMode)) Survival->RestartSurvival();
 		break;
 	default: break;
 	}
