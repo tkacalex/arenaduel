@@ -22,7 +22,7 @@ To rebuild a variant in Blender: `ART_DIR = r"<repo>/Tools/Art"; VARIANT = "Norm
 | MiniBoss | Brute | heavy | `SKM_Zombie_Brute` |
 | Boss | Abomination | very heavy | `SKM_Zombie_Abomination` |
 
-Each is about 13,500 vertices with five material slots: skin (one material per variant, a base tone with darker blotches), shirt, trousers, shoes, and glowing eyes. `FArenaDuelZombieTypeConfig::MeshPath` names the body; with a body set, the old tint material is not applied. `VisualScale` still scales the actor, so the big types are scaled once, by the game, not in the mesh.
+Each is about 13,500 vertices with five material slots: skin, shirt, trousers, shoes, and glowing eyes. All but the eyes use one baked texture set, `T_Zombie_BaseColor`, `T_Zombie_Normal` and `T_Zombie_Roughness` (2048 px, made by `Tools/Art/bake_zombie_textures.py`): veined, blotched skin with sores, woven cloth with dirt and stains. The skin is baked pale; the alpha of the colour map marks it and each variant's material tints it there. The normal map is baked green up and flipped on import. `FArenaDuelZombieTypeConfig::MeshPath` names the body; with a body set, the old tint material is not applied. `VisualScale` still scales the actor, so the big types are scaled once, by the game, not in the mesh.
 
 Animation: the mannequin unarmed idle, walk and jog clips from the engine templates. The arms are taken off the clip and reach forward. A swing plays an unarmed attack clip on the upper body (two alternating one-handed clips, a charged one for slams and bosses), timed so that its impact falls on the hit the server deals; hips and legs keep walking. The attack timing, reach and damage on the server are unchanged, and no animation notify deals damage.
 
@@ -38,11 +38,13 @@ A fast-forwarded run went through waves 1 to 10 with these bodies and no errors 
 
 ### What is missing
 
-- **Textures**: none. Skin and cloth are flat colours with procedural blotches. No normal or roughness maps, no wounds, no cloth folds.
+- **Textures** are procedural patterns baked to maps, not painted or sculpted: the veins read as a net of cracks, there are no wounds in the geometry and no real cloth folds. The feet are bare, coloured dark.
 - **Variants** differ in build and skin tone only. The armoured zombie has no armour geometry, the bosses no distinguishing features beyond size.
 - **Clothes** are regions of the body pushed out a few millimetres, not separate garments; the collar and sleeve edges are ragged where the region ends.
 - **Animation**: the clips are those of an athletic human. There is no zombie gait, no hit reaction clip (the flinch is still a lean of the body), no death clip (ragdoll), no charge, slam or enrage animation. The impact time of the attack clips is an estimate (42 percent of the clip) and was not checked against the visible swing.
-- **Not checked**: hits and deaths on the new bodies with real shots, ragdolls, the hit zone alignment on the heavier builds, levels of detail (there are none), and frame time against the old bodies.
+- **Posture**: the anim instance stoops the spine, tilts the head differently per zombie and rocks the body with the walk; runners lean further forward. Seen only as stills.
+- **Hits**: the first import left the bodies without a physics asset, so no shot landed on them. The setup command now gives them the mannequin's, the zombie falls back to it at run time, and `ArenaDuel.Survival.EnemyTypes` checks that a spawned zombie has hit zones. With real shots afterwards: two kills, 200 points, a ragdoll on the floor (`docs/media/zombies_2026-10-10_textured_hit.png`).
+- **Not checked**: the hit zone alignment on the heavier builds, head shots specifically, levels of detail (there are none), and frame time against the old bodies.
 
 ## First person hands
 
