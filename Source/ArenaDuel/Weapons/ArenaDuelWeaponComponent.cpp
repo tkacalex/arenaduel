@@ -1021,6 +1021,14 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 	}
 }
 
+namespace
+{
+	// Stills of motion that is over in a fraction of a second, for tuning and for screenshots.
+	TAutoConsoleVariable<float> CVarPreviewReload(TEXT("ArenaDuel.Preview.Reload"), -1.0f, TEXT("0 to 1: hold the weapon's moving parts at this point of the reload; below 0: off"));
+	TAutoConsoleVariable<float> CVarPreviewBolt(TEXT("ArenaDuel.Preview.Bolt"), -1.0f, TEXT("0 to 1: hold the bolt this far back; below 0: off"));
+	TAutoConsoleVariable<float> CVarPreviewCarry(TEXT("ArenaDuel.Preview.Sprint"), -1.0f, TEXT("0 to 1: hold the sprint carry pose this far in; below 0: off"));
+	TAutoConsoleVariable<float> CVarPreviewRise(TEXT("ArenaDuel.Preview.Equip"), -1.0f, TEXT("1 to 0: hold the equip motion at this point, 1 is its start; below 0: off"));
+}
 void UArenaDuelWeaponComponent::RefreshWeaponParts(const FArenaDuelWeaponVisualDefinition& Visual, bool bFirearm, UMaterialInterface* Accent)
 {
 	// The parts are separate meshes next to the body, named after it: SM_<Name>_Bolt and SM_<Name>_Mag.
@@ -1056,7 +1064,7 @@ void UArenaDuelWeaponComponent::RefreshWeaponParts(const FArenaDuelWeaponVisualD
 bool UArenaDuelWeaponComponent::AreWeaponPartsBusy() const
 {
 	const UWorld* World = GetWorld();
-	return World && (bReloading || bPartsMoved || World->GetTimeSeconds() - PartShotWorldTime < 0.6f);
+	return World && (bReloading || bPartsMoved || World->GetTimeSeconds() - PartShotWorldTime < 0.6f || CVarPreviewReload.GetValueOnGameThread() >= 0.0f || CVarPreviewBolt.GetValueOnGameThread() >= 0.0f);
 }
 void UArenaDuelWeaponComponent::TickWeaponParts()
 {
@@ -1073,9 +1081,10 @@ void UArenaDuelWeaponComponent::TickWeaponParts()
 	FVector MagLocation = FVector::ZeroVector;
 	FRotator MagRotation = FRotator::ZeroRotator;
 	bool bMagInHand = true;
-	if (bReloading)
+	const float PreviewReload = CVarPreviewReload.GetValueOnGameThread();
+	if (bReloading || PreviewReload >= 0.0f)
 	{
-		const float T = FMath::Clamp((Now - PartReloadStartWorldTime) / FMath::Max(GetCurrentDefinition().ReloadDuration, 0.1f), 0.0f, 1.0f);
+		const float T = PreviewReload >= 0.0f ? FMath::Min(PreviewReload, 1.0f) : FMath::Clamp((Now - PartReloadStartWorldTime) / FMath::Max(GetCurrentDefinition().ReloadDuration, 0.1f), 0.0f, 1.0f);
 		const bool bHasMagazine = FirstPersonMagMesh && FirstPersonMagMesh->GetStaticMesh();
 		if (bHasMagazine)
 		{
@@ -1092,6 +1101,7 @@ void UArenaDuelWeaponComponent::TickWeaponParts()
 			if (T > 0.55f) Bolt = FMath::Abs(FMath::Sin(2.0f * PI * FMath::Clamp((T - 0.55f) / 0.4f, 0.0f, 1.0f)));
 		}
 	}
+	if (const float PreviewBolt = CVarPreviewBolt.GetValueOnGameThread(); PreviewBolt >= 0.0f) Bolt = FMath::Min(PreviewBolt, 1.0f);
 	const FVector BoltLocation(-Visual.BoltTravel * Bolt, 0.0f, 0.0f);
 	for (UStaticMeshComponent* Part : { FirstPersonBoltMesh.Get(), ThirdPersonBoltMesh.Get() }) if (Part) Part->SetRelativeLocation(BoltLocation);
 	for (UStaticMeshComponent* Part : { FirstPersonMagMesh.Get(), ThirdPersonMagMesh.Get() })
@@ -1247,9 +1257,10 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 	// Sprint: a firearm is carried across the body, muzzle to the left and up, and swings with the stride.
 	// Equip: the item comes up from below, muzzle first down and rolled, and settles. Both are poses of the
 	// viewmodel root; the arms follow because they are solved to the weapon.
-	const float Carry = SprintBlend * (GetActiveSlot() == EArenaDuelLoadoutSlot::Primary ? 1.0f : 0.35f);
+	const float PreviewCarry = CVarPreviewCarry.GetValueOnGameThread(), PreviewRise = CVarPreviewRise.GetValueOnGameThread();
+	const float Carry = (PreviewCarry >= 0.0f ? FMath::Min(PreviewCarry, 1.0f) : SprintBlend) * (GetActiveSlot() == EArenaDuelLoadoutSlot::Primary ? 1.0f : 0.35f);
 	const float Stride = FMath::Sin(BobPhase) * BobBlend * Carry;
-	const float Rise = EquipDrop * EquipDrop;
+	const float Rise = PreviewRise >= 0.0f ? FMath::Square(FMath::Min(PreviewRise, 1.0f)) : EquipDrop * EquipDrop;
 	const FRotator MotionRotation(SwayPitch - 1.5f * LocalWeaponKick + 9.0f * Carry - 30.0f * Rise,
 		SwayYaw + VisualYawKick - 30.0f * Carry + 3.0f * Stride + 8.0f * Rise,
 		-SwayYaw * 0.35f + FMath::Sin(BobPhase) * BobAmount * 0.3f - 14.0f * Carry + 2.5f * Stride + 20.0f * Rise);

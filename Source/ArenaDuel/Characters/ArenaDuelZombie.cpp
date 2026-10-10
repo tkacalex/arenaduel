@@ -72,6 +72,9 @@ namespace
 	 * At rest both arms reach forward, one a little lower than the other, and sway. A swing raises
 	 * the striking arm while the hit winds up and brings it down as it lands.
 	 */
+	// Stills of the zombies' own clips, for checking them in the game: every living zombie holds the chosen frame.
+	TAutoConsoleVariable<int32> CVarPreviewClip(TEXT("ArenaDuel.Zombie.PreviewClip"), 0, TEXT("0: off; 1 charge, 2 slam, 3 death backwards, 4 death forwards"));
+	TAutoConsoleVariable<float> CVarPreviewTime(TEXT("ArenaDuel.Zombie.PreviewTime"), 0.4f, TEXT("Where in the previewed clip, 0 to 1"));
 	struct FArenaDuelZombiePoseProxy : FAnimSingleNodeInstanceProxy
 	{
 		using FAnimSingleNodeInstanceProxy::FAnimSingleNodeInstanceProxy;
@@ -104,7 +107,8 @@ namespace
 		{
 			FAnimSingleNodeInstanceProxy::PreUpdate(Instance, DeltaSeconds);
 			const AArenaDuelZombie* Zombie = Cast<AArenaDuelZombie>(Instance->GetOwningActor());
-			bActive = Zombie && !Zombie->IsDead();
+			// A previewed clip is shown as authored, without the posture and the reaching arms on top.
+			bActive = Zombie && !Zombie->IsDead() && CVarPreviewClip.GetValueOnGameThread() == 0;
 			if (!bActive) return;
 			const float Step = FMath::Clamp(DeltaSeconds, 0.0f, 0.1f);
 			Seconds += Step;
@@ -329,6 +333,17 @@ void UArenaDuelZombieAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		return;
 	}
 	Super::NativeUpdateAnimation(DeltaSeconds);
+	if (const int32 Preview = CVarPreviewClip.GetValueOnGameThread(); Preview > 0)
+	{
+		UAnimSequence* Shown = Preview == 1 ? ChargeClip.Get() : Preview == 2 ? SlamClip.Get() : DeathClips[Preview == 4 ? 1 : 0].Get();
+		if (Shown)
+		{
+			if (GetCurrentAsset() != Shown) SetAnimationAsset(Shown, false);
+			SetPlaying(false);
+			SetPosition(FMath::Clamp(CVarPreviewTime.GetValueOnGameThread(), 0.0f, 1.0f) * Shown->GetPlayLength(), false);
+			return;
+		}
+	}
 	const float Speed = Zombie->GetVelocity().Size2D();
 	const bool bRush = Zombie->IsCharging() && ChargeClip && Speed > 15.0f;
 	UAnimSequence* Desired = bRush ? ChargeClip.Get() : Speed < 15.0f ? Idle.Get() : Speed < 380.0f ? Walk.Get() : Run.Get();
