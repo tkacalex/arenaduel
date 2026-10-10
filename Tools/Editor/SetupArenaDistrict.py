@@ -2,12 +2,14 @@
 
 The layout is mirrored across X = 0, so both players get the same geometry. Sizes follow the movement
 component: 80 cm cover can be vaulted and crouched behind, steps of at most 140 cm can be mantled,
-gaps of 350 cm are a sprint jump. Everything is built from engine cubes, like L_ArenaCore.
+gaps of 350 cm are a sprint jump. Walls, decks and pillars are engine cubes, like L_ArenaCore; the
+crates are the modelled crate from Tools/Editor/SetupProps.py, scaled to the size of the block they stand for.
 """
 import unreal
 
 MAP = '/Game/ArenaDuel/Maps/L_ArenaDistrict'
 ASSETS = '/Game/ArenaDuel/Characters/Common'
+CRATE = '/Game/ArenaDuel/Props/SM_Crate'
 LIB = unreal.EditorAssetLibrary
 PREFIX = 'District_'
 T = 40.0  # wall thickness
@@ -41,6 +43,22 @@ def make_material(name, color, metallic, roughness, emissive=None):
 def cube(label, x0, x1, y0, y1, z0, z1, material, yaw=0.0):
     """Axis aligned box given by its extents, optionally turned about its centre."""
     if x1 - x0 <= 0.5 or y1 - y0 <= 0.5 or z1 - z0 <= 0.5:
+        return
+    if material and material.get_name() == 'M_DistrictDarkCrate' and LIB.does_asset_exist(CRATE):
+        # Every crate-coloured block becomes the modelled crate, scaled to the block's exact size, so cover
+        # heights, gaps and collision stay what they were. A block about twice as tall as wide is two crates.
+        stack = max(1, int(round((z1 - z0) / max(x1 - x0, y1 - y0))))
+        height = (z1 - z0) / stack
+        for level in range(stack):
+            centre = unreal.Vector((x0 + x1) * 0.5, (y0 + y1) * 0.5, z0 + height * (level + 0.5))
+            actor = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.StaticMeshActor, centre, unreal.Rotator(roll=0.0, pitch=0.0, yaw=yaw))
+            actor.set_actor_label('%s%s_%03d' % (PREFIX, label, count['pieces']))
+            component = actor.static_mesh_component
+            component.set_static_mesh(unreal.load_asset(CRATE))
+            component.set_mobility(unreal.ComponentMobility.STATIC)
+            component.set_collision_profile_name('BlockAll')
+            actor.set_actor_scale3d(unreal.Vector((x1 - x0) / 140.0, (y1 - y0) / 140.0, height / 140.0))
+            count['pieces'] += 1
         return
     centre = unreal.Vector((x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5)
     actor = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.StaticMeshActor, centre, unreal.Rotator(roll=0.0, pitch=0.0, yaw=yaw))
