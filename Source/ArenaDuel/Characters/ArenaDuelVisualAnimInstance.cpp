@@ -1,4 +1,4 @@
-#include "ArenaDuelVisualAnimInstance.h"
+﻿#include "ArenaDuelVisualAnimInstance.h"
 #include "ArenaDuelCharacter.h"
 #include "../Weapons/ArenaDuelWeaponComponent.h"
 #include "Animation/AnimSequence.h"
@@ -274,7 +274,7 @@ namespace
 					if (SkeletonIndex == INDEX_NONE) return;
 					const FCompactPoseBoneIndex Index = FingerBones.MakeCompactPoseIndex(FMeshPoseBoneIndex(SkeletonIndex));
 					if (Index.GetInt() == INDEX_NONE) return;
-					Output.Pose[Index].SetRotation(Output.Pose[Index].GetRotation() * FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(-Degrees)));
+					Output.Pose[Index].SetRotation(Output.Pose[Index].GetRotation() * FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(Degrees)));
 				};
 				for (const TCHAR* Side : { TEXT("r"), TEXT("l") })
 				{
