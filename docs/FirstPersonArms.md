@@ -55,3 +55,7 @@ Still the placeholder described above: forearms and hands cut from the mannequin
 - **Why it fits**: the mesh shares the mannequin skeleton and bind pose, so the clips, the `HandGrip_R` socket and the existing arm placement work unchanged. `ArenaDuel.VisualAssetSetup.Arms` now assigns this mesh and only falls back to the old forearms when it is missing.
 - **Checked**: all four firearms at the hip and aiming, flashbang and knife, in a play session (`docs/media/fp_2026-10-10_hands.png`); fingers follow the clips, the knife hand closes, the free hand is open. Visual, loadout, hit zone and survival tests pass (13 of 13), the network smoke test among them.
 - **Not done**: no textures (plain materials with a soft rim), no grip pose per weapon, no first person animation set, the arm is still placed as one rigid piece, the cuff and knuckle patches have blocky edges, and the left wrist shows a kink when aiming. Nothing was checked in motion.
+
+### Textures on the hands
+
+The hands use a baked set as well: `T_FPHands_BaseColor`, `T_FPHands_Normal`, `T_FPHands_Roughness` (2048 px), made by `Tools/Art/bake_zombie_textures.py` with `TARGET = 'FPHands'` on `Tools/Art/fp_arms.blend`: woven cloth for the sleeve, grained leather for the glove and the trim. `SetupFirstPersonHands.py` imports them and builds the three materials from them; without the maps it falls back to plain colours. Seen in play only as dark gloves and a woven sleeve at a distance (`docs/media/fp_2026-10-10_hands_textured.png`); no close look at the detail was taken.

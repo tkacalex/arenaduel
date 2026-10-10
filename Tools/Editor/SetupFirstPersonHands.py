@@ -73,11 +73,61 @@ mesh = unreal.load_asset(DEST + '/' + NAME)
 if not mesh:
     raise RuntimeError('The hands were not imported')
 
-slots = {
-    'FP_Sleeve': material('M_FPSleeve', (0.030, 0.038, 0.034, 1), 0.88, 0.0, 0.02),
-    'FP_Glove': material('M_FPGlove', (0.010, 0.010, 0.012, 1), 0.58, 0.0, 0.015),
-    'FP_Trim': material('M_FPTrim', (0.045, 0.047, 0.052, 1), 0.36, 0.15, 0.03),
-}
+def texture(name, srgb, normal):
+    """Import Tools/Art/<name>.png. Blender bakes normals with green up, Unreal expects green down."""
+    path = os.path.join(os.path.dirname(os.path.normpath(source)), name + '.png')
+    if not os.path.isfile(path):
+        return None
+    load = unreal.AssetImportTask()
+    load.set_editor_property('filename', path)
+    load.set_editor_property('destination_path', DEST)
+    load.set_editor_property('destination_name', name)
+    load.set_editor_property('automated', True)
+    load.set_editor_property('save', True)
+    load.set_editor_property('replace_existing', True)
+    unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([load])
+    asset = unreal.load_asset(DEST + '/' + name)
+    if asset:
+        asset.set_editor_property('srgb', srgb)
+        if normal:
+            asset.set_editor_property('compression_settings', unreal.TextureCompressionSettings.TC_NORMALMAP)
+            asset.set_editor_property('flip_green_channel', True)
+        LIB.save_loaded_asset(asset)
+    return asset
+
+
+def textured(name, maps):
+    """Baked colour, normal and roughness (Tools/Art/bake_zombie_textures.py with TARGET = 'FPHands')."""
+    path = DEST + '/' + name
+    if LIB.does_asset_exist(path):
+        LIB.delete_asset(path)
+    mat = unreal.AssetToolsHelpers.get_asset_tools().create_asset(name, DEST, unreal.Material, unreal.MaterialFactoryNew())
+    color = EDIT.create_material_expression(mat, unreal.MaterialExpressionTextureSample, -900, 0)
+    color.set_editor_property('texture', maps[0])
+    EDIT.connect_material_property(color, 'RGB', unreal.MaterialProperty.MP_BASE_COLOR)
+    normal = EDIT.create_material_expression(mat, unreal.MaterialExpressionTextureSample, -900, 300)
+    normal.set_editor_property('texture', maps[1])
+    normal.set_editor_property('sampler_type', unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL)
+    EDIT.connect_material_property(normal, 'RGB', unreal.MaterialProperty.MP_NORMAL)
+    rough = EDIT.create_material_expression(mat, unreal.MaterialExpressionTextureSample, -900, 600)
+    rough.set_editor_property('texture', maps[2])
+    rough.set_editor_property('sampler_type', unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
+    EDIT.connect_material_property(rough, 'R', unreal.MaterialProperty.MP_ROUGHNESS)
+    mat.set_editor_property('used_with_skeletal_mesh', True)
+    EDIT.recompile_material(mat)
+    LIB.save_loaded_asset(mat)
+    return mat
+
+
+MAPS = [texture('T_FPHands_BaseColor', True, False), texture('T_FPHands_Normal', False, True), texture('T_FPHands_Roughness', False, False)]
+if all(MAPS):
+    slots = {'FP_Sleeve': textured('M_FPSleeve', MAPS), 'FP_Glove': textured('M_FPGlove', MAPS), 'FP_Trim': textured('M_FPTrim', MAPS)}
+else:
+    slots = {
+        'FP_Sleeve': material('M_FPSleeve', (0.030, 0.038, 0.034, 1), 0.88, 0.0, 0.02),
+        'FP_Glove': material('M_FPGlove', (0.010, 0.010, 0.012, 1), 0.58, 0.0, 0.015),
+        'FP_Trim': material('M_FPTrim', (0.045, 0.047, 0.052, 1), 0.36, 0.15, 0.03),
+    }
 materials = mesh.get_editor_property('materials')
 names = []
 # Array elements come out as copies: each changed entry has to be written back by index.

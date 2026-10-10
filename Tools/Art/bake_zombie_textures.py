@@ -86,12 +86,14 @@ def nodes_for(mat, kind):
         bump.inputs['Strength'].default_value = 0.2
         rough = ramp(noise(20.0).outputs['Fac'], [(0.3, (0.50, 0.50, 0.50, 1)), (0.7, (0.78, 0.78, 0.78, 1))])
     else:
-        base = {'shirt': (0.060, 0.066, 0.078, 1), 'trousers': (0.032, 0.038, 0.055, 1), 'shoes': (0.020, 0.018, 0.016, 1)}[kind]
+        base = {'shirt': (0.060, 0.066, 0.078, 1), 'trousers': (0.032, 0.038, 0.055, 1), 'shoes': (0.020, 0.018, 0.016, 1),
+                'sleeve': (0.040, 0.050, 0.044, 1), 'glove': (0.014, 0.014, 0.016, 1), 'trim': (0.050, 0.052, 0.058, 1)}[kind]
+        leather = kind in ('shoes', 'glove', 'trim')
         dirt = ramp(noise(5.0).outputs['Fac'], [(0.40, (0, 0, 0, 1)), (0.75, (1, 1, 1, 1))])
         dirty = mix(base, (0.080, 0.062, 0.045, 1), dirt.outputs['Color'], mode='MIX')
         stain = ramp(noise(2.4, 3.0).outputs['Fac'], [(0.62, (0, 0, 0, 1)), (0.70, (1, 1, 1, 1))])
-        color = mix(dirty, (0.11, 0.012, 0.010, 1), stain.outputs['Color']) if kind != 'shoes' else dirty
-        if kind == 'shoes':
+        color = mix(dirty, (0.11, 0.012, 0.010, 1), stain.outputs['Color']) if kind in ('shirt', 'trousers') else dirty
+        if leather:
             grain = noise(60.0, 3.0)
             tree.links.new(grain.outputs['Fac'], bump_height.inputs[0])
             bump.inputs['Strength'].default_value = 0.25
@@ -125,8 +127,12 @@ def nodes_for(mat, kind):
 
 
 def bake(art_dir):
-    body = next(o for o in bpy.data.objects if o.type == 'MESH' and o.name.startswith('Zombie_'))
-    kinds = {'Z_Skin': 'skin', 'Z_Shirt': 'shirt', 'Z_Trousers': 'trousers', 'Z_Shoes': 'shoes', 'Z_Eyes': 'shoes'}
+    # The same bake serves the first person hands: set TARGET = 'FPHands' before running.
+    hands = globals().get('TARGET') == 'FPHands'
+    body = next(o for o in bpy.data.objects if o.type == 'MESH' and o.name.startswith('FP_Arms' if hands else 'Zombie_'))
+    kinds = {'Z_Skin': 'skin', 'Z_Shirt': 'shirt', 'Z_Trousers': 'trousers', 'Z_Shoes': 'shoes', 'Z_Eyes': 'shoes', 'Z_Armour': 'shoes', 'Z_Bone': 'shoes',
+             'FP_Sleeve': 'sleeve', 'FP_Glove': 'glove', 'FP_Trim': 'trim'}
+    prefix = 'T_FPHands_' if hands else 'T_Zombie_'
     targets = [nodes_for(slot.material, kinds[slot.material.name.split('.')[0]]) for slot in body.material_slots]
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
@@ -138,7 +144,7 @@ def bake(art_dir):
     bpy.context.view_layer.objects.active = body
     images = {}
     for name, kind, colorspace in (('BaseColor', 'DIFFUSE', 'sRGB'), ('Mask', 'EMIT', 'Non-Color'), ('Normal', 'NORMAL', 'Non-Color'), ('Roughness', 'ROUGHNESS', 'Non-Color')):
-        image = bpy.data.images.new('T_Zombie_' + name, SIZE, SIZE, alpha=True)
+        image = bpy.data.images.new(prefix + name, SIZE, SIZE, alpha=True)
         image.colorspace_settings.name = colorspace
         for target in targets:
             target.image = image
@@ -154,7 +160,7 @@ def bake(art_dir):
     images['BaseColor'].pixels[:] = color
     for name in ('BaseColor', 'Normal', 'Roughness'):
         image = images[name]
-        image.filepath_raw = os.path.join(art_dir, 'T_Zombie_%s.png' % name)
+        image.filepath_raw = os.path.join(art_dir, prefix + name + '.png')
         image.file_format = 'PNG'
         image.save()
     print('ZOMBIE TEXTURES', [os.path.basename(images[n].filepath_raw) for n in ('BaseColor', 'Normal', 'Roughness')])
