@@ -83,6 +83,10 @@ namespace
 		float AttackStart = -1.0f;
 		float AttackTime = 0.0f;
 		float AttackWeight = 0.0f;
+		// The slam is a clip for the whole body; a swing only takes the chest and arms.
+		bool bAttackFullBody = false;
+		// A rushing boss pumps its arms instead of reaching.
+		float ChargeBlend = 0.0f;
 		static constexpr float ImpactShare = 0.42f;
 		// The flinch clip, on the upper body. Bosses shrug hits off.
 		const UAnimSequence* HitClip = nullptr;
@@ -131,7 +135,8 @@ namespace
 			if (Phase >= 0.0f && Clips && !FMath::IsNearlyEqual(Zombie->GetAttackStartTime(), AttackStart))
 			{
 				AttackStart = Zombie->GetAttackStartTime();
-				AttackClip = Clips->GetAttackClip(Zombie->IsTwoArmedAttack() ? 2 : static_cast<int32>(Zombie->GetUniqueID() % 2));
+				bAttackFullBody = Zombie->IsSlamAttack() && Clips->GetSlamClip();
+				AttackClip = bAttackFullBody ? Clips->GetSlamClip() : Clips->GetAttackClip(Zombie->IsTwoArmedAttack() ? 2 : static_cast<int32>(Zombie->GetUniqueID() % 2));
 				AttackTime = 0.0f;
 			}
 			if (AttackClip && AttackClip->GetPlayLength() > 0.0f)
@@ -161,6 +166,8 @@ namespace
 				HitWeight = Target + (HitWeight - Target) * FMath::Exp(-16.0f * Step);
 				if (HitTime >= HitClip->GetPlayLength() && HitWeight < 0.02f) { HitClip = nullptr; HitWeight = 0.0f; }
 			}
+			const float ChargeTarget = Zombie->IsCharging() ? 1.0f : 0.0f;
+			ChargeBlend = ChargeTarget + (ChargeBlend - ChargeTarget) * FMath::Exp(-10.0f * Step);
 			const float Follow = bStarted ? 1.0f - FMath::Exp(-(Phase >= 0.0f ? 26.0f : 9.0f) * Step) : 1.0f;
 			for (int32 Index = 0; Index < 4; ++Index) Directions[Index] = FMath::Lerp(Directions[Index], Targets[Index].GetSafeNormal(), Follow).GetSafeNormal();
 			bStarted = true;
@@ -214,7 +221,7 @@ namespace
 			}
 			if (AttackClip && AttackWeight > 0.01f)
 			{
-				const int32 ChestSkeletonIndex = Bones.GetReferenceSkeleton().FindBoneIndex(TEXT("spine_02"));
+				const int32 ChestSkeletonIndex = Bones.GetReferenceSkeleton().FindBoneIndex(bAttackFullBody ? TEXT("pelvis") : TEXT("spine_02"));
 				const FCompactPoseBoneIndex Chest = ChestSkeletonIndex == INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(ChestSkeletonIndex));
 				if (Chest.GetInt() != INDEX_NONE)
 				{
@@ -239,7 +246,7 @@ namespace
 			};
 			const FCompactPoseBoneIndex Chains[2][3] = { { Find(TEXT("upperarm_l")), Find(TEXT("lowerarm_l")), Find(TEXT("hand_l")) }, { Find(TEXT("upperarm_r")), Find(TEXT("lowerarm_r")), Find(TEXT("hand_r")) } };
 			for (const FCompactPoseBoneIndex (&Chain)[3] : Chains) for (const FCompactPoseBoneIndex Bone : Chain) if (Bone.GetInt() == INDEX_NONE) return bResult;
-			const float ReachWeight = (1.0f - AttackWeight) * (1.0f - HitWeight);
+			const float ReachWeight = (1.0f - AttackWeight) * (1.0f - HitWeight) * (1.0f - 0.85f * ChargeBlend);
 			FCSPose<FCompactPose> Pose;
 			Pose.InitPose(Output.Pose);
 			for (int32 Arm = 0; Arm < 2 && ReachWeight > 0.01f; ++Arm)
@@ -303,21 +310,44 @@ UArenaDuelZombieAnimInstance::UArenaDuelZombieAnimInstance()
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> HitLight(TEXT("/Game/Characters/Mannequins/Anims/Rifle/HitReact/MM_HitReact_Front_Lgt_01"));
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> HitHeavy(TEXT("/Game/Characters/Mannequins/Anims/Rifle/HitReact/MM_HitReact_Front_Hvy_01"));
 	HitClips[0] = HitLight.Object; HitClips[1] = HitHeavy.Object;
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> ChargeAsset(TEXT("/Game/ArenaDuel/Characters/Zombies/A_Zombie_Charge"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> SlamAsset(TEXT("/Game/ArenaDuel/Characters/Zombies/A_Zombie_Slam"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> DeathBackAsset(TEXT("/Game/ArenaDuel/Characters/Zombies/A_Zombie_DeathBack"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> DeathFrontAsset(TEXT("/Game/ArenaDuel/Characters/Zombies/A_Zombie_DeathFront"));
+	ChargeClip = ChargeAsset.Object; SlamClip = SlamAsset.Object; DeathClips[0] = DeathBackAsset.Object; DeathClips[1] = DeathFrontAsset.Object;
 	SetRootMotionMode(ERootMotionMode::IgnoreRootMotion);
 }
 
 void UArenaDuelZombieAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 {
 	const AArenaDuelZombie* Zombie = Cast<AArenaDuelZombie>(GetOwningActor());
-	// A dead zombie is a ragdoll; clip selection must not restart on it.
-	if (!Zombie || Zombie->IsDead()) { SetPlaying(false); return; }
+	// A dead zombie falls through its death clip for a moment and is then a ragdoll; clip selection must not restart on it.
+	if (!Zombie || Zombie->IsDead())
+	{
+		if (Zombie && bDeathPlaying) Super::NativeUpdateAnimation(DeltaSeconds);
+		else SetPlaying(false);
+		return;
+	}
 	Super::NativeUpdateAnimation(DeltaSeconds);
 	const float Speed = Zombie->GetVelocity().Size2D();
-	UAnimSequence* Desired = Speed < 15.0f ? Idle.Get() : Speed < 380.0f ? Walk.Get() : Run.Get();
+	const bool bRush = Zombie->IsCharging() && ChargeClip && Speed > 15.0f;
+	UAnimSequence* Desired = bRush ? ChargeClip.Get() : Speed < 15.0f ? Idle.Get() : Speed < 380.0f ? Walk.Get() : Run.Get();
 	if (Desired && GetCurrentAsset() != Desired) SetAnimationAsset(Desired, true);
 	SetPlaying(true);
 	// The shamble covers about 2.6 m a second at its own pace; the rate follows the real speed so the feet do not slide.
-	SetPlayRate(Desired == Idle ? 1.0f : FMath::Clamp(Speed / (Desired == Run ? 600.0f : 260.0f), 0.5f, 1.8f));
+	SetPlayRate(Desired == Idle ? 1.0f : FMath::Clamp(Speed / (bRush ? 700.0f : Desired == Run ? 600.0f : 260.0f), 0.5f, 1.8f));
+}
+
+bool UArenaDuelZombieAnimInstance::PlayDeath(bool bForward)
+{
+	UAnimSequence* Clip = DeathClips[bForward ? 1 : 0];
+	if (!Clip) return false;
+	SetAnimationAsset(Clip, false);
+	SetPosition(0.0f, false);
+	SetPlayRate(1.0f);
+	SetPlaying(true);
+	bDeathPlaying = true;
+	return true;
 }
 
 int32 AArenaDuelHitBurst::AliveBursts = 0;
@@ -471,6 +501,7 @@ void AArenaDuelZombie::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME(AArenaDuelZombie, MaterialPath);
 	DOREPLIFETIME(AArenaDuelZombie, MeshPath);
 	DOREPLIFETIME(AArenaDuelZombie, bDead);
+	DOREPLIFETIME(AArenaDuelZombie, bCharging);
 	DOREPLIFETIME(AArenaDuelZombie, DeathHitLocation);
 	DOREPLIFETIME(AArenaDuelZombie, DeathHitDirection);
 	DOREPLIFETIME(AArenaDuelZombie, DeathImpulse);
@@ -650,7 +681,16 @@ void AArenaDuelZombie::OnRep_Dead()
 	WarningLight->SetVisibility(false);
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	PlayZombieSound(ZombieDeathSound, 0.8f, FMath::FRandRange(0.85f, 1.15f));
-	StartRagdoll();
+	// A body shot on a zombie that is not running lets it buckle first: the knees give and it goes over the way
+	// the shot pushed it, then physics takes the body. A head shot and a runner at speed drop at once.
+	UArenaDuelZombieAnimInstance* Clips = GetMesh() ? Cast<UArenaDuelZombieAnimInstance>(GetMesh()->GetAnimInstance()) : nullptr;
+	const FVector Shot(DeathHitDirection);
+	const bool bForward = Shot.IsNearlyZero() ? (GetUniqueID() & 1) != 0 : FVector::DotProduct(GetActorForwardVector(), Shot) > 0.0f;
+	if (GetNetMode() != NM_DedicatedServer && GetWorld() && Clips && !bDeathHeadshot && GetVelocity().Size2D() < 300.0f && Clips->PlayDeath(bForward))
+	{
+		GetWorld()->GetTimerManager().SetTimer(RagdollTimerHandle, this, &AArenaDuelZombie::StartRagdoll, 0.3f, false);
+	}
+	else StartRagdoll();
 }
 
 void AArenaDuelZombie::StartRagdoll()
@@ -854,7 +894,8 @@ void AArenaDuelZombie::ServerThink(float DeltaSeconds)
 			MulticastTelegraph(0.4f, false);
 		}
 	}
-	if (Now < ChargeEndTime) Speed *= 2.1f;
+	bCharging = Now < ChargeEndTime;
+	if (bCharging) Speed *= 2.1f;
 	// A hit slows it down for a moment.
 	if (Now < StaggerEndTime) Speed *= 0.35f;
 	GetCharacterMovement()->MaxWalkSpeed = Speed;

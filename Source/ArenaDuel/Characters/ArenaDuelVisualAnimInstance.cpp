@@ -39,6 +39,29 @@ namespace
 	TAutoConsoleVariable<float> CVarShoulderY(TEXT("ArenaDuel.Arms.ShoulderY"), 20.0f, TEXT("First person shoulder: to the side of the camera"));
 	TAutoConsoleVariable<float> CVarShoulderZ(TEXT("ArenaDuel.Arms.ShoulderZ"), -26.0f, TEXT("First person shoulder: above the camera"));
 	TAutoConsoleVariable<int32> CVarRigidArms(TEXT("ArenaDuel.Arms.Rigid"), 0, TEXT("1: place the first person arms as rigid pieces, as before the full arm mesh; 0: solve them as arms"));
+	// Fingers: degrees of curl added to what the rifle clip gives, per held item. Positive closes the hand.
+	TAutoConsoleVariable<float> CVarFingerScale(TEXT("ArenaDuel.Fingers.Scale"), 1.0f, TEXT("Scales the per-item finger poses; 0 leaves the clip's fingers"));
+	TAutoConsoleVariable<float> CVarFingerTest(TEXT("ArenaDuel.Fingers.Test"), 0.0f, TEXT("Extra curl on every finger of both hands, degrees, for tuning"));
+	struct FArenaDuelFingerPose
+	{
+		// Thumb, then index to pinky, per joint of each finger.
+		float RightThumb = 0, RightFingers = 0, LeftThumb = 0, LeftFingers = 0;
+	};
+	FArenaDuelFingerPose FingerPoseFor(EArenaDuelLoadoutSlot Slot, int32 WeaponIndex)
+	{
+		// The clip closes both hands around a rifle. A knife grip is a tighter fist, a grenade body is wider
+		// than a pistol grip, and the free hand hangs half open. The support hand cups a handguard, wraps a
+		// foregrip or a pump.
+		if (Slot == EArenaDuelLoadoutSlot::Knife) return { 8.0f, 16.0f, -10.0f, -22.0f };
+		if (Slot == EArenaDuelLoadoutSlot::Flashbang) return { -8.0f, -14.0f, -10.0f, -22.0f };
+		switch (WeaponIndex)
+		{
+		case 0: return { 0.0f, 0.0f, -6.0f, -10.0f };   // rifle: flat handguard
+		case 1: return { 0.0f, 0.0f, 8.0f, 18.0f };     // SMG: stubby foregrip
+		case 2: return { 0.0f, 0.0f, -8.0f, -13.0f };   // DMR: slim handguard
+		default: return { 0.0f, 0.0f, 4.0f, 8.0f };     // shotgun: pump
+		}
+	}
 	TAutoConsoleVariable<float> CVarWristZ(TEXT("ArenaDuel.Arms.LeftWristZ"), -1.0f, TEXT("Support wrist offset from the grip point: up"));
 
 	struct FArenaDuelVisualPoseProxy : FAnimSingleNodeInstanceProxy
@@ -70,6 +93,10 @@ namespace
 		float LookPitch = 0;
 		static constexpr float LowReadyDegrees = 26.0f;
 		float ForearmRoll = 0;
+		// Fingers follow what is held; the trigger finger squeezes on a shot.
+		FArenaDuelFingerPose Fingers, FingerTarget;
+		float TriggerPull = 0;
+		bool bFingerPose = false;
 		virtual void PreUpdate(UAnimInstance* Instance, float DeltaSeconds) override
 		{
 			FAnimSingleNodeInstanceProxy::PreUpdate(Instance, DeltaSeconds);
@@ -145,6 +172,21 @@ namespace
 			const float PitchTarget = bWorldBodyPose ? FMath::Clamp(FRotator::NormalizeAxis(Character->GetBaseAimRotation().Pitch), -80.0f, 80.0f) : 0.0f;
 			LookPitch = PitchTarget + (LookPitch - PitchTarget) * FMath::Exp(-20.0f * FMath::Max(DeltaSeconds, 0.0f));
 			ReloadWeight = (bReloadingBody ? 1.0f : 0.0f) + (ReloadWeight - (bReloadingBody ? 1.0f : 0.0f)) * Decay;
+			bFingerPose = Character && !Character->IsDead() && Weapon && (bRigidForearm || bThirdPersonBody);
+			if (bFingerPose)
+			{
+				FingerTarget = FingerPoseFor(Weapon->GetActiveSlot(), Weapon->GetEquippedWeaponIndex());
+				// During a reload the support hand works the magazine; the clip's own fingers are right for that.
+				if (Weapon->IsReloading()) FingerTarget.LeftThumb = FingerTarget.LeftFingers = 0.0f;
+				const float FingerDecay = FMath::Exp(-16.0f * FMath::Max(DeltaSeconds, 0.0f));
+				Fingers.RightThumb = FingerTarget.RightThumb + (Fingers.RightThumb - FingerTarget.RightThumb) * FingerDecay;
+				Fingers.RightFingers = FingerTarget.RightFingers + (Fingers.RightFingers - FingerTarget.RightFingers) * FingerDecay;
+				Fingers.LeftThumb = FingerTarget.LeftThumb + (Fingers.LeftThumb - FingerTarget.LeftThumb) * FingerDecay;
+				Fingers.LeftFingers = FingerTarget.LeftFingers + (Fingers.LeftFingers - FingerTarget.LeftFingers) * FingerDecay;
+				const UWorld* World = Instance->GetWorld();
+				const float TriggerAge = World ? World->GetTimeSeconds() - Weapon->GetLastTriggerWorldTime() : 10.0f;
+				TriggerPull = Weapon->GetActiveSlot() == EArenaDuelLoadoutSlot::Primary && TriggerAge >= 0.0f && TriggerAge < 0.12f ? FMath::Sin(PI * TriggerAge / 0.12f) : 0.0f;
+			}
 			const float TargetBlend = bHasLeftGrip && Weapon && !Weapon->IsReloading() ? 1.0f : 0.0f;
 			LeftHandIKBlend = TargetBlend + (LeftHandIKBlend - TargetBlend) * Decay;
 		}
@@ -219,6 +261,34 @@ namespace
 					const FVector Head = AlignPose.GetComponentSpaceTransform(HeadIndex).GetLocation();
 					if (!Head.ContainsNaN()) Output.Pose[FCompactPoseBoneIndex(0)].AddToTranslation(FVector(-Head.X, -Head.Y, 0.0f));
 				}
+			}
+			if (bFingerPose)
+			{
+				const float FingerScale = CVarFingerScale.GetValueOnAnyThread(), FingerTest = CVarFingerTest.GetValueOnAnyThread();
+				const FBoneContainer& FingerBones = Output.Pose.GetBoneContainer();
+				// Manny's fingers close by turning each joint about its local Z; the right hand is mirrored, so the sign is the same.
+				const auto Curl = [&Output, &FingerBones](const FString& Name, float Degrees)
+				{
+					if (FMath::IsNearlyZero(Degrees)) return;
+					const int32 SkeletonIndex = FingerBones.GetReferenceSkeleton().FindBoneIndex(FName(*Name));
+					if (SkeletonIndex == INDEX_NONE) return;
+					const FCompactPoseBoneIndex Index = FingerBones.MakeCompactPoseIndex(FMeshPoseBoneIndex(SkeletonIndex));
+					if (Index.GetInt() == INDEX_NONE) return;
+					Output.Pose[Index].SetRotation(Output.Pose[Index].GetRotation() * FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(-Degrees)));
+				};
+				for (const TCHAR* Side : { TEXT("r"), TEXT("l") })
+				{
+					const bool bRight = Side[0] == TEXT('r');
+					const float Thumb = (bRight ? Fingers.RightThumb : Fingers.LeftThumb) * FingerScale + FingerTest;
+					const float Rest = (bRight ? Fingers.RightFingers : Fingers.LeftFingers) * FingerScale + FingerTest;
+					for (int32 Joint = 2; Joint <= 3; ++Joint) Curl(FString::Printf(TEXT("thumb_%02d_%s"), Joint, Side), Thumb);
+					for (const TCHAR* Finger : { TEXT("index"), TEXT("middle"), TEXT("ring"), TEXT("pinky") })
+					{
+						for (int32 Joint = 1; Joint <= 3; ++Joint) Curl(FString::Printf(TEXT("%s_%02d_%s"), Finger, Joint, Side), Rest);
+					}
+				}
+				Curl(TEXT("index_02_r"), 16.0f * TriggerPull);
+				Curl(TEXT("index_03_r"), 8.0f * TriggerPull);
 			}
 			// Small visual crouch overlay, since the installed pack has no crouch clips.
 			// This never moves the capsule, changes hitboxes, or produces root motion.

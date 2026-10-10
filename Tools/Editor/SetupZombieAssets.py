@@ -180,9 +180,9 @@ for variant, skin in SKINS.items():
     LIB.save_loaded_asset(mesh)
     assigned = [e.get_editor_property('material_interface').get_name() for e in mesh.get_editor_property('materials') if e.get_editor_property('material_interface')]
     done.append('%s:%s' % (variant, assigned))
-# The zombies' own walk, authored in Blender on the same skeleton (Tools/Art/build_zombie_anims.py).
+# The zombies' own clips, authored in Blender on the same skeleton (Tools/Art/build_zombie_anims.py).
 clips = []
-for clip in ('A_Zombie_Shamble',):
+for clip in ('A_Zombie_Shamble', 'A_Zombie_Charge', 'A_Zombie_Slam', 'A_Zombie_DeathBack', 'A_Zombie_DeathFront'):
     source = os.path.join(ART, clip + '.fbx')
     if not os.path.isfile(source):
         continue
@@ -203,7 +203,7 @@ for clip in ('A_Zombie_Shamble',):
     ui.set_editor_property('skeleton', skeleton)
     task.set_editor_property('options', ui)
     unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
-    found = [str(p) for p in LIB.list_assets(DEST, recursive=False) if 'Shamble' in str(p)]
+    found = [str(p) for p in LIB.list_assets(DEST, recursive=False) if clip in str(p)]
     clips.append('%s -> %s' % (clip, found))
 unreal.log('ZOMBIE CLIPS %s' % clips)
 unreal.log('ZOMBIE ASSETS PASS baked=%s %s' % (BAKED, [d.split(':')[0] for d in done]))

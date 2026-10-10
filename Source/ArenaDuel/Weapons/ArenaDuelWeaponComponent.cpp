@@ -174,6 +174,20 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 	ThirdPersonWeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	ThirdPersonWeaponMesh->SetOwnerNoSee(true);
 	ThirdPersonWeaponMesh->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::WorldSpaceRepresentation;
+	const auto MakePart = [this](const TCHAR* Name, UStaticMeshComponent* Parent)
+	{
+		UStaticMeshComponent* Part = CreateDefaultSubobject<UStaticMeshComponent>(Name);
+		Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Part->SetCastShadow(Parent->CastShadow);
+		Part->SetOnlyOwnerSee(Parent->bOnlyOwnerSee);
+		Part->SetOwnerNoSee(Parent->bOwnerNoSee);
+		Part->FirstPersonPrimitiveType = Parent->FirstPersonPrimitiveType;
+		return Part;
+	};
+	FirstPersonBoltMesh = MakePart(TEXT("FirstPersonBoltMesh"), FirstPersonWeaponMesh);
+	FirstPersonMagMesh = MakePart(TEXT("FirstPersonMagMesh"), FirstPersonWeaponMesh);
+	ThirdPersonBoltMesh = MakePart(TEXT("ThirdPersonBoltMesh"), ThirdPersonWeaponMesh);
+	ThirdPersonMagMesh = MakePart(TEXT("ThirdPersonMagMesh"), ThirdPersonWeaponMesh);
 	for (const TCHAR* Name : {TEXT("ArcRifle"), TEXT("ShadeSMG"), TEXT("RuneDMR"), TEXT("HexShotgun")})
 	{
 		FArenaDuelWeaponVisualDefinition Visual;
@@ -204,6 +218,10 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 	WeaponVisualDefinitions[2].LeftHandGripLocation=FVector(36,-5,-3);
 	WeaponVisualDefinitions[3].LeftHandGripLocation=FVector(37,-6,-5);
 	for (FArenaDuelWeaponVisualDefinition& Visual : WeaponVisualDefinitions) Visual.ThirdPersonScale = FVector(0.75f);
+	// Bolt travel and cycle: short and fast on the SMG, long on the DMR; the shotgun's part is its pump.
+	WeaponVisualDefinitions[1].BoltTravel = 4.0f; WeaponVisualDefinitions[1].BoltCycleSeconds = 0.07f;
+	WeaponVisualDefinitions[2].BoltTravel = 6.0f; WeaponVisualDefinitions[2].BoltCycleSeconds = 0.16f;
+	WeaponVisualDefinitions[3].BoltTravel = 9.0f; WeaponVisualDefinitions[3].BoltCycleSeconds = 0.45f;
 	// Visual alignment only; approved FOV, sensitivity, spread and recoil are unchanged.
 	for (auto& Definition : WeaponDefinitions) Definition.AimViewmodelLocation.Z -= 19.0f;
 }
@@ -227,6 +245,7 @@ void UArenaDuelWeaponComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled()) UpdateAimFromIntent();
 	TickLocalPresentation(DeltaTime);
+	TickWeaponParts();
 	UpdateTracers();
 }
 
@@ -303,7 +322,7 @@ void UArenaDuelWeaponComponent::UpdateTracers()
 	if (ActiveTracers.Num() == 0)
 	{
 		const AArenaDuelCharacter* IdleOwner = Cast<AArenaDuelCharacter>(GetOwner());
-		if (!bFlashOn && !(IdleOwner && IdleOwner->IsLocallyControlled() && !IdleOwner->IsDead())) SetComponentTickEnabled(false);
+		if (!bFlashOn && !AreWeaponPartsBusy() && !(IdleOwner && IdleOwner->IsLocallyControlled() && !IdleOwner->IsDead())) SetComponentTickEnabled(false);
 		return;
 	}
 	const FVector Start = GetTracerStart();
@@ -322,7 +341,7 @@ void UArenaDuelWeaponComponent::UpdateTracers()
 		Mesh->SetWorldTransform(FTransform(FRotationMatrix::MakeFromZ(Delta).ToQuat(), Start + Delta * 0.5, FVector(0.005, 0.005, Length / 100.0)));
 	}
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
-	if (ActiveTracers.Num() == 0 && !bFlashOn && !(Character && Character->IsLocallyControlled() && !Character->IsDead())) SetComponentTickEnabled(false);
+	if (ActiveTracers.Num() == 0 && !bFlashOn && !AreWeaponPartsBusy() && !(Character && Character->IsLocallyControlled() && !Character->IsDead())) SetComponentTickEnabled(false);
 }
 
 bool UArenaDuelWeaponComponent::GetLeftHandGripWorldLocation(FVector& OutLocation, bool bThirdPerson) const
@@ -847,6 +866,8 @@ void UArenaDuelWeaponComponent::MulticastShotFired_Implementation(const TArray<F
 	MuzzleFlashLight->SetWorldLocation(Muzzle);
 	MuzzleFlashLight->SetVisibility(true);
 	MuzzleFlashOffWorldTime = World->GetTimeSeconds() + 0.07f;
+	// The shooter's own bolt already moved with the predicted shot.
+	if (!Character->IsLocallyControlled()) PartShotWorldTime = World->GetTimeSeconds();
 	SetComponentTickEnabled(true);	if (FireSound) UGameplayStatics::PlaySoundAtLocation(this, FireSound, Muzzle, Character->IsLocallyControlled() ? 0.55f : 0.9f);
 }
 void UArenaDuelWeaponComponent::CompleteReload(){
@@ -873,6 +894,7 @@ void UArenaDuelWeaponComponent::LocalCosmeticShot()
 {
 	if (!bFireHeld || bReloading || (GetCurrentMagazineAmmo() <= 0 && !HasInfiniteAmmoForDevelopment()) || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	LastCosmeticShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
+	PartShotWorldTime = LastCosmeticShotWorldTime;
 	if (const FArenaDuelWeaponDefinition& Fired = GetCurrentDefinition(); Fired.bHasScope && ScopeLevel > 0 && Fired.ScopeRezoomSeconds > 0.0f && GetWorld())
 	{
 		ScopeSuppressedUntilWorldTime = GetWorld()->GetTimeSeconds() + Fired.ScopeRezoomSeconds;
@@ -942,7 +964,9 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 		WeaponMesh->SetRelativeLocation(bFirstPerson ? Visual.FirstPersonGripLocation : Visual.ThirdPersonGripLocation);
 		WeaponMesh->SetRelativeRotation(bFirstPerson ? Visual.FirstPersonGripRotation : Visual.ThirdPersonGripRotation);
 		WeaponMesh->SetRelativeScale3D(bFirstPerson ? Visual.FirstPersonScale : Visual.ThirdPersonScale);
-		if (WeaponBodyMaterial) for (int32 I=0;I<WeaponMesh->GetNumMaterials();++I) WeaponMesh->SetMaterial(I,WeaponBodyMaterial);
+		// A textured weapon brings its own body material; the plain metal is only for a mesh without one.
+		WeaponMesh->EmptyOverrideMaterials();
+		if (WeaponBodyMaterial && Mesh && !Mesh->GetMaterial(0)) for (int32 I=0;I<WeaponMesh->GetNumMaterials();++I) WeaponMesh->SetMaterial(I,WeaponBodyMaterial);
 	}
 	const AArenaDuelPlayerState* Player=Character->GetPlayerState<AArenaDuelPlayerState>();
 	UMaterialInterface* Accent=Player && Player->GetCharacterArchetype()==EArenaDuelCharacterArchetype::Warden?WeaponAccentCyan.Get():WeaponAccentViolet.Get();
@@ -982,10 +1006,11 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 			}
 		}
 	}
-	FirstPersonWeaponMesh->SetVisibility(Character->IsLocallyControlled() && !Character->IsDead());
+	FirstPersonWeaponMesh->SetVisibility(Character->IsLocallyControlled() && !Character->IsDead(), true);
 	if (bViewmodelHiddenByScope && Character->GetFirstPersonArms()) Character->GetFirstPersonArms()->SetVisibility(true);
 	bViewmodelHiddenByScope = false;
 	ThirdPersonWeaponMesh->SetVisibility(true);
+	RefreshWeaponParts(Visual, Slot == EArenaDuelLoadoutSlot::Primary, Accent);
 	SetComponentTickEnabled(Character->IsLocallyControlled() && !Character->IsDead());
 	// Initialize once. The local presentation tick owns this root after possession.
 	if (!bPresentationInitialized && Character->IsLocallyControlled() && Character->GetFirstPersonViewmodelRoot())
@@ -994,6 +1019,89 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 		Character->GetFirstPersonViewmodelRoot()->SetRelativeRotation(Visual.HipViewmodelRotation);
 		bPresentationInitialized = true;
 	}
+}
+
+void UArenaDuelWeaponComponent::RefreshWeaponParts(const FArenaDuelWeaponVisualDefinition& Visual, bool bFirearm, UMaterialInterface* Accent)
+{
+	// The parts are separate meshes next to the body, named after it: SM_<Name>_Bolt and SM_<Name>_Mag.
+	// They share the body's origin, so attached without an offset they sit where they belong.
+	const FString Package = Visual.Mesh.ToSoftObjectPath().GetLongPackageName();
+	const auto Find = [&Package, bFirearm](const TCHAR* Suffix) -> UStaticMesh*
+	{
+		if (!bFirearm || Package.IsEmpty()) return nullptr;
+		const FString Path = Package + Suffix;
+		if (UStaticMesh* Loaded = FindObject<UStaticMesh>(nullptr, *(Path + TEXT(".") + FPackageName::GetShortName(Path)))) return Loaded;
+		return FPackageName::DoesPackageExist(Path) ? LoadObject<UStaticMesh>(nullptr, *Path) : nullptr;
+	};
+	UStaticMesh* Bolt = Find(TEXT("_Bolt"));
+	UStaticMesh* Mag = Find(TEXT("_Mag"));
+	const AActor* Owner = GetOwner();
+	for (const TPair<UStaticMeshComponent*, UStaticMeshComponent*> Pair : { TPair<UStaticMeshComponent*, UStaticMeshComponent*>(FirstPersonBoltMesh.Get(), FirstPersonWeaponMesh.Get()), TPair<UStaticMeshComponent*, UStaticMeshComponent*>(FirstPersonMagMesh.Get(), FirstPersonWeaponMesh.Get()),
+		TPair<UStaticMeshComponent*, UStaticMeshComponent*>(ThirdPersonBoltMesh.Get(), ThirdPersonWeaponMesh.Get()), TPair<UStaticMeshComponent*, UStaticMeshComponent*>(ThirdPersonMagMesh.Get(), ThirdPersonWeaponMesh.Get()) })
+	{
+		UStaticMeshComponent* Part = Pair.Key;
+		if (!Part) continue;
+		if (!Part->IsRegistered() && GetWorld() && Owner && !Owner->HasAnyFlags(RF_ClassDefaultObject)) Part->RegisterComponent();
+		Part->AttachToComponent(Pair.Value, FAttachmentTransformRules::SnapToTargetIncludingScale);
+		UStaticMesh* PartMesh = Part == FirstPersonBoltMesh.Get() || Part == ThirdPersonBoltMesh.Get() ? Bolt : Mag;
+		Part->SetStaticMesh(PartMesh);
+		Part->EmptyOverrideMaterials();
+		// A part may be all body or carry accent faces; the slot name says which is which.
+		if (PartMesh && Accent) Part->SetMaterialByName(TEXT("W_Accent"), Accent);
+		Part->SetRelativeTransform(FTransform::Identity);
+		Part->SetVisibility(PartMesh != nullptr && Pair.Value->IsVisible());
+	}
+	bPartsMoved = false;
+}
+bool UArenaDuelWeaponComponent::AreWeaponPartsBusy() const
+{
+	const UWorld* World = GetWorld();
+	return World && (bReloading || bPartsMoved || World->GetTimeSeconds() - PartShotWorldTime < 0.6f);
+}
+void UArenaDuelWeaponComponent::TickWeaponParts()
+{
+	const UWorld* World = GetWorld();
+	if (!World || !WeaponVisualDefinitions.IsValidIndex(EquippedWeaponIndex) || !FirstPersonBoltMesh || !FirstPersonBoltMesh->GetStaticMesh()) return;
+	const FArenaDuelWeaponVisualDefinition& Visual = WeaponVisualDefinitions[EquippedWeaponIndex];
+	const float Now = World->GetTimeSeconds();
+	if (bReloading && !bPartReloadSeen) PartReloadStartWorldTime = Now;
+	bPartReloadSeen = bReloading;
+	// On a shot the bolt snaps back and runs forward again; a pump is pulled and pushed.
+	const float Cycle = FMath::Max(Visual.BoltCycleSeconds, 0.01f);
+	const float ShotAge = Now - PartShotWorldTime;
+	float Bolt = ShotAge >= 0.0f && ShotAge < Cycle ? FMath::Sin(PI * ShotAge / Cycle) : 0.0f;
+	FVector MagLocation = FVector::ZeroVector;
+	FRotator MagRotation = FRotator::ZeroRotator;
+	bool bMagInHand = true;
+	if (bReloading)
+	{
+		const float T = FMath::Clamp((Now - PartReloadStartWorldTime) / FMath::Max(GetCurrentDefinition().ReloadDuration, 0.1f), 0.0f, 1.0f);
+		const bool bHasMagazine = FirstPersonMagMesh && FirstPersonMagMesh->GetStaticMesh();
+		if (bHasMagazine)
+		{
+			// The magazine drops out, is away for a moment, a full one comes up, and the bolt is run once.
+			const float Out = FMath::SmoothStep(0.10f, 0.30f, T) - FMath::SmoothStep(0.52f, 0.72f, T);
+			MagLocation = FVector(-4.0f * Out, 0.0f, -30.0f * Out);
+			MagRotation = FRotator(-14.0f * Out, 0.0f, 0.0f);
+			bMagInHand = Out < 0.97f;
+			if (T > 0.80f) Bolt = FMath::Sin(PI * FMath::Clamp((T - 0.80f) / 0.16f, 0.0f, 1.0f));
+		}
+		else
+		{
+			// No magazine: shells go in, then the pump is worked twice.
+			if (T > 0.55f) Bolt = FMath::Abs(FMath::Sin(2.0f * PI * FMath::Clamp((T - 0.55f) / 0.4f, 0.0f, 1.0f)));
+		}
+	}
+	const FVector BoltLocation(-Visual.BoltTravel * Bolt, 0.0f, 0.0f);
+	for (UStaticMeshComponent* Part : { FirstPersonBoltMesh.Get(), ThirdPersonBoltMesh.Get() }) if (Part) Part->SetRelativeLocation(BoltLocation);
+	for (UStaticMeshComponent* Part : { FirstPersonMagMesh.Get(), ThirdPersonMagMesh.Get() })
+	{
+		if (!Part || !Part->GetStaticMesh()) continue;
+		Part->SetRelativeLocationAndRotation(MagLocation, MagRotation);
+		const USceneComponent* Parent = Part->GetAttachParent();
+		Part->SetVisibility(bMagInHand && Parent && Parent->IsVisible());
+	}
+	bPartsMoved = Bolt > 0.0f || !MagLocation.IsZero();
 }
 
 void UArenaDuelWeaponComponent::SetUserHipFOV(float NewFOV)
@@ -1068,7 +1176,7 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 	if (const bool bHideViewmodel = GetScopeOverlayAlpha() > 0.5f; bHideViewmodel != bViewmodelHiddenByScope)
 	{
 		bViewmodelHiddenByScope = bHideViewmodel;
-		FirstPersonWeaponMesh->SetVisibility(!bHideViewmodel);
+		FirstPersonWeaponMesh->SetVisibility(!bHideViewmodel, true);
 		if (Character->GetFirstPersonArms()) Character->GetFirstPersonArms()->SetVisibility(!bHideViewmodel);
 	}
 
@@ -1136,9 +1244,15 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 	if (AimBlend > 0.001f) SolveAimSightTransform(AimLocation, AimRotation);
 	const FVector BaseLocation = FMath::Lerp(Visual.HipViewmodelLocation - FVector(0.0f, 0.0f, CVarHipDrop.GetValueOnGameThread()), AimLocation, AimBlend);
 	const FRotator BaseRotation = FQuat::Slerp(Visual.HipViewmodelRotation.Quaternion(), AimRotation, AimBlend).Rotator();
-	const FRotator MotionRotation(SwayPitch - 1.5f * LocalWeaponKick + 5.0f * SprintBlend,
-		SwayYaw + VisualYawKick,
-		-SwayYaw * 0.35f + FMath::Sin(BobPhase) * BobAmount * 0.3f);
+	// Sprint: a firearm is carried across the body, muzzle to the left and up, and swings with the stride.
+	// Equip: the item comes up from below, muzzle first down and rolled, and settles. Both are poses of the
+	// viewmodel root; the arms follow because they are solved to the weapon.
+	const float Carry = SprintBlend * (GetActiveSlot() == EArenaDuelLoadoutSlot::Primary ? 1.0f : 0.35f);
+	const float Stride = FMath::Sin(BobPhase) * BobBlend * Carry;
+	const float Draw = EquipDrop * EquipDrop;
+	const FRotator MotionRotation(SwayPitch - 1.5f * LocalWeaponKick + 9.0f * Carry - 30.0f * Draw,
+		SwayYaw + VisualYawKick - 30.0f * Carry + 3.0f * Stride + 8.0f * Draw,
+		-SwayYaw * 0.35f + FMath::Sin(BobPhase) * BobAmount * 0.3f - 14.0f * Carry + 2.5f * Stride + 20.0f * Draw);
 	// Knife and throw: the arm's own motion, on top of everything else. Camera space: X forward, Y right, Z up.
 	FVector ActionLocation = FVector::ZeroVector;
 	FRotator ActionRotation = FRotator::ZeroRotator;
@@ -1171,6 +1285,7 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 		ActionLocation += bThrowShort ? FVector(8.0f * Arc, 0.0f, 6.0f * Arc) : FVector(12.0f * Arc, 0.0f, FMath::Lerp(8.0f, -12.0f, T) * Arc);
 		ActionRotation += bThrowShort ? FRotator(14.0f * Arc, 0.0f, 0.0f) : FRotator(FMath::Lerp(22.0f, -38.0f, T) * Arc, 0.0f, -6.0f * Arc);
 	}
+	ActionLocation += FVector(-3.0f * Carry - 5.0f * Draw, -7.0f * Carry + 1.2f * Stride, -6.0f * Draw);
 	const FVector FinalLocation = BaseLocation + MotionLocation + FVector(0.0f, Bob.Y, 0.0f) + ActionLocation;
 	const FRotator FinalRotation = BaseRotation + MotionRotation + ActionRotation;
 	if (!FinalLocation.ContainsNaN() && !FinalRotation.ContainsNaN())

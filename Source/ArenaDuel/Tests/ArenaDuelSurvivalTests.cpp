@@ -9,6 +9,10 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "Animation/Skeleton.h"
+#include "Materials/MaterialInterface.h"
+#include "Engine/StaticMeshSocket.h"
+#include "Engine/StaticMesh.h"
+#include "Animation/AnimSequence.h"
 #include "Engine/TargetPoint.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -159,6 +163,43 @@ bool FArenaDuelMenuAddressTest::RunTest(const FString& Parameters)
 	for (const TCHAR* Bad : { TEXT(""), TEXT("   "), TEXT("192.168.0.12:abc"), TEXT("192.168.0.12:0"), TEXT("192.168.0.12:70000"), TEXT(":7777"), TEXT("host name"), TEXT("host?game=Other"), TEXT("/Game/Maps/Other"), TEXT("host#x") })
 	{
 		TestTrue(FString::Printf(TEXT("\"%s\" is refused"), Bad), UArenaDuelMainMenuWidget::NormalizeJoinAddress(Bad).IsEmpty());
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelZombieClipsTest, "ArenaDuel.Survival.ZombieClips", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FArenaDuelZombieClipsTest::RunTest(const FString& Parameters)
+{
+	// The zombies' own clips exist, belong to the mannequin skeleton and have the lengths the game counts on.
+	const USkeleton* Skeleton = LoadObject<USkeleton>(nullptr, TEXT("/Game/Characters/Mannequins/Meshes/SK_Mannequin.SK_Mannequin"));
+	const TPair<const TCHAR*, float> Clips[] = { { TEXT("Shamble"), 40.0f / 30.0f }, { TEXT("Charge"), 22.0f / 30.0f }, { TEXT("Slam"), 33.0f / 30.0f }, { TEXT("DeathBack"), 20.0f / 30.0f }, { TEXT("DeathFront"), 20.0f / 30.0f } };
+	for (const TPair<const TCHAR*, float>& Clip : Clips)
+	{
+		const UAnimSequence* Sequence = LoadObject<UAnimSequence>(nullptr, *FString::Printf(TEXT("/Game/ArenaDuel/Characters/Zombies/A_Zombie_%s.A_Zombie_%s"), Clip.Key, Clip.Key));
+		if (!TestNotNull(FString::Printf(TEXT("A_Zombie_%s exists"), Clip.Key), Sequence)) continue;
+		TestTrue(FString::Printf(TEXT("A_Zombie_%s uses the mannequin skeleton"), Clip.Key), Sequence->GetSkeleton() == Skeleton);
+		TestTrue(FString::Printf(TEXT("A_Zombie_%s is %.2f s long (is %.2f)"), Clip.Key, Clip.Value, Sequence->GetPlayLength()), FMath::IsNearlyEqual(Sequence->GetPlayLength(), Clip.Value, 0.05f));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelWeaponPartsTest, "ArenaDuel.Visuals.WeaponParts", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FArenaDuelWeaponPartsTest::RunTest(const FString& Parameters)
+{
+	// Every firearm has a textured body and a bolt that lies inside the body's bounds; all but the shotgun have a magazine.
+	for (const TCHAR* Name : { TEXT("ArcRifle"), TEXT("ShadeSMG"), TEXT("RuneDMR"), TEXT("HexShotgun") })
+	{
+		const auto Load = [Name](const TCHAR* Suffix) { return LoadObject<UStaticMesh>(nullptr, *FString::Printf(TEXT("/Game/ArenaDuel/Weapons/%s/SM_%s%s.SM_%s%s"), Name, Name, Suffix, Name, Suffix), nullptr, LOAD_NoWarn); };
+		const UStaticMesh* Body = Load(TEXT(""));
+		const UStaticMesh* Bolt = Load(TEXT("_Bolt"));
+		const UStaticMesh* Mag = Load(TEXT("_Mag"));
+		if (!TestNotNull(FString::Printf(TEXT("%s body"), Name), Body) || !TestNotNull(FString::Printf(TEXT("%s bolt"), Name), Bolt)) continue;
+		TestTrue(FString::Printf(TEXT("%s magazine"), Name), (Mag != nullptr) != (FString(Name) == TEXT("HexShotgun")));
+		TestTrue(FString::Printf(TEXT("%s has its own textured body material"), Name), Body->GetMaterial(0) && Body->GetMaterial(0)->GetName() == FString::Printf(TEXT("M_%s"), Name));
+		TestTrue(FString::Printf(TEXT("%s still has its muzzle socket"), Name), Body->FindSocket(TEXT("Muzzle")) != nullptr);
+		const FBox BodyBox = Body->GetBoundingBox().ExpandBy(4.0), BoltBox = Bolt->GetBoundingBox();
+		TestTrue(FString::Printf(TEXT("%s bolt shares the body's origin"), Name), BodyBox.IsInside(BoltBox.GetCenter()));
+		if (Mag) TestTrue(FString::Printf(TEXT("%s magazine hangs under the receiver"), Name), Mag->GetBoundingBox().Min.Z < 0.0 && Mag->GetBoundingBox().Max.Z > 0.0);
 	}
 	return true;
 }

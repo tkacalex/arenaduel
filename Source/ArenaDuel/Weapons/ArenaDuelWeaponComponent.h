@@ -29,6 +29,9 @@ struct FArenaDuelWeaponVisualDefinition
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FRotator ThirdPersonGripRotation = FRotator::ZeroRotator;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FVector ThirdPersonScale = FVector(0.75f);
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float VisualRecoilKick = 1.0f;
+	/** How far the bolt (or the pump) travels back on a shot, in mesh units, and how long one cycle takes. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float BoltTravel = 5.0f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float BoltCycleSeconds = 0.09f;
 };
 
 // Cosmetic values only. Shot direction and server-side weapon balance never read this struct.
@@ -287,6 +290,9 @@ public:
 	bool IsReloading() const { return bReloading; }
 	bool IsFireHeld() const { return bFireHeld; }
 	bool IsAiming() const { return bAiming; }
+	/** Cosmetic: which firearm is in hand and when the trigger was last pulled on this machine. */
+	int32 GetEquippedWeaponIndex() const { return EquippedWeaponIndex; }
+	float GetLastTriggerWorldTime() const { return PartShotWorldTime; }
 	float GetAimSensitivityMultiplier() const;
 	/** 0 none, 1 first zoom, 2 second zoom. Local to the owning player. */
 	int32 GetScopeLevel() const { return ScopeLevel; }
@@ -427,6 +433,18 @@ protected:
 	TObjectPtr<UStaticMeshComponent> FirstPersonWeaponMesh;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Weapons")
 	TObjectPtr<UStaticMeshComponent> ThirdPersonWeaponMesh;
+	/** Moving parts of the firearm in hand, in first person and on the world body: the bolt (the pump on the shotgun) and the magazine. Cosmetic. */
+	UPROPERTY(Transient) TObjectPtr<UStaticMeshComponent> FirstPersonBoltMesh;
+	UPROPERTY(Transient) TObjectPtr<UStaticMeshComponent> FirstPersonMagMesh;
+	UPROPERTY(Transient) TObjectPtr<UStaticMeshComponent> ThirdPersonBoltMesh;
+	UPROPERTY(Transient) TObjectPtr<UStaticMeshComponent> ThirdPersonMagMesh;
+	float PartShotWorldTime = -10.0f;
+	float PartReloadStartWorldTime = -100.0f;
+	bool bPartReloadSeen = false;
+	bool bPartsMoved = false;
+	void RefreshWeaponParts(const FArenaDuelWeaponVisualDefinition& Visual, bool bFirearm, UMaterialInterface* Accent);
+	void TickWeaponParts();
+	bool AreWeaponPartsBusy() const;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Weapons|Presentation") TArray<FArenaDuelWeaponVisualDefinition> WeaponVisualDefinitions;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Weapons|Presentation") FArenaDuelViewmodelFeel ViewmodelFeel;
 	UPROPERTY() TObjectPtr<UMaterialInterface> WeaponBodyMaterial;

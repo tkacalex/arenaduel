@@ -26,6 +26,10 @@ public:
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 	/** One-handed swings and, last, the two-handed one for slams and bosses. */
 	const UAnimSequence* GetAttackClip(int32 Index) const { return AttackClips[FMath::Clamp(Index, 0, 2)]; }
+	/** The area slam: a clip for the whole body, or null in a checkout without it. */
+	const UAnimSequence* GetSlamClip() const { return SlamClip; }
+	/** Starts the fall, forwards or backwards. False when there is no clip; the body then goes straight to the ragdoll. */
+	bool PlayDeath(bool bForward);
 	/** A light and a heavy flinch. */
 	const UAnimSequence* GetHitClip(bool bHeavy) const { return HitClips[bHeavy ? 1 : 0]; }
 protected:
@@ -36,6 +40,11 @@ private:
 	UPROPERTY() TObjectPtr<UAnimSequence> Run;
 	UPROPERTY() TObjectPtr<UAnimSequence> AttackClips[3];
 	UPROPERTY() TObjectPtr<UAnimSequence> HitClips[2];
+	// Authored for the zombies in Blender (Tools/Art/build_zombie_anims.py).
+	UPROPERTY() TObjectPtr<UAnimSequence> ChargeClip;
+	UPROPERTY() TObjectPtr<UAnimSequence> SlamClip;
+	UPROPERTY() TObjectPtr<UAnimSequence> DeathClips[2];
+	bool bDeathPlaying = false;
 };
 
 /** A short spray of droplets where a shot lands on a zombie. Local and cosmetic; it removes itself. */
@@ -111,6 +120,10 @@ public:
 	bool WasHitHeavy() const { return bHitShownHeavy; }
 	/** True when the swing being shown uses both arms: the slam, and everything a boss does. */
 	bool IsTwoArmedAttack() const { return bAttackBothArms || IsBossType(); }
+	/** True when the swing being shown is the area slam. */
+	bool IsSlamAttack() const { return bAttackBothArms; }
+	/** True while a boss rushes its target. */
+	bool IsCharging() const { return bCharging; }
 	/** How often this zombie had to free itself from standing still. */
 	int32 GetUnstickCount() const { return UnstickCount; }
 	/** How long a hit slows a zombie down, and to which share of its speed. Pure, for tests. */
@@ -147,6 +160,8 @@ protected:
 	/** How hard the killing hit throws the body. */
 	UPROPERTY(Replicated) float DeathImpulse = 3500.0f;
 	UPROPERTY(Replicated) bool bDeathHeadshot = false;
+	UPROPERTY(Replicated) bool bCharging = false;
+	FTimerHandle RagdollTimerHandle;
 
 	// Server only.
 	FArenaDuelZombieTypeConfig Config;
