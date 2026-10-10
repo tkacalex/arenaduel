@@ -587,6 +587,14 @@ void AArenaDuelZombieGameMode::DevFinishWave()
 	FinishWaveIfDone();
 }
 
+void AArenaDuelZombieGameMode::DevNextWaveNow()
+{
+	if (bRunOver) return;
+	DevFinishWave();
+	GetWorldTimerManager().ClearTimer(WaveTimer);
+	StartWave();
+}
+
 void AArenaDuelZombieGameMode::DevAutoPlayTick()
 {
 	AController* Credit = GetWorld()->GetFirstPlayerController();

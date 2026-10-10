@@ -63,6 +63,8 @@ public:
 	float GetZombieDamageScale() const { return ZombieDamageScale; }
 	/** Development: ends the running wave at once: nothing more spawns and everything alive dies. */
 	void DevFinishWave();
+	/** Development: ends the running wave and starts the next one without the break. */
+	void DevNextWaveNow();
 	/** Development: zombies that reach a player are killed and credited, so whole waves play themselves and prove that enemies arrive. */
 	void DevSetAutoPlay(bool bEnabled) { bDevAutoPlay = bEnabled; }
 	/** Development: one line about the run to the log: alive, pathing, steering straight, freed, moved, frame time. */

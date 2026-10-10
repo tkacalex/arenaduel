@@ -5,6 +5,10 @@
 #include "ArenaDuel/Weapons/ArenaDuelFlashbang.h"
 #include "ArenaDuel/Weapons/ArenaDuelWeaponComponent.h"
 #include "ArenaDuel/Player/ArenaDuelPlayerState.h"
+#include "Camera/CameraComponent.h"
+#include "Editor.h"
+#include "Engine/World.h"
+#include "Tests/AutomationEditorCommon.h"
 
 namespace ArenaDuelLoadoutTests
 {
@@ -107,6 +111,23 @@ bool FArenaDuelSniperScopeTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("A weapon starts outside the scope"), Weapons->GetScopeLevel(), 0);
 	TestEqual(TEXT("And shows no scope picture"), Weapons->GetScopeOverlayAlpha(), 0.0f);
 	TestEqual(TEXT("And moves at full speed"), Weapons->GetAimMoveSpeedScale(), 1.0f);
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelCrouchedShotOriginTest, "ArenaDuel.Loadout.CrouchedShotOrigin", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FArenaDuelCrouchedShotOriginTest::RunTest(const FString& Parameters)
+{
+	FAutomationEditorCommonUtils::CreateNewMap();
+	UWorld* World = GEditor ? GEditor->GetEditorWorldContext().World() : nullptr;
+	if (!TestNotNull(TEXT("Test world"), World)) return false;
+	AArenaDuelCharacter* Character = World->SpawnActor<AArenaDuelCharacter>(AArenaDuelCharacter::StaticClass(), FVector(0.0f, 0.0f, 300.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("Character"), Character) || !TestNotNull(TEXT("Camera"), Character->GetFirstPersonCamera())) return false;
+	const float CameraHeight = Character->GetFirstPersonCamera()->GetRelativeLocation().Z;
+	TestTrue(TEXT("Standing, shots start at the camera"), FMath::IsNearlyEqual(Character->GetPawnViewLocation().Z - Character->GetActorLocation().Z, CameraHeight, 0.1));
+	// What a crouch does to the eye height in the engine; the camera does not follow it.
+	Character->bIsCrouched = true;
+	Character->RecalculateBaseEyeHeight();
+	TestTrue(TEXT("The engine's eye height drops when crouched"), Character->BaseEyeHeight < CameraHeight - 10.0f);
+	TestTrue(TEXT("Crouched, shots still start at the camera"), FMath::IsNearlyEqual(Character->GetPawnViewLocation().Z - Character->GetActorLocation().Z, CameraHeight, 0.1));
 	return true;
 }
 #endif

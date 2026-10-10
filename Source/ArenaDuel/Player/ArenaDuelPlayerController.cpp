@@ -414,10 +414,11 @@ void AArenaDuelPlayerController::ExecuteAdminCommandAuthoritatively(EArenaDuelAd
 		if (TargetState) TargetState->SetCharacterArchetypeForDevelopment(EArenaDuelCharacterArchetype::Rift);
 		break;
 	case EArenaDuelAdminCommand::SurvivalKillAll:
-		if (AArenaDuelZombieGameMode* Survival = Cast<AArenaDuelZombieGameMode>(GameMode)) Survival->DevKillAllZombies();
+		// Everything of the wave, also what has not spawned yet; killing only the living leaves the queue to follow.
+		if (AArenaDuelZombieGameMode* Survival = Cast<AArenaDuelZombieGameMode>(GameMode)) Survival->DevFinishWave();
 		break;
 	case EArenaDuelAdminCommand::SurvivalFinishWave:
-		if (AArenaDuelZombieGameMode* Survival = Cast<AArenaDuelZombieGameMode>(GameMode)) Survival->DevFinishWave();
+		if (AArenaDuelZombieGameMode* Survival = Cast<AArenaDuelZombieGameMode>(GameMode)) Survival->DevNextWaveNow();
 		break;
 	case EArenaDuelAdminCommand::SurvivalAddPoints:
 		if (TargetState && Cast<AArenaDuelZombieGameMode>(GameMode)) TargetState->AddSurvivalPoints(5000);

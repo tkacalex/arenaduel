@@ -373,11 +373,11 @@ void UArenaDuelAdminWidget::BuildWidgetTree()
 	AddHelperText(NetworkCard, FText::FromString(TEXT("Hit-zone display is local debug drawing only. Collision remains unchanged.")));
 
 	UVerticalBox* SurvivalPage = CreatePage(TEXT("ZOMBIE SURVIVAL"), TEXT("Control a survival run. These do nothing in a duel."));
-	UVerticalBox* WaveCard = AddCard(SurvivalPage, FText::FromString(TEXT("WAVE")), FText::FromString(TEXT("Finish Wave empties the queue and kills what is alive; the next wave follows after the break.")));
+	UVerticalBox* WaveCard = AddCard(SurvivalPage, FText::FromString(TEXT("WAVE")), FText::FromString(TEXT("Kill All removes the whole wave, also what has not spawned yet. Next Wave Now skips the break as well.")));
 	UHorizontalBox* WaveRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 	WaveCard->AddChildToVerticalBox(WaveRow)->SetPadding(FMargin(0, 8, 0, 0));
 	AddButton(WaveRow, FText::FromString(TEXT("KILL ALL ZOMBIES")), EArenaDuelAdminCommand::SurvivalKillAll, 0.0f, ElevatedColor, 220.0f);
-	AddButton(WaveRow, FText::FromString(TEXT("FINISH WAVE")), EArenaDuelAdminCommand::SurvivalFinishWave, 0.0f, Active, 220.0f);
+	AddButton(WaveRow, FText::FromString(TEXT("NEXT WAVE NOW")), EArenaDuelAdminCommand::SurvivalFinishWave, 0.0f, Active, 220.0f);
 	AddButton(WaveRow, FText::FromString(TEXT("RESTART RUN")), EArenaDuelAdminCommand::SurvivalRestart, 0.0f, Danger, 220.0f);
 	UVerticalBox* SurvivalPlayerCard = AddCard(SurvivalPage, FText::FromString(TEXT("PLAYER AND ENEMIES")), FText::FromString(TEXT("Points go to the selected player. Harmless applies to zombies spawned from then on.")));
 	UHorizontalBox* SurvivalPlayerRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
