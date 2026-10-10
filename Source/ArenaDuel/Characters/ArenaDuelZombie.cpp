@@ -312,7 +312,8 @@ void AArenaDuelHitBurst::Launch(const FVector& ShotDirection, bool bHeavy)
 	}
 	if (Blood.IsValid()) Drops->SetMaterial(0, Blood.Get());
 	const int32 Count = bHeavy ? 14 : 8;
-	DropScale = bHeavy ? 0.06f : 0.045f;
+	// The sphere is a metre across: these are drops of about two centimetres.
+	DropScale = bHeavy ? 0.024f : 0.017f;
 	const FVector Back = -ShotDirection.GetSafeNormal();
 	for (int32 Index = 0; Index < Count; ++Index)
 	{
