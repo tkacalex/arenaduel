@@ -94,6 +94,15 @@ Wave number, zombies left or the countdown to the next wave, points and kills, t
 - `ArenaDuel.Survival.EnemyTypes`: the types differ as designed, and body, head and armour damage, death and "no damage to the dead" through `TakeWeaponHit`.
 - `ArenaDuel.Survival.ArenaMap`: game mode, player start, navigation volume, at least twelve spawn points on the floor, far from the start and mostly out of its sight.
 
+## Pickups and heal pads
+
+- **Ammunition boxes** (`AArenaDuelAmmoPickup`): every `AmmoPickupInterval` (22 s, varying by a quarter) the game mode puts an amber, turning box on a random walkable spot inside the perimeter, at least 6 m from any player and 8 m from another box, up to `MaxAmmoPickups` (3) at once. Walking over one gives `AmmoPickupShare` (half) of every weapon's reserve; an untouched box disappears after `AmmoPickupLifeSeconds` (60).
+- **Heal pads**: two of the duel map's green pads (`AArenaDuelHealPad`, 5 health a second in single steps) lie in the open south-west and north-east of the plaza.
+
+## Arms
+
+The locomotion clips are rifle clips. `UArenaDuelZombieAnimInstance` replaces both arms after the clip is evaluated: at rest they reach forward, one lower than the other, and sway; a swing raises the right arm while the hit winds up and brings it down as it lands, and a slam or a boss uses both. The legs and the spine stay with the clip.
+
 ## Sounds
 
 `Tools/Editor/SetupSurvivalAndMenu.py` synthesises six sounds, writes them as WAV files and imports them to `/Game/ArenaDuel/Audio`: growl, swing, hit, death, a looping ambience placed in the arena and the wave horn. Zombie sounds are positioned and fade out over about thirty metres. They are generated tones and noise, not recordings.
@@ -108,11 +117,14 @@ All of this was run from the main menu (Play, Zombie Survival), in an editor pla
 - Frame time in the editor with two game windows open: 26 to 35 ms with few enemies, 35 to 58 ms with 24 alive. That is an editor figure, not a packaged one.
 - Automated: 19 of 19 selected tests passed, among them the three survival tests, the map tests and the 1v1 host and client smoke test.
 
+- Second round of checks: zombies stand and walk with their arms reaching forward instead of the rifle pose (screenshots); a heal pad and three ammunition boxes appeared; stepping onto a box took the SMG reserve from 96 to 128. The admin menu's Kill All ended wave 1 with nothing left to spawn.
+
 ## Not verified
 
 - The sounds: they are imported and played by the code, but nobody has listened to them.
 - The flinch, the droplets and the lunge were seen only in still screenshots.
 - Runners, armoured zombies and both bosses fighting: they spawned and reached the player in auto play; the charge, the slam and the flanking were not watched, and no boss was fought with weapons.
+- The arm swing in motion (seen only as stills) and whether it reads well in play.
 - The knife, the scope, the shotgun and reloading against zombies with real input; the purchase keys 5, 6, 7 with real keys.
 - The ramps, the deck edge and the building doors with a real player; whether the balance holds over a real ten-wave run.
 - The stuck relocation and the fall-out removal, which never triggered.

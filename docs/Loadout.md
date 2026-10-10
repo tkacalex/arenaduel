@@ -118,3 +118,7 @@ A weapon definition with `bHasScope` gets a telescopic sight; at present that is
 Checked in a play session as the host: hip, first zoom, second zoom and out; the scope gone after a weapon switch and after a slot switch; one shot at the second zoom in slow motion, which showed the scope dropped with the tracer leaving the barrel and then back at the same zoom. `ArenaDuel.Loadout.SniperScope` checks the definition values.
 
 Not verified: real mouse input, the scope as a remote client, movement speed in the scope, the reload case, sensitivity feel, hits on an opponent through the scope, other resolutions and aspect ratios than the 16:9 play window.
+
+## Where shots start
+
+Shots, knife swings and throws start at `AArenaDuelCharacter::GetPawnViewLocation`, which is where the camera settles: a fixed height above the capsule centre, standing or crouched, and a little lower in a slide. The engine's default uses the crouched eye height instead, 32 cm below this camera, so crouched shots left from under the crosshair. `ArenaDuel.Loadout.CrouchedShotOrigin` checks it. Not checked with real crouched shots at a target in a play session.
