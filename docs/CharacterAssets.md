@@ -79,3 +79,16 @@ Created, exported, in Unreal: all four. Checked in play: stills at the hip and a
 Crate and container have one box of their own size as collision. After the swap, three waves ran in auto play with every sampled enemy on a valid navigation path, and the survival and map tests pass. Not checked: walking into the props, vaulting the crates, the heal pad in the duel map, and the duel map's own blocks, which are unchanged cubes.
 
 Note on re-running `SetupZombieAssets.py`: it re-imports the bodies, which drops their materials and physics asset again. Run `ArenaDuel.VisualAssetSetup.CharacterMaterials` in the editor afterwards, every time.
+
+## Zombie clips: charge, slam and falling (2026-10-10)
+
+`Tools/Art/build_zombie_anims.py` now authors five clips on the mannequin armature; `Tools/Editor/SetupZombieClips.py` imports only them (the full `SetupZombieAssets.py` does too).
+
+| Clip | Use | Status |
+| --- | --- | --- |
+| `A_Zombie_Shamble` | walk | as before |
+| `A_Zombie_Charge` | a boss rushing its target (`bCharging`, replicated); the reaching arms give way to the clip's pumping arms | created, imported, wired; not seen in a run (needs a boss wave) |
+| `A_Zombie_Slam` | the big boss's area slam, on the whole body, impact at 42 % as the game expects | created, imported, wired; seen in the game as stills |
+| `A_Zombie_DeathBack`, `A_Zombie_DeathFront` | a body shot on a zombie that is not running: it buckles for 0.3 s the way the shot pushed it, then the ragdoll takes over. A head shot and a runner at speed still drop at once | created, imported, wired; seen in the game as stills; the hand-over to the ragdoll not judged |
+
+`ArenaDuel.Zombie.PreviewClip` (1 charge, 2 slam, 3 and 4 the falls) with `ArenaDuel.Zombie.PreviewTime` holds every living zombie at a frame of a clip. Test: `ArenaDuel.Survival.ZombieClips`.

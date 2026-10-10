@@ -34,3 +34,7 @@ Built by `Tools/Editor/SetupSurvivalAndMenu.py`. `L_ZombieArena` is the Zombie S
 
 - `L_ArenaCore`: the empty hall that was the default before. Unchanged, still used by `ArenaDuelPhase7ETests`.
 - `L_Phase4MovementTest`, `L_Phase3Test`, `L_Phase5GunRange`: test and development maps used by automation.
+
+## L_ArenaDistrict: modelled crates (2026-10-10)
+
+`Tools/Editor/SetupArenaDistrict.py` places the modelled crate (`/Game/ArenaDuel/Props/SM_Crate`) wherever it used to place a crate-coloured cube, scaled to the block's exact size, a tall block as a stack. Positions, cover heights and collision are what they were; `ArenaDuel.Maps.ArenaDistrict` and `ArenaDuel.Phase7E.Arena.Structure` pass. Walls, decks, pillars and roofs are still engine cubes.
