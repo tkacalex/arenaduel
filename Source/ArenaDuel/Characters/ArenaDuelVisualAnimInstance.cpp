@@ -338,7 +338,13 @@ namespace
 					if (bRigidForearm)
 					{
 						if (CVarRigidArms.GetValueOnAnyThread() != 0) PlaceArm(UpperIndex, LowerIndex, HandIndex, Effector, -ElbowDirection, ForearmRoll, true, LeftHandIKBlend);
-						else SolveArm(UpperIndex, LowerIndex, HandIndex, ShoulderLeft, Effector, ElbowDirection, ForearmRoll, true, LeftHandIKBlend);
+						else
+						{
+							// The wrist glides between where the clip has the hand and the grip; the arm itself always
+							// starts at the first person shoulder, so it never shows its open end.
+							const FVector ClipWrist = ComponentPose.GetComponentSpaceTransform(HandIndex).GetLocation();
+							SolveArm(UpperIndex, LowerIndex, HandIndex, ShoulderLeft, FMath::Lerp(ClipWrist, Effector, LeftHandIKBlend), ElbowDirection, ForearmRoll * LeftHandIKBlend, LeftHandIKBlend > 0.5f, 1.0f);
+						}
 					}
 					else
 					{
@@ -360,6 +366,11 @@ namespace
 							bChanged = true;
 						}
 					}
+				}
+				else if (bRigidForearm && bLeftValid && CVarRigidArms.GetValueOnAnyThread() == 0)
+				{
+					// The support hand is off the weapon, as in a reload: the clip moves the hand, the arm still comes from the shoulder.
+					SolveArm(UpperIndex, LowerIndex, HandIndex, ShoulderLeft, ComponentPose.GetComponentSpaceTransform(HandIndex).GetLocation(), ElbowDirection, 0.0f, false, 1.0f);
 				}
 				if (bChanged) FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(MoveTemp(ComponentPose), Output.Pose);
 			}

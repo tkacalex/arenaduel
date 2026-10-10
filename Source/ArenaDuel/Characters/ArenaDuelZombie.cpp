@@ -157,7 +157,7 @@ namespace
 			if (HitClip && HitClip->GetPlayLength() > 0.0f)
 			{
 				HitTime += Step * 1.25f;
-				const float Target = HitTime < HitClip->GetPlayLength() - 0.2f ? 0.85f : 0.0f;
+				const float Target = HitTime < HitClip->GetPlayLength() - 0.2f ? 0.5f : 0.0f;
 				HitWeight = Target + (HitWeight - Target) * FMath::Exp(-16.0f * Step);
 				if (HitTime >= HitClip->GetPlayLength() && HitWeight < 0.02f) { HitClip = nullptr; HitWeight = 0.0f; }
 			}
@@ -573,7 +573,7 @@ float AArenaDuelZombie::TakeWeaponHit(float BaseDamage, float WeaponZoneMultipli
 	DeathHitLocation = HitLocation;
 	DeathHitDirection = Direction.GetSafeNormal();
 	// A stronger hit throws the body further.
-	DeathImpulse = FMath::Clamp(Damage * 60.0f, 2200.0f, 11000.0f);
+	DeathImpulse = FMath::Clamp(Damage * 16.0f, 500.0f, 2400.0f);
 	bDeathHeadshot = bHead;
 	const bool bHeavy = Damage >= 60.0f;
 	MulticastHitReact(HitLocation, Direction.GetSafeNormal(), bHead, bHeavy);
@@ -643,7 +643,7 @@ void AArenaDuelZombie::StartRagdoll()
 	if (!FVector(DeathHitDirection).IsNearlyZero())
 	{
 		// A head shot snaps the head back and up; a body shot pushes where it landed.
-		const FVector Push = (FVector(DeathHitDirection) + FVector(0.0f, 0.0f, bDeathHeadshot ? 0.45f : 0.12f)).GetSafeNormal();
+		const FVector Push = (FVector(DeathHitDirection) + FVector(0.0f, 0.0f, bDeathHeadshot ? 0.25f : 0.05f)).GetSafeNormal();
 		Body->AddImpulseAtLocation(Push * DeathImpulse, FVector(DeathHitLocation));
 	}
 }
@@ -668,7 +668,7 @@ void AArenaDuelZombie::MulticastHitReact_Implementation(FVector_NetQuantize Loca
 	// The body is knocked the way the shot travelled.
 	const FVector Local = GetActorRotation().UnrotateVector(FVector(Direction));
 	HitLeanYaw = FMath::RadiansToDegrees(FMath::Atan2(Local.Y, Local.X));
-	const float Knock = bHead ? 20.0f : bHeavy ? 16.0f : 9.0f;
+	const float Knock = bHead ? 8.0f : bHeavy ? 6.0f : 3.5f;
 	HitShownTime = GetWorld()->GetTimeSeconds();
 	bHitShownHeavy = bHead || bHeavy;
 	HitLean = FMath::Max(HitLean, Knock * (ZombieType == EArenaDuelZombieType::Boss ? 0.2f : ZombieType == EArenaDuelZombieType::MiniBoss ? 0.4f : 1.0f));
