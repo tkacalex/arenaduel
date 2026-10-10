@@ -41,7 +41,7 @@ A fast-forwarded run went through waves 1 to 10 with these bodies and no errors 
 - **Textures** are procedural patterns baked to maps, not painted or sculpted: there are no wounds in the geometry and no real cloth folds. The feet are bare, coloured dark.
 - **Variants** differ in build, skin tone and gear: the armoured zombie wears a helmet, chest and back plates, shoulder pads and shin guards (`M_ZombieArmour`); the brute and the abomination carry bone spurs along the back, the abomination longer ones and two on the shoulders (`M_ZombieBone`). The gear is made of plain spheres, boxes and cones, each carried rigidly by one bone, and was looked at in Blender only; it does not change damage.
 - **Clothes** are regions of the body pushed out a few millimetres, not separate garments; the collar and sleeve edges are ragged where the region ends.
-- **Animation**: the clips are those of an athletic human. There is no zombie gait, no hit reaction clip (the flinch is still a lean of the body), no death clip (ragdoll), no charge, slam or enrage animation. The impact time of the attack clips is an estimate (42 percent of the clip) and was not checked against the visible swing.
+- **Animation**: the clips are those of an athletic human. A hit plays one of the mannequin's two front hit reactions on the upper body (light or heavy; a new hit restarts it only when the last is mostly through, bosses do not flinch), on top of the lean. There is no zombie gait of its own, no death clip (ragdoll), no charge, slam or enrage animation. The flinch clip was not seen in a capture. The impact time of the attack clips is an estimate (42 percent of the clip) and was not checked against the visible swing.
 - **Posture**: the anim instance stoops the spine, tilts the head differently per zombie and rocks the body with the walk; runners lean further forward. Seen only as stills.
 - **Hits**: the first import left the bodies without a physics asset, so no shot landed on them. The setup command now gives them the mannequin's, the zombie falls back to it at run time, and `ArenaDuel.Survival.EnemyTypes` checks that a spawned zombie has hit zones. With real shots afterwards: two kills, 200 points, a ragdoll on the floor (`docs/media/zombies_2026-10-10_textured_hit.png`).
 - **Not checked**: the hit zone alignment on the heavier builds, head shots specifically, levels of detail (there are none), and frame time against the old bodies.
@@ -64,3 +64,16 @@ The meshes keep every convention of the old ones, so no code changed: origin at 
 | Hex Shotgun | barrel over magazine tube, ribbed pump, full stock, bead sight, ejection port | 928 |
 
 Created, exported, in Unreal: all four. Checked in play: stills at the hip and aiming in first person (`docs/media/weapons_2026-10-10_first_person.png`); 13 of 13 visual, loadout, hit zone and survival tests, the network smoke test with the weapon names among them. Not checked: the world models in an opponent's hands, the muzzle flash position, the support hand against the new handguards (the grip points are the old ones), and firing or reloading with them. No moving parts, no textures: the body is one flat material.
+
+## Props and pickups
+
+`Tools/Art/build_props.py` builds four props in Blender (`Tools/Art/props.blend`, `Tools/Art/Props/SM_<Name>.fbx`); `Tools/Editor/SetupProps.py` imports them to `/Game/ArenaDuel/Props` in two editor runs (import, then with `ARENADUEL_PROP_FINISH=1` materials and box collision). Each prop is centred and exactly as big as the block it replaces.
+
+| Prop | Size (cm) | Where it is used | Checked in play |
+|---|---|---|---|
+| `SM_Crate` | 140 cube, framed, braced | `SetupSurvivalAndMenu.py` places it for every 140 cm block of the survival arena | yes, still |
+| `SM_Container` | 900 x 240 x 260, corrugated, doors | the same script, for the yard's containers | yes, still |
+| `SM_AmmoBox` | 42 x 28 x 22, lid, latches, handles | `AArenaDuelAmmoPickup` (falls back to the cube without it) | yes, lying in the arena |
+| `SM_HealPad` | 120 across, ring and cross | `AArenaDuelHealPad` in both maps (falls back to the plate without it) | yes, in the survival arena |
+
+Crate and container have one box of their own size as collision. After the swap, three waves ran in auto play with every sampled enemy on a valid navigation path, and the survival and map tests pass. Not checked: walking into the props, vaulting the crates, the heal pad in the duel map, and the duel map's own blocks, which are unchanged cubes.
