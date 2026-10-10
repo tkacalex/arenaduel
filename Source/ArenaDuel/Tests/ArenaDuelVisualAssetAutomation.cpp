@@ -2,6 +2,8 @@
 
 #include "Misc/AutomationTest.h"
 #include "Engine/SkeletalMesh.h"
+#include "Materials/MaterialInterface.h"
+#include "UObject/UObjectGlobals.h"
 #include "Engine/Blueprint.h"
 #include "MeshDescription.h"
 #include "SkeletalMeshAttributes.h"
@@ -94,6 +96,46 @@ bool FArenaDuelCreateArmsAsset::RunTest(const FString& Parameters)
 		AddInfo(FString::Printf(TEXT("Generated first-person mesh with %d forearm and hand polygons"), KeptPolygons));
 	}
 	if (!AssignArmsMeshToCharacterDefaults(Arms)) { AddError(TEXT("Could not assign the forearm mesh to native and Blueprint character defaults")); return false; }
+	return true;
+}
+
+// Explicit editor setup command, run after the import scripts under Tools/Editor: gives the first person
+// hands and the zombie bodies their materials by slot name and saves them. A Python script cannot do this
+// part: the package of a freshly loaded skeletal mesh stays open for reading and the save fails.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelAssignCharacterMaterials, "ArenaDuel.VisualAssetSetup.CharacterMaterials", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FArenaDuelAssignCharacterMaterials::RunTest(const FString& Parameters)
+{
+	const auto Assign = [this](const FString& MeshPath, const FString& Variant)
+	{
+		USkeletalMesh* Mesh = LoadObject<USkeletalMesh>(nullptr, *MeshPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
+		if (!Mesh) return;
+		TArray<FSkeletalMaterial> Materials = Mesh->GetMaterials();
+		int32 Assigned = 0;
+		for (FSkeletalMaterial& Material : Materials)
+		{
+			// Blender may number a slot (Z_Skin.001); the material is found by the name before the dot.
+			FString Slot = Material.MaterialSlotName.ToString();
+			int32 Dot = INDEX_NONE;
+			if (Slot.FindChar(TEXT('.'), Dot)) Slot.LeftInline(Dot);
+			FString Path;
+			if (Slot.StartsWith(TEXT("FP_"))) Path = FString::Printf(TEXT("/Game/ArenaDuel/Characters/Common/M_FP%s"), *Slot.RightChop(3));
+			else if (Slot.StartsWith(TEXT("Z_Skin"))) Path = FString::Printf(TEXT("/Game/ArenaDuel/Characters/Zombies/M_ZombieSkin_%s"), *Variant);
+			else if (Slot.StartsWith(TEXT("Z_"))) Path = FString::Printf(TEXT("/Game/ArenaDuel/Characters/Zombies/M_Zombie%s"), *Slot.RightChop(2));
+			if (Path.IsEmpty()) continue;
+			if (UMaterialInterface* Found = LoadObject<UMaterialInterface>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet)) { Material.MaterialInterface = Found; ++Assigned; }
+			else AddWarning(FString::Printf(TEXT("%s: no material at %s for slot %s"), *Mesh->GetName(), *Path, *Slot));
+		}
+		Mesh->Modify();
+		Mesh->SetMaterials(Materials);
+		ResetLoaders(Mesh->GetOutermost());
+		if (!SaveAssetPackage(Mesh)) AddError(FString::Printf(TEXT("Could not save %s"), *Mesh->GetName()));
+		else AddInfo(FString::Printf(TEXT("%s: %d of %d slots assigned"), *Mesh->GetName(), Assigned, Materials.Num()));
+	};
+	Assign(TEXT("/Game/ArenaDuel/Characters/Common/SKM_ArenaDuelFPHands"), FString());
+	for (const TCHAR* Variant : { TEXT("Normal"), TEXT("Runner"), TEXT("Armoured"), TEXT("Brute"), TEXT("Abomination") })
+	{
+		Assign(FString::Printf(TEXT("/Game/ArenaDuel/Characters/Zombies/SKM_Zombie_%s"), Variant), Variant);
+	}
 	return true;
 }
 

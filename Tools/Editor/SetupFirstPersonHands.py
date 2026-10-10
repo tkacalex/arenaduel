@@ -1,4 +1,4 @@
-﻿"""Import the first person hands and build their materials.
+"""Import the first person hands and build their materials.
 
 The mesh comes from Tools/Art/SKM_ArenaDuelFPHands.fbx: a MakeHuman (MPFB, CC0) human whose arms were
 posed onto the mannequin's joints in Blender, cut off at the shoulder, given a glove, a cuff and a
@@ -74,19 +74,24 @@ if not mesh:
     raise RuntimeError('The hands were not imported')
 
 slots = {
-    'FP_Sleeve': material('M_FPSleeve', (0.030, 0.038, 0.034, 1), 0.88, 0.0, 0.05),
-    'FP_Glove': material('M_FPGlove', (0.010, 0.010, 0.012, 1), 0.58, 0.0, 0.035),
-    'FP_Trim': material('M_FPTrim', (0.045, 0.047, 0.052, 1), 0.36, 0.15, 0.06),
+    'FP_Sleeve': material('M_FPSleeve', (0.030, 0.038, 0.034, 1), 0.88, 0.0, 0.02),
+    'FP_Glove': material('M_FPGlove', (0.010, 0.010, 0.012, 1), 0.58, 0.0, 0.015),
+    'FP_Trim': material('M_FPTrim', (0.045, 0.047, 0.052, 1), 0.36, 0.15, 0.03),
 }
 materials = mesh.get_editor_property('materials')
 names = []
-for entry in materials:
+# Array elements come out as copies: each changed entry has to be written back by index.
+for index in range(len(materials)):
+    entry = materials[index]
     slot = str(entry.get_editor_property('material_slot_name'))
-    names.append(slot)
     for key, mat in slots.items():
         if key in slot:
             entry.set_editor_property('material_interface', mat)
+    materials[index] = entry
 mesh.set_editor_property('materials', materials)
 LIB.save_loaded_asset(mesh)
+for entry in mesh.get_editor_property('materials'):
+    assigned = entry.get_editor_property('material_interface')
+    names.append('%s=%s' % (entry.get_editor_property('material_slot_name'), assigned.get_name() if assigned else None))
 skeleton = mesh.get_editor_property('skeleton')
 unreal.log('FP HANDS PASS skeleton=%s slots=%s' % (skeleton.get_name() if skeleton else None, names))

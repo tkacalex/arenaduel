@@ -1,4 +1,4 @@
-﻿"""Import the zombie bodies built by Tools/Art/build_zombie.py and make their materials.
+"""Import the zombie bodies built by Tools/Art/build_zombie.py and make their materials.
 
 Every Tools/Art/SKM_Zombie_<Variant>.fbx that exists is imported onto SK_Mannequin as
 /Game/ArenaDuel/Characters/Zombies/SKM_Zombie_<Variant>, with the mannequin's physics asset, whose
@@ -101,17 +101,21 @@ for variant, skin in SKINS.items():
         raise RuntimeError('Not imported: ' + name)
     skin_material = material('M_ZombieSkin_' + variant, skin, 0.62, blotch=(skin[0] * 0.45, skin[1] * 0.40, skin[2] * 0.42))
     materials = mesh.get_editor_property('materials')
-    for entry in materials:
+    # Array elements come out as copies: each changed entry has to be written back by index.
+    for index in range(len(materials)):
+        entry = materials[index]
         slot = str(entry.get_editor_property('material_slot_name'))
         if 'Z_Skin' in slot:
             entry.set_editor_property('material_interface', skin_material)
         for key, mat in shared.items():
             if key in slot:
                 entry.set_editor_property('material_interface', mat)
+        materials[index] = entry
     mesh.set_editor_property('materials', materials)
     if physics:
         mesh.set_editor_property('physics_asset', physics)
     LIB.save_loaded_asset(mesh)
-    done.append(variant)
+    assigned = [e.get_editor_property('material_interface').get_name() for e in mesh.get_editor_property('materials') if e.get_editor_property('material_interface')]
+    done.append('%s:%s' % (variant, assigned))
 unreal.log('ZOMBIE ASSETS PASS %s physics=%s' % (done, physics.get_name() if physics else None))
 
