@@ -11,7 +11,9 @@
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/App.h"
+#include "NavigationPath.h"
 #include "NavigationSystem.h"
+#include "GameFramework/PlayerStart.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -152,7 +154,31 @@ void AArenaDuelZombieGameMode::BeginPlay()
 {
 	// Deliberately not the duel BeginPlay, which opens character select.
 	AGameMode::BeginPlay();
+	EnsureNavigationBounds();
 	BeginRun();
+}
+
+void AArenaDuelZombieGameMode::EnsureNavigationBounds()
+{
+	// The navigation mesh is only built inside registered bounds. The arena's extent is known from its
+	// spawn points and player starts, so the bounds are registered here and do not depend on a volume
+	// in the map having a usable brush.
+	UNavigationSystemV1* Navigation = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
+	if (!Navigation) return;
+	FBox Area(ForceInit);
+	for (TActorIterator<ATargetPoint> It(GetWorld()); It; ++It) if (It->ActorHasTag(TEXT("ZombieSpawn"))) Area += It->GetActorLocation();
+	for (TActorIterator<APlayerStart> It(GetWorld()); It; ++It) Area += It->GetActorLocation();
+	if (!Area.IsValid) return;
+	Area = Area.ExpandBy(FVector(600.0f, 600.0f, 0.0f));
+	Area.Min.Z -= 300.0f;
+	Area.Max.Z += 700.0f;
+	FNavigationBoundsUpdateRequest Request;
+	Request.NavBounds.UniqueID = GetUniqueID();
+	Request.NavBounds.AreaBox = Area;
+	Request.NavBounds.Level = GetWorld()->PersistentLevel;
+	Request.UpdateRequest = FNavigationBoundsUpdateRequest::Added;
+	Navigation->AddNavigationBoundsUpdateRequest(Request);
+	UE_LOG(LogArenaDuelSurvival, Log, TEXT("Survival navigation bounds registered: %s"), *Area.ToString());
 }
 
 void AArenaDuelZombieGameMode::PostLogin(APlayerController* NewPlayer)
@@ -528,7 +554,28 @@ void AArenaDuelZombieGameMode::DevLogStats() const
 		Freed += It->GetUnstickCount();
 		Slowest = FMath::Max(Slowest, It->GetSecondsWithoutProgress());
 	}
-	const UNavigationSystemV1* Navigation = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
+	UNavigationSystemV1* Navigation = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
+	// One sample path from an enemy to the first player says whether navigation really works.
+	if (Navigation)
+	{
+		const APlayerController* Controller = GetWorld()->GetFirstPlayerController();
+		const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
+		FNavLocation OnMesh;
+		const bool bPlayerOnMesh = Player && Navigation->ProjectPointToNavigation(Player->GetActorLocation(), OnMesh, FVector(200.0f, 200.0f, 300.0f));
+		int32 Valid = 0, Partial = 0, Sampled = 0;
+		double Length = 0.0;
+		for (TActorIterator<AArenaDuelZombie> It(GetWorld()); It && Player; ++It)
+		{
+			if (It->IsDead()) continue;
+			++Sampled;
+			if (const UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(GetWorld(), It->GetActorLocation(), Player->GetActorLocation(), *It))
+			{
+				if (Path->IsValid()) { ++Valid; Length += Path->GetPathLength(); }
+				if (Path->IsPartial()) ++Partial;
+			}
+		}
+		UE_LOG(LogArenaDuelSurvival, Log, TEXT("Survival navigation: bounds=%d playerOnMesh=%d paths valid=%d partial=%d of %d averageLength=%.0f"), Navigation->GetNavigationBounds().Num(), bPlayerOnMesh ? 1 : 0, Valid, Partial, Sampled, Valid > 0 ? Length / Valid : 0.0);
+	}
 	UE_LOG(LogArenaDuelSurvival, Log, TEXT("Survival stats: wave=%d active=%d queue=%d alive=%d straight=%d freed=%d longestNoProgress=%.1f moved=%d fell=%d relaxedSpawns=%d navData=%d frameMs=%.1f"),
 		CurrentWave, bWaveActive ? 1 : 0, SpawnQueue.Num(), Alive, Direct, Freed, Slowest, StatRelocated, StatFellOut, StatRelaxedSpawns, Navigation && Navigation->GetDefaultNavDataInstance() ? 1 : 0, FApp::GetDeltaTime() * 1000.0);
 }

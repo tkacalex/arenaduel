@@ -98,6 +98,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Survival|Rewards", meta = (ClampMin = "0")) float DamagePerUpgradeLevel = 0.25f;
 	UPROPERTY(EditDefaultsOnly, Category = "Survival|Rewards", meta = (ClampMin = "0")) int32 MaxDamageUpgradeLevel = 8;
 
+	void EnsureNavigationBounds();
 	void BeginRun();
 	void BeginIntermission(float Seconds);
 	void StartWave();
