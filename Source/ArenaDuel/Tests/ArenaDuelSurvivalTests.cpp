@@ -6,6 +6,9 @@
 #include "ArenaDuel/Game/ArenaDuelZombieGameMode.h"
 #include "ArenaDuel/UI/ArenaDuelMainMenuWidget.h"
 #include "ArenaDuel/Weapons/ArenaDuelWeaponComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
+#include "Animation/Skeleton.h"
 #include "Engine/TargetPoint.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -104,6 +107,15 @@ bool FArenaDuelSurvivalEnemyTypesTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Still alive after two hits"), Walker->IsDead());
 	Walker->TakeWeaponHit(500.0f, 1.0f, EArenaDuelShotResult::Body, nullptr, FVector::ZeroVector, FVector::ForwardVector);
 	TestTrue(TEXT("Dead once the health is gone"), Walker->IsDead() && Walker->GetHealth() <= 0.0f);
+	// Every type's own body has to be loadable and carry hit zones, or no shot could land on it.
+	for (const FArenaDuelZombieTypeConfig& Type : Types)
+	{
+		if (Type.MeshPath.IsEmpty()) continue;
+		const USkeletalMesh* Body = LoadObject<USkeletalMesh>(nullptr, *Type.MeshPath);
+		if (!TestNotNull(*FString::Printf(TEXT("%s has its body"), *Type.DisplayName), Body)) continue;
+		TestTrue(*FString::Printf(TEXT("%s shares the mannequin skeleton"), *Type.DisplayName), Body->GetSkeleton() && Body->GetSkeleton()->GetName() == TEXT("SK_Mannequin"));
+	}
+	TestNotNull(TEXT("A spawned zombie has hit zones"), Tank->GetMesh()->GetPhysicsAsset());
 	TestEqual(TEXT("A dead zombie takes no more damage"), Walker->TakeWeaponHit(20.0f, 1.0f, EArenaDuelShotResult::Body, nullptr, FVector::ZeroVector, FVector::ForwardVector), 0.0f);
 	return true;
 }

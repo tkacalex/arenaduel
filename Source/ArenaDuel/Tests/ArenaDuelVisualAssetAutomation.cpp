@@ -3,6 +3,7 @@
 #include "Misc/AutomationTest.h"
 #include "Engine/SkeletalMesh.h"
 #include "Materials/MaterialInterface.h"
+#include "PhysicsEngine/PhysicsAsset.h"
 #include "UObject/UObjectGlobals.h"
 #include "Engine/Blueprint.h"
 #include "MeshDescription.h"
@@ -127,6 +128,11 @@ bool FArenaDuelAssignCharacterMaterials::RunTest(const FString& Parameters)
 		}
 		Mesh->Modify();
 		Mesh->SetMaterials(Materials);
+		// Zombie bodies take their hit zones from the mannequin's physics asset.
+		if (!Variant.IsEmpty() && !Mesh->GetPhysicsAsset())
+		{
+			if (UPhysicsAsset* Zones = LoadObject<UPhysicsAsset>(nullptr, TEXT("/Game/Characters/Mannequins/Rigs/PA_Mannequin.PA_Mannequin"))) Mesh->SetPhysicsAsset(Zones);
+		}
 		ResetLoaders(Mesh->GetOutermost());
 		if (!SaveAssetPackage(Mesh)) AddError(FString::Printf(TEXT("Could not save %s"), *Mesh->GetName()));
 		else AddInfo(FString::Printf(TEXT("%s: %d of %d slots assigned"), *Mesh->GetName(), Assigned, Materials.Num()));

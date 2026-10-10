@@ -21,6 +21,7 @@
 #include "Materials/MaterialInterface.h"
 #include "Navigation/PathFollowingComponent.h"
 #include "Net/UnrealNetwork.h"
+#include "PhysicsEngine/PhysicsAsset.h"
 #include "Sound/SoundAttenuation.h"
 #include "Sound/SoundBase.h"
 #include "UObject/ConstructorHelpers.h"
@@ -83,6 +84,10 @@ namespace
 		float AttackTime = 0.0f;
 		float AttackWeight = 0.0f;
 		static constexpr float ImpactShare = 0.42f;
+		// Posture: a zombie stoops, carries its head askew and rocks from side to side as it walks.
+		float Hunch = 0.0f;
+		float HeadTilt = 0.0f;
+		float Rock = 0.0f;
 		// Left upper arm, left forearm, right upper arm, right forearm: the direction each one points.
 		FVector Directions[4] = { FVector::ForwardVector, FVector::ForwardVector, FVector::ForwardVector, FVector::ForwardVector };
 
@@ -112,6 +117,11 @@ namespace
 					Targets[Arm * 2 + 1] = Phase < 0.7f ? FMath::Lerp(Targets[Arm * 2 + 1], RaisedFore, Raise) : FMath::Lerp(RaisedFore, DownFore, Strike);
 				}
 			}
+			const float Unit = static_cast<float>(Zombie->GetUniqueID() % 13) / 12.0f;
+			const EArenaDuelZombieType Kind = Zombie->GetZombieType();
+			Hunch = Kind == EArenaDuelZombieType::Fast ? 22.0f : Zombie->IsBossType() ? 8.0f : 10.0f + 9.0f * Unit;
+			HeadTilt = (Unit - 0.5f) * 28.0f;
+			Rock = FMath::Clamp(Zombie->GetVelocity().Size2D() / 200.0f, 0.0f, 1.0f) * 4.0f * FMath::Sin(Seconds * (4.0f + 2.0f * Unit));
 			const UArenaDuelZombieAnimInstance* Clips = Cast<UArenaDuelZombieAnimInstance>(Instance);
 			if (Phase >= 0.0f && Clips && !FMath::IsNearlyEqual(Zombie->GetAttackStartTime(), AttackStart))
 			{
@@ -139,6 +149,28 @@ namespace
 			const bool bResult = FAnimSingleNodeInstanceProxy::Evaluate(Output);
 			if (!bActive || !bStarted) return bResult;
 			const FBoneContainer& Bones = Output.Pose.GetBoneContainer();
+			{
+				// Mesh space: X is the character's left, Y forward, Z up. A turn about X by a negative angle stoops.
+				FCSPose<FCompactPose> Posture;
+				Posture.InitPose(Output.Pose);
+				const auto Turn = [&Posture, &Bones](const TCHAR* Name, const FVector& Axis, float Degrees)
+				{
+					const int32 SkeletonIndex = Bones.GetReferenceSkeleton().FindBoneIndex(Name);
+					if (SkeletonIndex == INDEX_NONE || FMath::IsNearlyZero(Degrees)) return;
+					const FCompactPoseBoneIndex BoneIndex = Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(SkeletonIndex));
+					if (BoneIndex.GetInt() == INDEX_NONE) return;
+					FTransform Bone = Posture.GetComponentSpaceTransform(BoneIndex);
+					Bone.SetRotation(FQuat(Axis, FMath::DegreesToRadians(Degrees)) * Bone.GetRotation());
+					if (!Bone.ContainsNaN()) Posture.SetComponentSpaceTransform(BoneIndex, Bone);
+				};
+				// Parents before children, so each turn carries everything above it.
+				Turn(TEXT("spine_02"), FVector::XAxisVector, -Hunch * 0.6f);
+				Turn(TEXT("spine_02"), FVector::YAxisVector, Rock);
+				Turn(TEXT("spine_04"), FVector::XAxisVector, -Hunch * 0.4f);
+				Turn(TEXT("head"), FVector::XAxisVector, Hunch * 0.7f);
+				Turn(TEXT("head"), FVector::YAxisVector, HeadTilt);
+				FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(MoveTemp(Posture), Output.Pose);
+			}
 			if (AttackClip && AttackWeight > 0.01f)
 			{
 				const int32 ChestSkeletonIndex = Bones.GetReferenceSkeleton().FindBoneIndex(TEXT("spine_02"));
@@ -436,6 +468,12 @@ void AArenaDuelZombie::ApplyTypeVisual()
 		{
 			GetMesh()->EmptyOverrideMaterials();
 			GetMesh()->SetSkeletalMeshAsset(Body);
+		}
+		// The physics bodies are the hit zones. A body that came without them uses the mannequin's, which
+		// fit because the skeleton is the same; without any, no shot could ever land.
+		if (!GetMesh()->GetPhysicsAsset())
+		{
+			if (UPhysicsAsset* Zones = LoadObject<UPhysicsAsset>(nullptr, TEXT("/Game/Characters/Mannequins/Rigs/PA_Mannequin.PA_Mannequin"), nullptr, LOAD_NoWarn | LOAD_Quiet)) GetMesh()->SetPhysicsAsset(Zones, true);
 		}
 		return;
 	}
