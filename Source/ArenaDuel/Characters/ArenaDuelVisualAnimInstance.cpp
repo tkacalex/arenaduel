@@ -49,16 +49,16 @@ namespace
 	};
 	FArenaDuelFingerPose FingerPoseFor(EArenaDuelLoadoutSlot Slot, int32 WeaponIndex)
 	{
-		// The clip closes both hands around a rifle. A knife grip is a tighter fist, a grenade body is wider
-		// than a pistol grip, and the free hand hangs half open. The support hand cups a handguard, wraps a
-		// foregrip or a pump.
+		// The clip closes both hands around a rifle. A knife grip is a tighter fist, the grenade is held firmly
+		// too, and the free hand hangs half open. The support hand lies around a handguard and wraps a
+		// foregrip or a pump more tightly.
 		if (Slot == EArenaDuelLoadoutSlot::Knife) return { 8.0f, 16.0f, -10.0f, -22.0f };
-		if (Slot == EArenaDuelLoadoutSlot::Flashbang) return { -8.0f, -14.0f, -10.0f, -22.0f };
+		if (Slot == EArenaDuelLoadoutSlot::Flashbang) return { 4.0f, 10.0f, -10.0f, -22.0f };
 		switch (WeaponIndex)
 		{
-		case 0: return { 0.0f, 0.0f, -6.0f, -10.0f };   // rifle: flat handguard
+		case 0: return { 0.0f, 0.0f, 2.0f, 5.0f };      // rifle: handguard
 		case 1: return { 0.0f, 0.0f, 8.0f, 18.0f };     // SMG: stubby foregrip
-		case 2: return { 0.0f, 0.0f, -8.0f, -13.0f };   // DMR: slim handguard
+		case 2: return { 0.0f, 0.0f, 4.0f, 9.0f };      // DMR: slim handguard
 		default: return { 0.0f, 0.0f, 4.0f, 8.0f };     // shotgun: pump
 		}
 	}
