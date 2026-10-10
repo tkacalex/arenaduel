@@ -1,4 +1,4 @@
-﻿#include "ArenaDuelVisualAnimInstance.h"
+#include "ArenaDuelVisualAnimInstance.h"
 #include "ArenaDuelCharacter.h"
 #include "../Weapons/ArenaDuelWeaponComponent.h"
 #include "Animation/AnimSequence.h"
@@ -266,7 +266,7 @@ namespace
 			{
 				const float FingerScale = CVarFingerScale.GetValueOnAnyThread(), FingerTest = CVarFingerTest.GetValueOnAnyThread();
 				const FBoneContainer& FingerBones = Output.Pose.GetBoneContainer();
-				// Manny's fingers close by turning each joint about its local Z; the right hand is mirrored, so the sign is the same.
+				// Manny's fingers close by turning each joint about its local Z; the right hand is mirrored, so there the sign is the other way.
 				const auto Curl = [&Output, &FingerBones](const FString& Name, float Degrees)
 				{
 					if (FMath::IsNearlyZero(Degrees)) return;
@@ -274,7 +274,7 @@ namespace
 					if (SkeletonIndex == INDEX_NONE) return;
 					const FCompactPoseBoneIndex Index = FingerBones.MakeCompactPoseIndex(FMeshPoseBoneIndex(SkeletonIndex));
 					if (Index.GetInt() == INDEX_NONE) return;
-					Output.Pose[Index].SetRotation(Output.Pose[Index].GetRotation() * FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(Degrees)));
+					Output.Pose[Index].SetRotation(Output.Pose[Index].GetRotation() * FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(Name.EndsWith(TEXT("_r")) ? -Degrees : Degrees)));
 				};
 				for (const TCHAR* Side : { TEXT("r"), TEXT("l") })
 				{
