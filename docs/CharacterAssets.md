@@ -49,3 +49,18 @@ A fast-forwarded run went through waves 1 to 10 with these bodies and no errors 
 ## First person hands
 
 See `docs/FirstPersonArms.md`. The gloved hands replaced the mannequin forearms. They carry their materials only since the setup command above exists: the first import left them on the default grid material, which went unnoticed until the zombies showed the same fault.
+
+## Firearms
+
+`Tools/Art/build_weapons.py` builds the four firearms in Blender from bevelled boxes and tubes and exports `Tools/Art/Weapons/SM_<Name>.fbx` (`Tools/Art/weapons.blend` holds all four). `Tools/Editor/SetupWeaponMeshes.py` imports them over the old block models, in two editor runs: the import, then, with `ARENADUEL_WEAPON_FINISH=1`, the `Muzzle` socket and the two materials.
+
+The meshes keep every convention of the old ones, so no code changed: origin at the pistol grip, +X to the muzzle, barrel at a height of 13, sizes in centimetres of the oversized game mesh, muzzle three centimetres past the barrel, slot 0 body, slot 1 the accent the game recolours per archetype.
+
+| Weapon | What it has now | Vertices |
+|---|---|---|
+| Arc Rifle | curved magazine, octagonal handguard with vents, gas block, muzzle brake, buffer tube and stock, iron sights | 1,328 |
+| Shade SMG | long straight magazine, barrel shroud, suppressor, wire stock, stubby foregrip | 1,120 |
+| Rune DMR | long barrel with brake, slim handguard, fixed stock with cheek rest, scope with mounts, lenses and turret, folded bipod | 1,376 |
+| Hex Shotgun | barrel over magazine tube, ribbed pump, full stock, bead sight, ejection port | 928 |
+
+Created, exported, in Unreal: all four. Checked in play: stills at the hip and aiming in first person (`docs/media/weapons_2026-10-10_first_person.png`); 13 of 13 visual, loadout, hit zone and survival tests, the network smoke test with the weapon names among them. Not checked: the world models in an opponent's hands, the muzzle flash position, the support hand against the new handguards (the grip points are the old ones), and firing or reloading with them. No moving parts, no textures: the body is one flat material.
