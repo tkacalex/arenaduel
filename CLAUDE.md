@@ -49,4 +49,4 @@ Naming: `BP_` Blueprint, `WBP_` widget Blueprint, `IA_`/`IMC_` input, `M_`/`MI_`
 
 ## Further docs
 
-`README.md`, `docs/AdminMenu.md`, `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`, `docs/ROADMAP.md`, `docs/GAME_DESIGN.md`.
+`README.md`, `docs/AdminMenu.md`, `docs/CharacterAssets.md`, `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`, `docs/ROADMAP.md`, `docs/GAME_DESIGN.md`.

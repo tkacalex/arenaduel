@@ -49,10 +49,16 @@ def build(art_dir, variant):
     for obj in [o for o in bpy.data.objects if o.type == 'MESH' and o is not human]:
         bpy.data.objects.remove(obj, do_unlink=True)
 
+    # The build lives in shape keys; they are applied first so every position read below is the real one.
+    bpy.ops.object.select_all(action='DESELECT')
+    bpy.context.view_layer.objects.active = human
+    human.select_set(True)
+    if human.data.shape_keys:
+        bpy.ops.object.shape_key_remove(all=True, apply_mix=True)
     # Eyes: two small spheres in the sockets, carried by the head.
     gi = {g.index: g.name for g in human.vertex_groups}
     eyes = []
-    for name in ('joint-l-eye', 'joint-r-eye'):
+    for name in ('helper-l-eye', 'helper-r-eye'):
         index = human.vertex_groups[name].index
         points = [v.co for v in human.data.vertices if any(g.group == index for g in v.groups)]
         eyes.append(sum(points, Vector()) / len(points))
