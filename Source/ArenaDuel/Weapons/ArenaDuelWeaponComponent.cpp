@@ -1249,10 +1249,10 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 	// viewmodel root; the arms follow because they are solved to the weapon.
 	const float Carry = SprintBlend * (GetActiveSlot() == EArenaDuelLoadoutSlot::Primary ? 1.0f : 0.35f);
 	const float Stride = FMath::Sin(BobPhase) * BobBlend * Carry;
-	const float Draw = EquipDrop * EquipDrop;
-	const FRotator MotionRotation(SwayPitch - 1.5f * LocalWeaponKick + 9.0f * Carry - 30.0f * Draw,
-		SwayYaw + VisualYawKick - 30.0f * Carry + 3.0f * Stride + 8.0f * Draw,
-		-SwayYaw * 0.35f + FMath::Sin(BobPhase) * BobAmount * 0.3f - 14.0f * Carry + 2.5f * Stride + 20.0f * Draw);
+	const float Rise = EquipDrop * EquipDrop;
+	const FRotator MotionRotation(SwayPitch - 1.5f * LocalWeaponKick + 9.0f * Carry - 30.0f * Rise,
+		SwayYaw + VisualYawKick - 30.0f * Carry + 3.0f * Stride + 8.0f * Rise,
+		-SwayYaw * 0.35f + FMath::Sin(BobPhase) * BobAmount * 0.3f - 14.0f * Carry + 2.5f * Stride + 20.0f * Rise);
 	// Knife and throw: the arm's own motion, on top of everything else. Camera space: X forward, Y right, Z up.
 	FVector ActionLocation = FVector::ZeroVector;
 	FRotator ActionRotation = FRotator::ZeroRotator;
@@ -1285,7 +1285,7 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 		ActionLocation += bThrowShort ? FVector(8.0f * Arc, 0.0f, 6.0f * Arc) : FVector(12.0f * Arc, 0.0f, FMath::Lerp(8.0f, -12.0f, T) * Arc);
 		ActionRotation += bThrowShort ? FRotator(14.0f * Arc, 0.0f, 0.0f) : FRotator(FMath::Lerp(22.0f, -38.0f, T) * Arc, 0.0f, -6.0f * Arc);
 	}
-	ActionLocation += FVector(-3.0f * Carry - 5.0f * Draw, -7.0f * Carry + 1.2f * Stride, -6.0f * Draw);
+	ActionLocation += FVector(-3.0f * Carry - 5.0f * Rise, -7.0f * Carry + 1.2f * Stride, -6.0f * Rise);
 	const FVector FinalLocation = BaseLocation + MotionLocation + FVector(0.0f, Bob.Y, 0.0f) + ActionLocation;
 	const FRotator FinalRotation = BaseRotation + MotionRotation + ActionRotation;
 	if (!FinalLocation.ContainsNaN() && !FinalRotation.ContainsNaN())
