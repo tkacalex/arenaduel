@@ -180,5 +180,31 @@ for variant, skin in SKINS.items():
     LIB.save_loaded_asset(mesh)
     assigned = [e.get_editor_property('material_interface').get_name() for e in mesh.get_editor_property('materials') if e.get_editor_property('material_interface')]
     done.append('%s:%s' % (variant, assigned))
+# The zombies' own walk, authored in Blender on the same skeleton (Tools/Art/build_zombie_anims.py).
+clips = []
+for clip in ('A_Zombie_Shamble',):
+    source = os.path.join(ART, clip + '.fbx')
+    if not os.path.isfile(source):
+        continue
+    task = unreal.AssetImportTask()
+    task.set_editor_property('filename', source)
+    task.set_editor_property('destination_path', DEST)
+    task.set_editor_property('destination_name', clip)
+    task.set_editor_property('automated', True)
+    task.set_editor_property('save', True)
+    task.set_editor_property('replace_existing', True)
+    ui = unreal.FbxImportUI()
+    ui.set_editor_property('import_mesh', False)
+    ui.set_editor_property('import_as_skeletal', True)
+    ui.set_editor_property('import_animations', True)
+    ui.set_editor_property('import_materials', False)
+    ui.set_editor_property('import_textures', False)
+    ui.set_editor_property('mesh_type_to_import', unreal.FBXImportType.FBXIT_ANIMATION)
+    ui.set_editor_property('skeleton', skeleton)
+    task.set_editor_property('options', ui)
+    unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
+    found = [str(p) for p in LIB.list_assets(DEST, recursive=False) if 'Shamble' in str(p)]
+    clips.append('%s -> %s' % (clip, found))
+unreal.log('ZOMBIE CLIPS %s' % clips)
 unreal.log('ZOMBIE ASSETS PASS baked=%s %s' % (BAKED, [d.split(':')[0] for d in done]))
 

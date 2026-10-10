@@ -295,7 +295,10 @@ UArenaDuelZombieAnimInstance::UArenaDuelZombieAnimInstance()
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> SwingA(TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Attack/MM_Attack_01"));
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> SwingB(TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Attack/MM_Attack_02"));
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> Slam(TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Attack/MM_ChargedAttack"));
-	Idle = IdleAsset.Object; Walk = WalkAsset.Object; Run = RunAsset.Object;
+	// The shamble is the zombies' own walk, authored in Blender (Tools/Art/build_zombie_anims.py); the
+	// mannequin's walk is only the fallback for a checkout without it.
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> ShambleAsset(TEXT("/Game/ArenaDuel/Characters/Zombies/A_Zombie_Shamble"));
+	Idle = IdleAsset.Object; Walk = ShambleAsset.Succeeded() ? ShambleAsset.Object : WalkAsset.Object; Run = RunAsset.Object;
 	AttackClips[0] = SwingA.Object; AttackClips[1] = SwingB.Object; AttackClips[2] = Slam.Object;
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> HitLight(TEXT("/Game/Characters/Mannequins/Anims/Rifle/HitReact/MM_HitReact_Front_Lgt_01"));
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> HitHeavy(TEXT("/Game/Characters/Mannequins/Anims/Rifle/HitReact/MM_HitReact_Front_Hvy_01"));
@@ -313,7 +316,8 @@ void UArenaDuelZombieAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	UAnimSequence* Desired = Speed < 15.0f ? Idle.Get() : Speed < 380.0f ? Walk.Get() : Run.Get();
 	if (Desired && GetCurrentAsset() != Desired) SetAnimationAsset(Desired, true);
 	SetPlaying(true);
-	SetPlayRate(Desired == Idle ? 1.0f : FMath::Clamp(Speed / (Desired == Run ? 600.0f : 200.0f), 0.5f, 1.8f));
+	// The shamble covers about 2.6 m a second at its own pace; the rate follows the real speed so the feet do not slide.
+	SetPlayRate(Desired == Idle ? 1.0f : FMath::Clamp(Speed / (Desired == Run ? 600.0f : 260.0f), 0.5f, 1.8f));
 }
 
 int32 AArenaDuelHitBurst::AliveBursts = 0;

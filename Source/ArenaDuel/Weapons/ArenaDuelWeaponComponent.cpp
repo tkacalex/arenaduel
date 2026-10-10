@@ -198,10 +198,11 @@ UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 	WeaponVisualDefinitions[3].FirstPersonScale=FVector(0.38f);
 	// Local positions on the gun meshes. These are the support-hand targets for
 	// the current generated weapons and can be tuned per weapon in the component.
-	WeaponVisualDefinitions[0].LeftHandGripLocation=FVector(20,-5,-3);
-	WeaponVisualDefinitions[1].LeftHandGripLocation=FVector(11,-5,-3);
-	WeaponVisualDefinitions[2].LeftHandGripLocation=FVector(27,-5,-3);
-	WeaponVisualDefinitions[3].LeftHandGripLocation=FVector(17,-6,-3);
+	// Support hand: out on the handguard, the foregrip or the pump of the modelled weapons.
+	WeaponVisualDefinitions[0].LeftHandGripLocation=FVector(33,-5,-3);
+	WeaponVisualDefinitions[1].LeftHandGripLocation=FVector(24,-5,-4);
+	WeaponVisualDefinitions[2].LeftHandGripLocation=FVector(36,-5,-3);
+	WeaponVisualDefinitions[3].LeftHandGripLocation=FVector(37,-6,-5);
 	for (FArenaDuelWeaponVisualDefinition& Visual : WeaponVisualDefinitions) Visual.ThirdPersonScale = FVector(0.75f);
 	// Visual alignment only; approved FOV, sensitivity, spread and recoil are unchanged.
 	for (auto& Definition : WeaponDefinitions) Definition.AimViewmodelLocation.Z -= 19.0f;
