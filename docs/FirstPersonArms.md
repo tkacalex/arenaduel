@@ -33,3 +33,15 @@ Capture both player views at hip and ADS, every weapon, sprint and reload, and i
 - At the hip the viewmodel is lowered by `ArenaDuel.Arms.HipDrop` (5.5 cm), so the screen edge cuts the forearms off and only the hands show. Aiming uses its own location and brings the arms into view.
 - Knife and flashbang are one-handed. The free hand has its own place apart from the weapon hand: a fixed point in camera space in first person (`ArenaDuel.Arms.FreeHandX/Y/Z`, `FreeHandRoll`), a point beside the body on the world mesh.
 - During a reload the support hand is released and the reload clip drives the arm.
+
+## Aiming
+
+Aiming used a fixed viewmodel location per weapon. The weapon hangs on the hand of an animated arm, so that location put it right of the crosshair with both forearms across the view (`docs/media/fp_2026-10-10_before.png`, second and fourth column).
+
+`UArenaDuelWeaponComponent::SolveAimSightTransform` now works the other way round: every frame it reads where the first person weapon actually is relative to the viewmodel root and places the root so that the weapon points straight along the view with its top rear edge just under the line of sight. `ArenaDuel.Aim.EyeDistance` (30 cm) and `ArenaDuel.Aim.SightDrop` (1.2 cm) tune it. The hip pose, the aim field of view and everything the server does are unchanged. `docs/media/fp_2026-10-10_aim_solved.png` shows the same views afterwards; the network smoke test checks the alignment instead of the old fixed location.
+
+Not checked: aiming with real mouse input while moving and firing, other fields of view and aspect ratios, and the look while the aim blends in.
+
+## State of the hand model (2026-10-10)
+
+Still the placeholder described above: forearms and hands cut from the mannequin, placed rigidly, with the full body rifle clips. A hand model of game quality, grip poses per weapon and first person animations are not made. Two things are missing for that: a model to work from (the engine templates only carry the mannequin, and nothing may be taken from other games), and a working modelling tool in this session (Blender is installed, but its MCP add-on was not reachable on port 9876).
