@@ -125,6 +125,9 @@ shared = {
     'Z_Trousers': textured('M_ZombieTrousers') if BAKED else material('M_ZombieTrousers', (0.030, 0.034, 0.045), 0.92, blotch=(0.012, 0.011, 0.010)),
     'Z_Shoes': textured('M_ZombieShoes') if BAKED else material('M_ZombieShoes', (0.012, 0.012, 0.012), 0.6),
     'Z_Eyes': material('M_ZombieEyes', (0.9, 0.8, 0.5), 0.3, emissive=(6.0, 3.2, 0.5)),
+    # Gear: the armoured zombie's plates and helmet, the bosses' bone spurs.
+    'Z_Armour': material('M_ZombieArmour', (0.045, 0.050, 0.058), 0.42),
+    'Z_Bone': material('M_ZombieBone', (0.42, 0.37, 0.27), 0.55, blotch=(0.16, 0.10, 0.07)),
 }
 skeleton = unreal.load_asset('/Game/Characters/Mannequins/Meshes/SK_Mannequin')
 physics = unreal.load_asset('/Game/Characters/Mannequins/Rigs/PA_Mannequin')

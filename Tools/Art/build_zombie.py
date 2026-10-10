@@ -216,6 +216,58 @@ def build(art_dir, variant):
         poly.material_index = max(set(votes), key=votes.count)
         poly.use_smooth = True
 
+    # --- Gear that tells the types apart at a glance ------------------------------------------------
+    # Rigid pieces, each carried by one bone. Group names are still the game engine rig's here:
+    # its spine_03 is the chest.
+    for slot in ('Z_Armour', 'Z_Bone'):
+        mesh.materials.append(bpy.data.materials.get(slot) or bpy.data.materials.new(slot))
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    deform = bm.verts.layers.deform.verify()
+
+    def piece(shape, centre, scale, bone, slot, turn=None, keep_above=None):
+        matrix = Matrix.Translation(centre) @ (turn or Matrix.Identity(4)) @ Matrix.Diagonal((scale[0], scale[1], scale[2], 1.0))
+        before = set(bm.faces)
+        if shape == 'sphere':
+            made = bmesh.ops.create_uvsphere(bm, u_segments=16, v_segments=10, radius=1.0, matrix=matrix)
+        elif shape == 'cone':
+            made = bmesh.ops.create_cone(bm, cap_ends=True, segments=10, radius1=1.0, radius2=0.0, depth=1.0, matrix=matrix)
+        else:
+            made = bmesh.ops.create_cube(bm, size=2.0, matrix=matrix)
+        group = human.vertex_groups[bone].index
+        for vert in made['verts']:
+            vert[deform][group] = 1.0
+        if keep_above is not None:
+            bmesh.ops.delete(bm, geom=[v for v in made['verts'] if v.co.z < keep_above], context='VERTS')
+        for face in set(bm.faces) - before:
+            face.material_index = slot
+            face.smooth = shape != 'cube'
+
+    armour, bone_slot = len(mesh.materials) - 2, len(mesh.materials) - 1
+    head = J('head')
+    if variant == 'Armoured':
+        crown = head + Vector((0.0, -0.015, 0.105))
+        piece('sphere', crown, (0.118, 0.135, 0.125), 'head', armour, keep_above=crown.z - 0.015)
+        chest = J('spine_05')
+        piece('cube', chest + Vector((0.0, -0.135, -0.02)), (0.17, 0.018, 0.15), 'spine_03', armour)
+        piece('cube', chest + Vector((0.0, 0.125, -0.02)), (0.17, 0.018, 0.15), 'spine_03', armour)
+        for side in ('_l', '_r'):
+            sign = 1.0 if side == '_l' else -1.0
+            piece('sphere', J('upperarm' + side) + Vector((sign * 0.02, 0.0, 0.035)), (0.085, 0.085, 0.055), 'upperarm' + side, armour)
+            knee, ankle = J('calf' + side), J('foot' + side)
+            piece('cube', (knee + ankle) * 0.5 + Vector((0.0, -0.06, 0.0)), (0.045, 0.014, 0.14), 'calf' + side, armour)
+    if variant in ('Brute', 'Abomination'):
+        # Bone spurs along the back, longer on the big one.
+        length = 0.20 if variant == 'Abomination' else 0.10
+        lean = Matrix.Rotation(-1.0, 4, 'X')
+        for name, bone in (('spine_02', 'spine_01'), ('spine_03', 'spine_02'), ('spine_04', 'spine_03'), ('spine_05', 'spine_03')):
+            piece('cone', J(name) + Vector((0.0, 0.13, 0.03)), (0.028, 0.028, length), bone, bone_slot, turn=lean)
+        if variant == 'Abomination':
+            for side in ('_l', '_r'):
+                sign = 1.0 if side == '_l' else -1.0
+                piece('cone', J('upperarm' + side) + Vector((sign * 0.02, 0.02, 0.10)), (0.03, 0.03, 0.22), 'upperarm' + side, bone_slot, turn=Matrix.Rotation(sign * 0.5, 4, 'Y'))
+    bm.to_mesh(mesh)
+    bm.free()
     # --- Weights onto the mannequin's bone names, then bind and export --------------------------------
     for group in list(human.vertex_groups):
         if group.name not in rig.data.bones:

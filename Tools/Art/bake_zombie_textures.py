@@ -73,16 +73,17 @@ def nodes_for(mat, kind):
         blotch = ramp(noise(7.0).outputs['Fac'], [(0.35, (0.62, 0.63, 0.58, 1)), (0.62, (0.36, 0.37, 0.36, 1)), (0.80, (0.22, 0.20, 0.22, 1))])
         veins_tex = tree.nodes.new('ShaderNodeTexVoronoi')
         veins_tex.feature = 'DISTANCE_TO_EDGE'
-        veins_tex.inputs['Scale'].default_value = 16.0
+        veins_tex.inputs['Scale'].default_value = 26.0
         tree.links.new(metres.outputs['Vector'], veins_tex.inputs['Vector'])
-        veins = ramp(veins_tex.outputs['Distance'], [(0.0, (1, 1, 1, 1)), (0.035, (0, 0, 0, 1))])
+        # Thin and faint: veins under the skin, not cracks in it.
+        veins = ramp(veins_tex.outputs['Distance'], [(0.0, (0.5, 0.5, 0.5, 1)), (0.022, (0, 0, 0, 1))])
         veined = mix(blotch.outputs['Color'], (0.16, 0.13, 0.20, 1), veins.outputs['Color'], mode='MIX')
         sores = ramp(noise(3.2, 2.0).outputs['Fac'], [(0.66, (0, 0, 0, 1)), (0.72, (1, 1, 1, 1))])
         color = mix(veined, (0.30, 0.05, 0.04, 1), sores.outputs['Color'])
         pores = noise(140.0, 2.0)
         tree.links.new(pores.outputs['Fac'], bump_height.inputs[0])
         tree.links.new(veins.outputs['Color'], bump_height.inputs[1])
-        bump.inputs['Strength'].default_value = 0.35
+        bump.inputs['Strength'].default_value = 0.2
         rough = ramp(noise(20.0).outputs['Fac'], [(0.3, (0.50, 0.50, 0.50, 1)), (0.7, (0.78, 0.78, 0.78, 1))])
     else:
         base = {'shirt': (0.060, 0.066, 0.078, 1), 'trousers': (0.032, 0.038, 0.055, 1), 'shoes': (0.020, 0.018, 0.016, 1)}[kind]

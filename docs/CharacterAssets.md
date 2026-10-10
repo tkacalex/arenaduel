@@ -38,8 +38,8 @@ A fast-forwarded run went through waves 1 to 10 with these bodies and no errors 
 
 ### What is missing
 
-- **Textures** are procedural patterns baked to maps, not painted or sculpted: the veins read as a net of cracks, there are no wounds in the geometry and no real cloth folds. The feet are bare, coloured dark.
-- **Variants** differ in build and skin tone only. The armoured zombie has no armour geometry, the bosses no distinguishing features beyond size.
+- **Textures** are procedural patterns baked to maps, not painted or sculpted: there are no wounds in the geometry and no real cloth folds. The feet are bare, coloured dark.
+- **Variants** differ in build, skin tone and gear: the armoured zombie wears a helmet, chest and back plates, shoulder pads and shin guards (`M_ZombieArmour`); the brute and the abomination carry bone spurs along the back, the abomination longer ones and two on the shoulders (`M_ZombieBone`). The gear is made of plain spheres, boxes and cones, each carried rigidly by one bone, and was looked at in Blender only; it does not change damage.
 - **Clothes** are regions of the body pushed out a few millimetres, not separate garments; the collar and sleeve edges are ragged where the region ends.
 - **Animation**: the clips are those of an athletic human. There is no zombie gait, no hit reaction clip (the flinch is still a lean of the body), no death clip (ragdoll), no charge, slam or enrage animation. The impact time of the attack clips is an estimate (42 percent of the clip) and was not checked against the visible swing.
 - **Posture**: the anim instance stoops the spine, tilts the head differently per zombie and rocks the body with the walk; runners lean further forward. Seen only as stills.
