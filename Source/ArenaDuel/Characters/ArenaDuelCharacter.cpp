@@ -1,6 +1,9 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "ArenaDuelCharacter.h"
+#include "../Weapons/ArenaDuelItemMeshes.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
 #include "ArenaDuelCharacterMovementComponent.h"
 #include "ArenaDuelVisualAnimInstance.h"
 #include "../Weapons/ArenaDuelWeaponComponent.h"
@@ -533,6 +536,8 @@ void AArenaDuelCharacter::ClientApplyFlash_Implementation(float Strength, float 
 	FlashWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
 	FlashStrength = FMath::Clamp(Strength, 0.0f, 1.0f);
 	FlashSeconds = FMath::Max(Seconds, 0.0f);
+	// The ears ring as long and as loud as the eyes are blind.
+	if (USoundBase* Ring = ArenaDuelItemMeshes::Sound(TEXT("S_FlashRing")); Ring && IsLocallyControlled()) UGameplayStatics::PlaySound2D(this, Ring, 0.25f + 0.6f * FlashStrength);
 }
 
 float AArenaDuelCharacter::GetFlashBlindness() const

@@ -334,6 +334,8 @@ protected:
 
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastKnifeSwing(bool bHit, bool bHeavy);
+	/** The throw as everyone hears it and the thrower sees it. The grenade itself is the server's. */
+	UFUNCTION(NetMulticast, Unreliable) void MulticastEquipmentThrown(bool bShort);
 
 	void ApplyLoadoutFromArchetype();
 	bool CanSwitchAuthoritative() const;
@@ -493,6 +495,11 @@ protected:
 	float WallTraceTime = 0.0f;
 	float WallTarget = 0.0f;
 	float EquipDrop = 0.0f;
+	// Cosmetic, local: when the last knife swing and the last throw began.
+	float KnifeSwingStartWorldTime = -10.0f;
+	bool bKnifeSwingHeavy = false;
+	float ThrowStartWorldTime = -10.0f;
+	bool bThrowShort = false;
 	FRotator PreviousControlRotation = FRotator::ZeroRotator;
 	float PreviousVerticalVelocity = 0.0f;
 	bool bHadControlRotation = false;

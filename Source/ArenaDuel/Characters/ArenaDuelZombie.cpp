@@ -349,8 +349,36 @@ void AArenaDuelHitBurst::Spawn(UWorld* World, const FVector& Location, const FVe
 	}
 }
 
-void AArenaDuelHitBurst::Launch(const FVector& ShotDirection, bool bHeavy)
+void AArenaDuelHitBurst::SpawnSparks(UWorld* World, const FVector& Location)
 {
+	if (!World || World->GetNetMode() == NM_DedicatedServer) return;
+	FActorSpawnParameters Parameters;
+	Parameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	Parameters.ObjectFlags |= RF_Transient;
+	if (AArenaDuelHitBurst* Burst = World->SpawnActor<AArenaDuelHitBurst>(AArenaDuelHitBurst::StaticClass(), Location, FRotator::ZeroRotator, Parameters))
+	{
+		++AliveBursts;
+		Burst->Launch(FVector::UpVector, true, true);
+	}
+}
+
+void AArenaDuelHitBurst::Launch(const FVector& ShotDirection, bool bHeavy, bool bSparks)
+{
+	if (bSparks)
+	{
+		static TWeakObjectPtr<UMaterialInterface> Glow;
+		if (!Glow.IsValid()) Glow = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ArenaDuel/Characters/Common/M_SurvivalAmmo.M_SurvivalAmmo"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+		if (Glow.IsValid()) Drops->SetMaterial(0, Glow.Get());
+		DropScale = 0.022f;
+		for (int32 Index = 0; Index < 26; ++Index)
+		{
+			Positions.Add(GetActorLocation());
+			Velocities.Add(FMath::VRand() * FMath::FRandRange(350.0f, 1100.0f) + FVector(0.0f, 0.0f, 180.0f));
+			Drops->AddInstance(FTransform(FRotator::ZeroRotator, GetActorLocation(), FVector(DropScale)), true);
+		}
+		SetLifeSpan(0.55f);
+		return;
+	}
 	static TWeakObjectPtr<UMaterialInterface> Blood;
 	static bool bBloodSearched = false;
 	if (!bBloodSearched)

@@ -49,8 +49,10 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	/** Spawns a burst unless too many are already alive. ShotDirection is the direction the shot travelled. */
 	static void Spawn(UWorld* World, const FVector& Location, const FVector& ShotDirection, bool bHeavy);
+	/** The same kind of burst as glowing sparks flying every way, for the flashbang. */
+	static void SpawnSparks(UWorld* World, const FVector& Location);
 private:
-	void Launch(const FVector& ShotDirection, bool bHeavy);
+	void Launch(const FVector& ShotDirection, bool bHeavy, bool bSparks = false);
 	UPROPERTY() TObjectPtr<UInstancedStaticMeshComponent> Drops;
 	TArray<FVector> Positions;
 	TArray<FVector> Velocities;

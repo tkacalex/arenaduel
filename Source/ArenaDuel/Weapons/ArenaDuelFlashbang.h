@@ -36,12 +36,16 @@ protected:
 
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastDetonate(FVector_NetQuantize Location);
+	/** The server sees the bounce; everyone hears it. */
+	UFUNCTION() void HandleBounce(const FHitResult& ImpactResult, const FVector& ImpactVelocity);
+	UFUNCTION(NetMulticast, Unreliable) void MulticastBounce(FVector_NetQuantize Location, float Strength);
 
 	UPROPERTY(VisibleAnywhere) TObjectPtr<USphereComponent> Collision;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Visual;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UProjectileMovementComponent> Movement;
 
 	FTimerHandle FuseTimer;
+	float LastBounceWorldTime = -10.0f;
 	float MaxBlindDistance = 3500.0f;
 	float MaxBlindSeconds = 3.2f;
 };

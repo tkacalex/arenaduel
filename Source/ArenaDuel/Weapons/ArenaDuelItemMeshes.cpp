@@ -1,4 +1,5 @@
 #include "ArenaDuelItemMeshes.h"
+#include "Sound/SoundBase.h"
 #include "Engine/StaticMesh.h"
 #include "MeshDescription.h"
 #include "StaticMeshAttributes.h"
@@ -106,9 +107,22 @@ namespace
 	TWeakObjectPtr<UStaticMesh> CachedFlashbang;
 }
 
+USoundBase* ArenaDuelItemMeshes::Sound(const TCHAR* Name)
+{
+	static TMap<FString, TWeakObjectPtr<USoundBase>> Found;
+	static TSet<FString> Missing;
+	const FString Key(Name);
+	if (const TWeakObjectPtr<USoundBase>* Cached = Found.Find(Key); Cached && Cached->IsValid()) return Cached->Get();
+	if (Missing.Contains(Key)) return nullptr;
+	USoundBase* Loaded = LoadObject<USoundBase>(nullptr, *FString::Printf(TEXT("/Game/ArenaDuel/Audio/%s.%s"), Name, Name), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	if (Loaded) Found.Add(Key, Loaded); else Missing.Add(Key);
+	return Loaded;
+}
+
 UStaticMesh* ArenaDuelItemMeshes::Flashbang()
 {
 	if (CachedFlashbang.IsValid()) return CachedFlashbang.Get();
+	if (UStaticMesh* Modelled = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/ArenaDuel/Weapons/Equipment/SM_Flashbang.SM_Flashbang"), nullptr, LOAD_NoWarn | LOAD_Quiet)) { CachedFlashbang = Modelled; return Modelled; }
 	// Parts are stacked along the builder's X axis and stood upright, so X below is height.
 	FKnifeBuilder Builder;
 	Builder.bUpright = true;
@@ -133,6 +147,7 @@ UStaticMesh* ArenaDuelItemMeshes::Flashbang()
 UStaticMesh* ArenaDuelItemMeshes::Knife()
 {
 	if (CachedKnife.IsValid()) return CachedKnife.Get();
+	if (UStaticMesh* Modelled = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/ArenaDuel/Weapons/Equipment/SM_Knife.SM_Knife"), nullptr, LOAD_NoWarn | LOAD_Quiet)) { CachedKnife = Modelled; return Modelled; }
 	// Centimetres, +X towards the tip, +Z towards the spine. The origin is the middle of the grip.
 	FKnifeBuilder Builder;
 	const FPolygonGroupID Blade = Builder.AddGroup(TEXT("Blade"));

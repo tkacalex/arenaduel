@@ -1,6 +1,9 @@
 #include "ArenaDuelFlashbang.h"
 #include "../Characters/ArenaDuelCharacter.h"
 #include "ArenaDuelItemMeshes.h"
+#include "../Characters/ArenaDuelZombie.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
 #include "Materials/MaterialInterface.h"
 #include "Components/PointLightComponent.h"
 #include "Components/SphereComponent.h"
@@ -48,12 +51,34 @@ AArenaDuelFlashbang::AArenaDuelFlashbang()
 void AArenaDuelFlashbang::BeginPlay()
 {
 	Super::BeginPlay();
+	if (HasAuthority()) Movement->OnProjectileBounce.AddDynamic(this, &AArenaDuelFlashbang::HandleBounce);
 	if (GetNetMode() == NM_DedicatedServer) return;
-	// Same code-built model as the one held in the hand. Slots: 0 body, 1 bands and fuse, 2 lever and pin.
-	Visual->SetStaticMesh(ArenaDuelItemMeshes::Flashbang());
-	Visual->SetMaterial(0, LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial")));
-	Visual->SetMaterial(1, LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneMetal")));
-	Visual->SetMaterial(2, LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneCyan")));
+	// The same model as the one held in the hand. Slots: 0 body, 1 bands and fuse, 2 lever and pin.
+	UStaticMesh* Model = ArenaDuelItemMeshes::Flashbang();
+	Visual->SetStaticMesh(Model);
+	if (Model && !Model->GetMaterial(0))
+	{
+		// Code-built fallback without materials of its own.
+		Visual->SetMaterial(0, LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial")));
+		Visual->SetMaterial(1, LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneMetal")));
+		Visual->SetMaterial(2, LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneCyan")));
+	}
+}
+
+void AArenaDuelFlashbang::HandleBounce(const FHitResult& ImpactResult, const FVector& ImpactVelocity)
+{
+	// Rolling to a stop is a string of tiny bounces; only real ones are heard, and not more than a few a second.
+	const float Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+	const float Speed = static_cast<float>(ImpactVelocity.Size());
+	if (Speed < 120.0f || Now - LastBounceWorldTime < 0.12f) return;
+	LastBounceWorldTime = Now;
+	MulticastBounce(GetActorLocation(), FMath::Clamp(Speed / 900.0f, 0.25f, 1.0f));
+}
+
+void AArenaDuelFlashbang::MulticastBounce_Implementation(FVector_NetQuantize Location, float Strength)
+{
+	if (GetNetMode() == NM_DedicatedServer) return;
+	if (USoundBase* Clink = ArenaDuelItemMeshes::Sound(TEXT("S_FlashBounce"))) UGameplayStatics::PlaySoundAtLocation(this, Clink, FVector(Location), Strength, FMath::FRandRange(0.92f, 1.08f));
 }
 
 void AArenaDuelFlashbang::Launch(const FVector& Velocity, float FuseSeconds, float InMaxBlindDistance, float InMaxBlindSeconds)
@@ -110,6 +135,8 @@ void AArenaDuelFlashbang::MulticastDetonate_Implementation(FVector_NetQuantize L
 	UWorld* World = GetWorld();
 	if (Visual) Visual->SetVisibility(false);
 	if (!World || World->GetNetMode() == NM_DedicatedServer) return;
+	if (USoundBase* Bang = ArenaDuelItemMeshes::Sound(TEXT("S_FlashBang"))) UGameplayStatics::PlaySoundAtLocation(World, Bang, FVector(Location), 1.0f);
+	AArenaDuelHitBurst::SpawnSparks(World, FVector(Location));
 	// Cosmetic burst on a short timer of its own, so it outlives this actor's cleanup order.
 	UPointLightComponent* Burst = NewObject<UPointLightComponent>(World->GetWorldSettings());
 	Burst->SetWorldLocation(FVector(Location));

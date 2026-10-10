@@ -971,10 +971,15 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 			if (ItemMesh) ItemComponent->SetStaticMesh(ItemMesh);
 			ItemComponent->SetRelativeScale3D(ItemScale * HandScale);
 			ItemComponent->SetRelativeLocation(ItemOffset * HandScale);
-			if (WeaponBodyMaterial) for (int32 MaterialIndex = 0; MaterialIndex < ItemComponent->GetNumMaterials(); ++MaterialIndex) ItemComponent->SetMaterial(MaterialIndex, WeaponBodyMaterial);
-			// Slot 0 is the bright part (blade, canister), slot 2 the accent (guard, lever).
-			if (KnifeBladeMaterial) ItemComponent->SetMaterial(0, KnifeBladeMaterial);
-			if (Accent) ItemComponent->SetMaterial(2, Accent);
+			// The modelled items bring their own steel, rubber and paint; whatever the firearm left on the component goes.
+			ItemComponent->EmptyOverrideMaterials();
+			if (ItemMesh && !ItemMesh->GetMaterial(0))
+			{
+				// Code-built fallback: slot 0 is the bright part (blade, canister), slot 2 the accent (guard, lever).
+				if (WeaponBodyMaterial) for (int32 MaterialIndex = 0; MaterialIndex < ItemComponent->GetNumMaterials(); ++MaterialIndex) ItemComponent->SetMaterial(MaterialIndex, WeaponBodyMaterial);
+				if (KnifeBladeMaterial) ItemComponent->SetMaterial(0, KnifeBladeMaterial);
+				if (Accent) ItemComponent->SetMaterial(2, Accent);
+			}
 		}
 	}
 	FirstPersonWeaponMesh->SetVisibility(Character->IsLocallyControlled() && !Character->IsDead());
@@ -1134,8 +1139,40 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 	const FRotator MotionRotation(SwayPitch - 1.5f * LocalWeaponKick + 5.0f * SprintBlend,
 		SwayYaw + VisualYawKick,
 		-SwayYaw * 0.35f + FMath::Sin(BobPhase) * BobAmount * 0.3f);
-	const FVector FinalLocation = BaseLocation + MotionLocation + FVector(0.0f, Bob.Y, 0.0f);
-	const FRotator FinalRotation = BaseRotation + MotionRotation;
+	// Knife and throw: the arm's own motion, on top of everything else. Camera space: X forward, Y right, Z up.
+	FVector ActionLocation = FVector::ZeroVector;
+	FRotator ActionRotation = FRotator::ZeroRotator;
+	const float PresentationTime = GetWorld()->GetTimeSeconds();
+	if (const float Length = bKnifeSwingHeavy ? 0.42f : 0.26f, Age = PresentationTime - KnifeSwingStartWorldTime; Age >= 0.0f && Age < Length)
+	{
+		const float T = Age / Length;
+		const float Out = 1.0f - FMath::SmoothStep(0.72f, 1.0f, T);
+		if (bKnifeSwingHeavy)
+		{
+			// Stab: drawn back for a moment, then driven straight forward.
+			const float Draw = T < 0.3f ? FMath::Sin(PI * T / 0.3f) : 0.0f;
+			const float Thrust = T >= 0.25f ? FMath::Sin(PI * FMath::Clamp((T - 0.25f) / 0.6f, 0.0f, 1.0f) * 0.5f) : 0.0f;
+			ActionLocation = FVector(-6.0f * Draw + 17.0f * Thrust, -4.0f * Thrust, 2.5f * Thrust) * Out;
+			ActionRotation = FRotator(-5.0f * Thrust, -7.0f * Thrust, 8.0f * Draw) * Out;
+		}
+		else
+		{
+			// Slash: from the right across the view to the left, the blade rolled into the cut.
+			const float Arc = FMath::Sin(PI * T);
+			const float Sweep = FMath::InterpEaseInOut(0.0f, 1.0f, FMath::Clamp(T / 0.75f, 0.0f, 1.0f), 2.0f);
+			ActionLocation = FVector(9.0f * Arc, FMath::Lerp(5.0f, -16.0f, Sweep), -2.0f * Arc) * Out;
+			ActionRotation = FRotator(-4.0f * Arc, FMath::Lerp(10.0f, -30.0f, Sweep), -32.0f * Arc) * Out;
+		}
+	}
+	if (const float Age = PresentationTime - ThrowStartWorldTime; Age >= 0.0f && Age < 0.32f)
+	{
+		// Follow-through of a throw: the arm comes over and down. A short throw is an easy underhand flick.
+		const float T = Age / 0.32f, Arc = FMath::Sin(PI * T);
+		ActionLocation += bThrowShort ? FVector(8.0f * Arc, 0.0f, 6.0f * Arc) : FVector(12.0f * Arc, 0.0f, FMath::Lerp(8.0f, -12.0f, T) * Arc);
+		ActionRotation += bThrowShort ? FRotator(14.0f * Arc, 0.0f, 0.0f) : FRotator(FMath::Lerp(22.0f, -38.0f, T) * Arc, 0.0f, -6.0f * Arc);
+	}
+	const FVector FinalLocation = BaseLocation + MotionLocation + FVector(0.0f, Bob.Y, 0.0f) + ActionLocation;
+	const FRotator FinalRotation = BaseRotation + MotionRotation + ActionRotation;
 	if (!FinalLocation.ContainsNaN() && !FinalRotation.ContainsNaN())
 	{
 		Character->GetFirstPersonViewmodelRoot()->SetRelativeLocation(FinalLocation);
@@ -1293,6 +1330,7 @@ void UArenaDuelWeaponComponent::ThrowFlashbangAuthoritative(bool bShort)
 	const float UpSpeed = bShort ? Flashbang.ShortThrowUpSpeed : Flashbang.ThrowUpSpeed;
 	Grenade->Launch(Direction * Speed + FVector(0.0f, 0.0f, UpSpeed) + Character->GetVelocity() * 0.5f, Flashbang.FuseSeconds, Flashbang.MaxBlindDistance, Flashbang.MaxBlindSeconds);
 	--FlashbangsRemaining;
+	MulticastEquipmentThrown(bShort);
 	// The hand is empty now, so go straight back to the firearm.
 	SetActiveSlotAuthoritative(EArenaDuelLoadoutSlot::Primary);
 }
@@ -1365,11 +1403,31 @@ void UArenaDuelWeaponComponent::KnifeAttackAuthoritative(bool bHeavy)
 	MulticastKnifeSwing(Victim != nullptr, bHeavy);
 }
 
+void UArenaDuelWeaponComponent::MulticastEquipmentThrown_Implementation(bool bShort)
+{
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	if (!Character || !GetWorld() || GetNetMode() == NM_DedicatedServer) return;
+	if (USoundBase* Pin = ArenaDuelItemMeshes::Sound(TEXT("S_FlashPin"))) UGameplayStatics::PlaySoundAtLocation(this, Pin, Character->GetPawnViewLocation(), Character->IsLocallyControlled() ? 0.7f : 0.9f);
+	if (!Character->IsLocallyControlled()) return;
+	// The arm follows through after the release. The throw itself already happened; nothing waits for this.
+	ThrowStartWorldTime = GetWorld()->GetTimeSeconds();
+	bThrowShort = bShort;
+	LastCosmeticShotWorldTime = ThrowStartWorldTime;
+	SetComponentTickEnabled(true);
+}
+
 void UArenaDuelWeaponComponent::MulticastKnifeSwing_Implementation(bool bHit, bool bHeavy)
 {
-	// Cosmetic lunge of the owner's viewmodel: a hit bites deeper than a whiff. Negative kick pushes forward.
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
-	if (!Character || !Character->IsLocallyControlled()) return;
+	if (!Character || !GetWorld() || GetNetMode() == NM_DedicatedServer) return;
+	// Everyone near hears the blade: the cut through the air, and the thud when it lands.
+	const float Volume = Character->IsLocallyControlled() ? 0.65f : 0.9f;
+	if (USoundBase* Air = ArenaDuelItemMeshes::Sound(bHeavy ? TEXT("S_KnifeStab") : TEXT("S_KnifeSwing"))) UGameplayStatics::PlaySoundAtLocation(this, Air, Character->GetPawnViewLocation(), Volume);
+	if (bHit) if (USoundBase* Thud = ArenaDuelItemMeshes::Sound(TEXT("S_KnifeHit"))) UGameplayStatics::PlaySoundAtLocation(this, Thud, Character->GetPawnViewLocation() + Character->GetControlRotation().Vector() * 80.0f, Volume);
+	// The rest is the owner's viewmodel: the swing itself and a kick that bites deeper on a hit. Negative kick pushes forward.
+	if (!Character->IsLocallyControlled()) return;
+	KnifeSwingStartWorldTime = GetWorld()->GetTimeSeconds();
+	bKnifeSwingHeavy = bHeavy;
 	const float Weight = bHeavy ? 1.8f : 1.0f;
 	LocalWeaponKick = (bHit ? -2.2f : -1.2f) * Weight;
 	VisualYawKick = (bHit ? 1.2f : 0.7f) * Weight;
