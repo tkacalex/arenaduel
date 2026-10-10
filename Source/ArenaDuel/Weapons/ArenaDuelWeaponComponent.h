@@ -266,6 +266,8 @@ public:
 	float GetAimAccuracyAlpha() const;
 	void CancelCombatActions();
 	void RefillAllAmmoForDevelopment();
+	/** Server only. Adds this share of each weapon's reserve capacity to its reserve, up to the capacity. */
+	void AddReserveAmmoShare(float Share);
 	void RefreshWeaponVisual();
 	void SetUserHipFOV(float NewFOV);
 	void GetCurrentViewmodelBaseTransform(FVector& OutLocation, FRotator& OutRotation) const;

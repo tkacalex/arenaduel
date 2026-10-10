@@ -42,10 +42,24 @@ bool FArenaDuelSurvivalWaveTableTest::RunTest(const FString& Parameters)
 	{
 		const FArenaDuelWaveDefinition Wave = AArenaDuelZombieGameMode::ComputeWave(Number, Table);
 		TestTrue(FString::Printf(TEXT("Wave %d has no negative count"), Number), Wave.Normal > 0 && Wave.Fast >= 0 && Wave.Armored >= 0 && Wave.MiniBoss >= 0 && Wave.Boss >= 0);
-		TestTrue(FString::Printf(TEXT("Wave %d has more normal zombies than wave %d"), Number, Number - 1), Wave.Normal > AArenaDuelZombieGameMode::ComputeWave(Number - 1, Table).Normal);
-		TestTrue(FString::Printf(TEXT("Wave %d health scale rises"), Number), AArenaDuelZombieGameMode::ComputeHealthScale(Number, Table.Num()) > AArenaDuelZombieGameMode::ComputeHealthScale(Number - 1, Table.Num()));
+		// Rising until the limits are reached, never falling, and never past the limits.
+		const bool bEarly = Number <= 20;
+		const int32 Before = AArenaDuelZombieGameMode::ComputeWave(Number - 1, Table).Normal;
+		TestTrue(FString::Printf(TEXT("Wave %d has at least as many normal zombies as wave %d"), Number, Number - 1), bEarly ? Wave.Normal > Before : Wave.Normal >= Before);
+		const float Health = AArenaDuelZombieGameMode::ComputeHealthScale(Number, Table.Num()), HealthBefore = AArenaDuelZombieGameMode::ComputeHealthScale(Number - 1, Table.Num());
+		TestTrue(FString::Printf(TEXT("Wave %d health scale does not fall"), Number), bEarly ? Health > HealthBefore : Health >= HealthBefore);
+		const float Speed = AArenaDuelZombieGameMode::ComputeSpeedScale(Number, Table.Num());
+		TestTrue(FString::Printf(TEXT("Wave %d stays within the limits"), Number), Wave.Normal <= 120 && Wave.Fast <= 30 && Wave.Armored <= 20 && Wave.MiniBoss <= 4 && Wave.Boss <= 3 && Health <= 3.0f && Speed >= 1.0f && Speed <= 1.25f);
 		Previous = Wave.Total();
 	}
+	TestEqual(TEXT("Speed is unscaled through the table"), AArenaDuelZombieGameMode::ComputeSpeedScale(10, Table.Num()), 1.0f);
+	TestTrue(TEXT("Late waves are faster"), AArenaDuelZombieGameMode::ComputeSpeedScale(20, Table.Num()) > 1.0f);
+	// Hit reactions: a normal zombie flinches, more from a head shot; the big boss never does.
+	TestTrue(TEXT("A hit slows a normal zombie"), AArenaDuelZombie::ComputeStaggerSeconds(EArenaDuelZombieType::Normal, 0.2f, false) > 0.0f);
+	TestTrue(TEXT("A head shot slows it for longer"), AArenaDuelZombie::ComputeStaggerSeconds(EArenaDuelZombieType::Normal, 0.2f, true) > AArenaDuelZombie::ComputeStaggerSeconds(EArenaDuelZombieType::Normal, 0.2f, false));
+	TestEqual(TEXT("The big boss does not flinch"), AArenaDuelZombie::ComputeStaggerSeconds(EArenaDuelZombieType::Boss, 1.0f, true), 0.0f);
+	TestEqual(TEXT("Armour does not flinch from a body shot"), AArenaDuelZombie::ComputeStaggerSeconds(EArenaDuelZombieType::Armored, 0.5f, false), 0.0f);
+	TestTrue(TEXT("No hit slows a zombie for more than a second"), AArenaDuelZombie::ComputeStaggerSeconds(EArenaDuelZombieType::Normal, 1.0f, true) < 1.0f);
 	TestTrue(TEXT("Every fifth late wave has a big boss"), AArenaDuelZombieGameMode::ComputeWave(15, Table).Boss >= 1 && AArenaDuelZombieGameMode::ComputeWave(20, Table).Boss >= 1 && AArenaDuelZombieGameMode::ComputeWave(16, Table).Boss == 0);
 	TestEqual(TEXT("Health is unscaled through the table"), AArenaDuelZombieGameMode::ComputeHealthScale(10, Table.Num()), 1.0f);
 	TestEqual(TEXT("Wave zero is empty"), AArenaDuelZombieGameMode::ComputeWave(0, Table).Total(), 0);

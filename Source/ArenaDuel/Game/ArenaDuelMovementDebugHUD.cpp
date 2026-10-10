@@ -147,11 +147,28 @@ namespace
 		{
 			const int32 Seconds = FMath::Max(0, FMath::CeilToInt(State->GetNextWaveServerTime() - Now));
 			Text(FString::Printf(TEXT("NEXT WAVE IN  %d"), Seconds), Width * 0.5f, 68.0f * Unit, 1.3f, Amber, true);
+			// The last seconds are counted down large, so the start of a wave never comes as a surprise.
+			if (Seconds >= 1 && Seconds <= 5 && State->GetWave() > 0) Text(FString::FromInt(Seconds), Width * 0.5f, Height * 0.36f, 4.5f, FLinearColor(1.0f, 0.78f, 0.35f, 0.85f), true);
 			if (const AArenaDuelZombieGameMode* Rules = GetDefault<AArenaDuelZombieGameMode>(); Rules && State->GetWave() > 0)
 			{
 				Text(FString::Printf(TEXT("[5] AMMO  %d      [6] HEAL  %d      [7] DAMAGE +25%%  %d  (LEVEL %d)"),
 					Rules->GetPurchaseCost(Controller, EArenaDuelSurvivalPurchase::Ammo), Rules->GetPurchaseCost(Controller, EArenaDuelSurvivalPurchase::Heal),
 					Rules->GetPurchaseCost(Controller, EArenaDuelSurvivalPurchase::Damage), Player ? Player->GetSurvivalDamageLevel() : 0), Width * 0.5f, Height - 150.0f * Unit, 1.1f, Pale, true);
+			}
+		}
+
+		// Badly hurt: the screen edges pulse red until the player has recovered.
+		if (const AArenaDuelCharacter* Hurt = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr; Hurt && !Hurt->IsDead() && !State->IsGameOver() && Hurt->GetMaxHealth() > 0.0f && Hurt->GetHealth() / Hurt->GetMaxHealth() < 0.35f)
+		{
+			const float Danger = 1.0f - FMath::Clamp(Hurt->GetHealth() / (Hurt->GetMaxHealth() * 0.35f), 0.0f, 1.0f);
+			const float Pulse = 0.55f + 0.45f * FMath::Sin(Now * 5.0f);
+			const float Band = 0.07f * Height;
+			const FLinearColor Edge(0.8f, 0.03f, 0.02f, (0.10f + 0.22f * Danger) * Pulse);
+			for (const FVector4f& Rect : { FVector4f(0.0f, 0.0f, Width, Band), FVector4f(0.0f, Height - Band, Width, Band), FVector4f(0.0f, Band, Band, Height - 2.0f * Band), FVector4f(Width - Band, Band, Band, Height - 2.0f * Band) })
+			{
+				FCanvasTileItem Tile(FVector2D(Rect.X, Rect.Y), FVector2D(Rect.Z, Rect.W), Edge);
+				Tile.BlendMode = SE_BLEND_Translucent;
+				Canvas->DrawItem(Tile);
 			}
 		}
 
@@ -186,6 +203,11 @@ namespace
 			Text(FString::Printf(TEXT("WAVES SURVIVED   %d"), Survived), Width * 0.5f, Height * 0.42f, 1.8f, Pale, true);
 			Text(FString::Printf(TEXT("ZOMBIES KILLED   %d"), Player ? Player->GetSurvivalKills() : State->GetTotalKills()), Width * 0.5f, Height * 0.48f, 1.8f, Pale, true);
 			Text(FString::Printf(TEXT("POINTS   %d"), Player ? Player->GetSurvivalPoints() : 0), Width * 0.5f, Height * 0.54f, 1.8f, Amber, true);
+			if (State->GetRunEndServerTime() >= 0.0f)
+			{
+				const int32 RunSeconds = FMath::Max(0, FMath::RoundToInt(State->GetRunEndServerTime() - State->GetRunStartServerTime()));
+				Text(FString::Printf(TEXT("TIME   %d:%02d"), RunSeconds / 60, RunSeconds % 60), Width * 0.5f, Height * 0.60f, 1.4f, Pale, true);
+			}
 			Text(TEXT("[ENTER]  PLAY AGAIN          [M]  MAIN MENU"), Width * 0.5f, Height * 0.66f, 1.4f, Green, true);
 		}
 	}

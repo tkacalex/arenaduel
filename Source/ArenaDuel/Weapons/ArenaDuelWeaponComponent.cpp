@@ -579,6 +579,18 @@ void UArenaDuelWeaponComponent::RefillAllAmmoForDevelopment()
 	if (AActor* Owner = GetOwner()) Owner->ForceNetUpdate();
 }
 
+void UArenaDuelWeaponComponent::AddReserveAmmoShare(float Share)
+{
+	if (GetOwnerRole() != ROLE_Authority || Share <= 0.0f) return;
+	if (RuntimeAmmo.Num() != WeaponDefinitions.Num()) RuntimeAmmo.SetNum(WeaponDefinitions.Num());
+	for (int32 Index = 0; Index < WeaponDefinitions.Num(); ++Index)
+	{
+		const int32 Capacity = WeaponDefinitions[Index].ReserveCapacity;
+		RuntimeAmmo[Index].ReserveAmmo = FMath::Min(Capacity, RuntimeAmmo[Index].ReserveAmmo + FMath::CeilToInt(Capacity * Share));
+	}
+	if (AActor* Owner = GetOwner()) Owner->ForceNetUpdate();
+}
+
 void UArenaDuelWeaponComponent::ServerSetAiming_Implementation(bool bAimingState)
 {
 	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());

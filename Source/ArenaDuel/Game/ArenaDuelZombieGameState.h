@@ -33,6 +33,10 @@ public:
 	void SetTotalKills(int32 NewKills) { TotalKills = FMath::Max(NewKills, 0); }
 	void SetBoss(float HealthFraction, const FString& Name) { BossHealthFraction = HealthFraction; BossName = Name; }
 	void Announce(const FString& Text);
+	/** Start and end of the run in server time; the end is below zero while it is running. */
+	float GetRunStartServerTime() const { return RunStartServerTime; }
+	float GetRunEndServerTime() const { return RunEndServerTime; }
+	void SetRunTimes(float Start, float End) { RunStartServerTime = Start; RunEndServerTime = End; }
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
@@ -46,4 +50,6 @@ protected:
 	UPROPERTY(Replicated) FString BossName;
 	UPROPERTY(Replicated) FString Announcement;
 	UPROPERTY(Replicated) float AnnouncementServerTime = -1000.0f;
+	UPROPERTY(Replicated) float RunStartServerTime = 0.0f;
+	UPROPERTY(Replicated) float RunEndServerTime = -1.0f;
 };

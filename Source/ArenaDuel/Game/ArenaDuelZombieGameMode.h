@@ -35,6 +35,8 @@ public:
 	static FArenaDuelWaveDefinition ComputeWave(int32 WaveNumber, const TArray<FArenaDuelWaveDefinition>& Table);
 	/** Enemy health multiplier for a wave: 1 through the table, then rising. */
 	static float ComputeHealthScale(int32 WaveNumber, int32 TableWaves);
+	/** Enemy speed multiplier for a wave: 1 through the table, then rising slowly up to a limit. */
+	static float ComputeSpeedScale(int32 WaveNumber, int32 TableWaves);
 	/** The spawn order of a wave: specials spread through the normal zombies, bosses last. */
 	static TArray<EArenaDuelZombieType> BuildSpawnQueue(const FArenaDuelWaveDefinition& Wave, int32 Seed);
 
@@ -56,6 +58,10 @@ public:
 	void DevSetTimeScale(float Scale) { DevTimeScale = FMath::Clamp(Scale, 0.02f, 1.0f); }
 	/** Development: enemy damage for zombies spawned from now on. 0 lets a run be watched without dying. */
 	void DevSetZombieDamageScale(float Scale) { ZombieDamageScale = FMath::Max(Scale, 0.0f); }
+	/** Development: zombies that reach a player are killed and credited, so whole waves play themselves and prove that enemies arrive. */
+	void DevSetAutoPlay(bool bEnabled) { bDevAutoPlay = bEnabled; }
+	/** Development: one line about the run to the log: alive, pathing, steering straight, freed, moved, frame time. */
+	void DevLogStats() const;
 
 protected:
 	virtual void EnterCharacterSelect() override;
@@ -78,6 +84,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Survival|Balance", meta = (ClampMin = "0")) float ZombieDamageScale = 1.0f;
 	/** Weapon damage against zombies, all weapons. The duel values themselves stay as they are. */
 	UPROPERTY(EditDefaultsOnly, Category = "Survival|Balance", meta = (ClampMin = "0")) float WeaponDamageScale = 1.0f;
+	/** Health a living player gets back per second between waves. */
+	UPROPERTY(EditDefaultsOnly, Category = "Survival|Balance", meta = (ClampMin = "0")) float IntermissionRegenPerSecond = 6.0f;
+	/** Share of every weapon's reserve that a cleared wave gives back, so a run cannot end for lack of ammunition. */
+	UPROPERTY(EditDefaultsOnly, Category = "Survival|Balance", meta = (ClampMin = "0", ClampMax = "1")) float WaveClearAmmoShare = 0.35f;
+	/** With no spawn for this long although the wave has room, the distance rule is relaxed so a wave cannot stall. */
+	UPROPERTY(EditDefaultsOnly, Category = "Survival|Spawning", meta = (ClampMin = "0.5")) float SpawnStallSeconds = 4.0f;
 	UPROPERTY(EditDefaultsOnly, Category = "Survival|Rewards", meta = (ClampMin = "0")) int32 HeadshotBonusPoints = 50;
 	UPROPERTY(EditDefaultsOnly, Category = "Survival|Rewards", meta = (ClampMin = "0")) int32 AmmoCost = 500;
 	UPROPERTY(EditDefaultsOnly, Category = "Survival|Rewards", meta = (ClampMin = "0")) int32 HealCost = 750;
@@ -92,7 +104,10 @@ protected:
 	void SpawnTick();
 	void WatchTick();
 	void FinishWaveIfDone();
-	bool PickSpawnLocation(FVector& OutLocation, FRotator& OutRotation);
+	/** bRelaxed halves the distance rule; bUnseenOnly refuses points a player can see. */
+	bool PickSpawnLocation(FVector& OutLocation, FRotator& OutRotation, bool bRelaxed = false, bool bUnseenOnly = false);
+	bool IsSeenByAnyPlayer(const FVector& Location) const;
+	void DevAutoPlayTick();
 	void RefreshGameState();
 	AArenaDuelZombieGameState* GetSurvivalState() const;
 	float Scaled(float Seconds) const { return FMath::Max(0.02f, Seconds * DevTimeScale); }
@@ -104,6 +119,12 @@ protected:
 	int32 SpawnPointCursor = 0;
 	int32 TotalKills = 0;
 	float DevTimeScale = 1.0f;
+	bool bDevAutoPlay = false;
+	float LastSpawnWorldTime = 0.0f;
+	float WaveStartWorldTime = 0.0f;
+	int32 StatRelocated = 0;
+	int32 StatFellOut = 0;
+	int32 StatRelaxedSpawns = 0;
 	FTimerHandle WaveTimer;
 	FTimerHandle SpawnTimer;
 	FTimerHandle WatchTimer;

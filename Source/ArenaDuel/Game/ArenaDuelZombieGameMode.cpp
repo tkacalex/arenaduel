@@ -10,6 +10,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
+#include "Misc/App.h"
 #include "NavigationSystem.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
@@ -27,6 +28,10 @@ namespace
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World) { if (AArenaDuelZombieGameMode* Mode = SurvivalMode(World); Mode && Args.Num() > 0) Mode->DevSetTimeScale(FCString::Atof(*Args[0])); }));
 	FAutoConsoleCommandWithWorldAndArgs CmdDamage(TEXT("ArenaDuel.Zombie.Damage"), TEXT("Scale the damage of zombies spawned from now on; 0 makes them harmless"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World) { if (AArenaDuelZombieGameMode* Mode = SurvivalMode(World); Mode && Args.Num() > 0) Mode->DevSetZombieDamageScale(FCString::Atof(*Args[0])); }));
+	FAutoConsoleCommandWithWorldAndArgs CmdAutoPlay(TEXT("ArenaDuel.Zombie.AutoPlay"), TEXT("1: zombies that reach a player are killed and credited, so waves play themselves"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World) { if (AArenaDuelZombieGameMode* Mode = SurvivalMode(World); Mode && Args.Num() > 0) Mode->DevSetAutoPlay(FCString::Atoi(*Args[0]) != 0); }));
+	FAutoConsoleCommandWithWorld CmdStats(TEXT("ArenaDuel.Zombie.Stats"), TEXT("Log the state of the run and of the enemies alive"),
+		FConsoleCommandWithWorldDelegate::CreateLambda([](UWorld* World) { if (const AArenaDuelZombieGameMode* Mode = SurvivalMode(World)) Mode->DevLogStats(); }));
 	FAutoConsoleCommandWithWorld CmdRestart(TEXT("ArenaDuel.Zombie.Restart"), TEXT("Restart the survival run"),
 		FConsoleCommandWithWorldDelegate::CreateLambda([](UWorld* World) { if (AArenaDuelZombieGameMode* Mode = SurvivalMode(World)) Mode->RestartSurvival(); }));
 	FAutoConsoleCommandWithWorldAndArgs CmdPoints(TEXT("ArenaDuel.Zombie.Points"), TEXT("Give the first player this many points"),
@@ -98,17 +103,23 @@ FArenaDuelWaveDefinition AArenaDuelZombieGameMode::ComputeWave(int32 WaveNumber,
 	// mini bosses on every other wave and a big boss on every fifth.
 	const int32 Extra = WaveNumber - Table.Num();
 	FArenaDuelWaveDefinition Wave;
-	Wave.Normal = Table.Last().Normal + 5 * Extra;
-	Wave.Fast = 4 + Extra;
-	Wave.Armored = 2 + Extra / 2;
-	Wave.MiniBoss = Extra % 2 == 0 ? 1 + Extra / 4 : 0;
-	Wave.Boss = WaveNumber % 5 == 0 ? WaveNumber / 10 : 0;
+	// Every count has a ceiling: a late wave is long and hard, but it stays a wave that can be finished.
+	Wave.Normal = FMath::Min(Table.Last().Normal + 5 * Extra, 120);
+	Wave.Fast = FMath::Min(4 + Extra, 30);
+	Wave.Armored = FMath::Min(2 + Extra / 2, 20);
+	Wave.MiniBoss = Extra % 2 == 0 ? FMath::Min(1 + Extra / 4, 4) : 0;
+	Wave.Boss = WaveNumber % 5 == 0 ? FMath::Min(WaveNumber / 10, 3) : 0;
 	return Wave;
 }
 
 float AArenaDuelZombieGameMode::ComputeHealthScale(int32 WaveNumber, int32 TableWaves)
 {
-	return WaveNumber <= TableWaves ? 1.0f : 1.0f + 0.08f * static_cast<float>(WaveNumber - TableWaves);
+	return WaveNumber <= TableWaves ? 1.0f : FMath::Min(1.0f + 0.08f * static_cast<float>(WaveNumber - TableWaves), 3.0f);
+}
+
+float AArenaDuelZombieGameMode::ComputeSpeedScale(int32 WaveNumber, int32 TableWaves)
+{
+	return WaveNumber <= TableWaves ? 1.0f : FMath::Min(1.0f + 0.015f * static_cast<float>(WaveNumber - TableWaves), 1.25f);
 }
 
 TArray<EArenaDuelZombieType> AArenaDuelZombieGameMode::BuildSpawnQueue(const FArenaDuelWaveDefinition& Wave, int32 Seed)
@@ -182,8 +193,10 @@ void AArenaDuelZombieGameMode::BeginRun()
 	TotalKills = 0;
 	bWaveActive = false;
 	bRunOver = false;
+	StatRelocated = 0; StatFellOut = 0; StatRelaxedSpawns = 0;
 	AArenaDuelZombieGameState* State = GetSurvivalState();
 	if (!State) return;
+	State->SetRunTimes(State->GetServerWorldTimeSeconds(), -1.0f);
 	for (APlayerState* Player : State->PlayerArray)
 	{
 		if (AArenaDuelPlayerState* SurvivalPlayer = Cast<AArenaDuelPlayerState>(Player)) SurvivalPlayer->ResetSurvival();
@@ -224,6 +237,8 @@ void AArenaDuelZombieGameMode::StartWave()
 	const FArenaDuelWaveDefinition Wave = ComputeWave(CurrentWave, WaveTable);
 	SpawnQueue = BuildSpawnQueue(Wave, CurrentWave * 7919);
 	bWaveActive = true;
+	WaveStartWorldTime = GetWorld()->GetTimeSeconds();
+	LastSpawnWorldTime = WaveStartWorldTime;
 	State->SetWaveState(CurrentWave, SpawnQueue.Num(), false, 0.0f);
 	const TCHAR* Special = Wave.Boss > 0 ? TEXT(" - BOSS") : Wave.MiniBoss > 0 ? TEXT(" - MINI BOSS") : Wave.Armored > 0 && Wave.Fast > 0 ? TEXT(" - RUNNERS AND ARMOUR") : Wave.Armored > 0 ? TEXT(" - ARMOURED") : Wave.Fast > 0 ? TEXT(" - RUNNERS") : TEXT("");
 	State->Announce(FString::Printf(TEXT("WAVE %d%s"), CurrentWave, Special));
@@ -238,7 +253,19 @@ int32 AArenaDuelZombieGameMode::CountAliveZombies() const
 	return Alive;
 }
 
-bool AArenaDuelZombieGameMode::PickSpawnLocation(FVector& OutLocation, FRotator& OutRotation)
+bool AArenaDuelZombieGameMode::IsSeenByAnyPlayer(const FVector& Location) const
+{
+	for (TActorIterator<AArenaDuelCharacter> It(GetWorld()); It; ++It)
+	{
+		if (It->IsDead() || !It->GetController()) continue;
+		FHitResult Wall;
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelZombieSeen), false, *It);
+		if (!GetWorld()->LineTraceSingleByChannel(Wall, It->GetPawnViewLocation(), Location, ECC_Visibility, Params)) return true;
+	}
+	return false;
+}
+
+bool AArenaDuelZombieGameMode::PickSpawnLocation(FVector& OutLocation, FRotator& OutRotation, bool bRelaxed, bool bUnseenOnly)
 {
 	UWorld* World = GetWorld();
 	TArray<const AActor*> Points;
@@ -257,14 +284,14 @@ bool AArenaDuelZombieGameMode::PickSpawnLocation(FVector& OutLocation, FRotator&
 		bool bTooClose = false, bSeen = false, bOccupied = false;
 		for (const AArenaDuelCharacter* Player : Players)
 		{
-			if (FVector::Dist(Player->GetActorLocation(), Location) < MinSpawnDistance) bTooClose = true;
+			if (FVector::Dist(Player->GetActorLocation(), Location) < MinSpawnDistance * (bRelaxed ? 0.5f : 1.0f)) bTooClose = true;
 			FHitResult Wall;
 			FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelSpawnSight), false, Player);
 			if (!World->LineTraceSingleByChannel(Wall, Player->GetPawnViewLocation(), Location + FVector(0.0f, 0.0f, 90.0f), ECC_Visibility, Params)) bSeen = true;
 		}
 		if (bTooClose) continue;
 		for (TActorIterator<AArenaDuelZombie> It(World); It; ++It) if (!It->IsDead() && FVector::Dist2D(It->GetActorLocation(), Location) < 110.0f) { bOccupied = true; break; }
-		if (bOccupied) continue;
+		if (bOccupied || (bSeen && bUnseenOnly)) continue;
 		// Out of sight beats in sight; among equals the first after the cursor wins.
 		const int32 Score = bSeen ? 1 : 2;
 		if (Score > BestScore) { BestScore = Score; Best = Point; if (Score == 2) { SpawnPointCursor = (SpawnPointCursor + Offset + 1) % Points.Num(); break; } }
@@ -295,7 +322,10 @@ void AArenaDuelZombieGameMode::SpawnTick()
 	if (CountAliveZombies() >= MaxActiveZombies) return;
 	FVector Location;
 	FRotator Rotation;
-	if (!PickSpawnLocation(Location, Rotation)) return;
+	// A player standing among the spawn points must not be able to hold a wave back: after a while without
+	// a spawn, points at half the usual distance are accepted, still preferring the ones out of sight.
+	const bool bStalled = GetWorld()->GetTimeSeconds() - LastSpawnWorldTime > SpawnStallSeconds;
+	if (!PickSpawnLocation(Location, Rotation, bStalled)) return;
 	const EArenaDuelZombieType Type = SpawnQueue[0];
 	const FArenaDuelZombieTypeConfig& Config = TypeConfigs.IsValidIndex(static_cast<int32>(Type)) ? TypeConfigs[static_cast<int32>(Type)] : TypeConfigs[0];
 	FActorSpawnParameters Parameters;
@@ -306,7 +336,9 @@ void AArenaDuelZombieGameMode::SpawnTick()
 	// A blocked point costs nothing: the entry stays in the queue and the next tick tries another point.
 	if (!Zombie) return;
 	SpawnQueue.RemoveAt(0);
-	Zombie->InitializeZombie(Type, Config, ComputeHealthScale(CurrentWave, WaveTable.Num()), ZombieDamageScale);
+	if (bStalled) ++StatRelaxedSpawns;
+	LastSpawnWorldTime = GetWorld()->GetTimeSeconds();
+	Zombie->InitializeZombie(Type, Config, ComputeHealthScale(CurrentWave, WaveTable.Num()), ZombieDamageScale, ComputeSpeedScale(CurrentWave, WaveTable.Num()));
 	Zombie->SpawnDefaultController();
 	RefreshGameState();
 }
@@ -348,7 +380,15 @@ void AArenaDuelZombieGameMode::FinishWaveIfDone()
 	if (!bWaveActive || bRunOver || SpawnQueue.Num() > 0 || CountAliveZombies() > 0) return;
 	bWaveActive = false;
 	GetWorldTimerManager().ClearTimer(SpawnTimer);
-	UE_LOG(LogArenaDuelSurvival, Log, TEXT("Survival wave %d cleared, kills so far %d"), CurrentWave, TotalKills);
+	UE_LOG(LogArenaDuelSurvival, Log, TEXT("Survival wave %d cleared after %.1f s, kills so far %d, moved=%d fell=%d relaxedSpawns=%d"), CurrentWave, GetWorld()->GetTimeSeconds() - WaveStartWorldTime, TotalKills, StatRelocated, StatFellOut, StatRelaxedSpawns);
+	// Part of every reserve comes back with a cleared wave; the shop sells the rest.
+	if (WaveClearAmmoShare > 0.0f)
+	{
+		for (TActorIterator<AArenaDuelCharacter> It(GetWorld()); It; ++It)
+		{
+			if (!It->IsDead() && It->GetWeaponComponent()) It->GetWeaponComponent()->AddReserveAmmoShare(WaveClearAmmoShare);
+		}
+	}
 	if (AArenaDuelZombieGameState* State = GetSurvivalState()) State->Announce(FString::Printf(TEXT("WAVE %d CLEARED"), CurrentWave));
 	BeginIntermission(IntermissionSeconds);
 }
@@ -360,15 +400,31 @@ void AArenaDuelZombieGameMode::WatchTick()
 	{
 		if (It->IsDead()) continue;
 		// Fallen out of the arena: gone, and the wave goes on without it.
-		if (It->GetActorLocation().Z < -1000.0f) { It->KillSilently(); continue; }
+		if (It->GetActorLocation().Z < -1000.0f) { ++StatFellOut; It->KillSilently(); continue; }
 		if (It->GetSecondsWithoutProgress() > StuckSeconds)
 		{
+			// Last resort for one that cannot get anywhere: it starts again from a spawn point. Never in
+			// front of a player: both where it stands and where it goes have to be out of sight, otherwise
+			// it waits and keeps trying to free itself.
 			FVector Location;
 			FRotator Rotation;
-			if (PickSpawnLocation(Location, Rotation)) It->TeleportTo(Location, Rotation, false, true);
-			It->ResetProgress();
+			if (!IsSeenByAnyPlayer(It->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f)) && PickSpawnLocation(Location, Rotation, false, true))
+			{
+				It->TeleportTo(Location, Rotation, false, true);
+				It->ResetProgress();
+				++StatRelocated;
+			}
 		}
 	}
+	// Between waves the living recover slowly; the shop heals at once.
+	if (const AArenaDuelZombieGameState* State = GetSurvivalState(); State && State->IsIntermission() && CurrentWave > 0 && IntermissionRegenPerSecond > 0.0f)
+	{
+		for (TActorIterator<AArenaDuelCharacter> It(GetWorld()); It; ++It)
+		{
+			if (!It->IsDead() && It->GetHealth() < It->GetMaxHealth()) It->ApplyServerHeal(IntermissionRegenPerSecond * 0.5f);
+		}
+	}
+	if (bDevAutoPlay) DevAutoPlayTick();
 	RefreshGameState();
 	FinishWaveIfDone();
 }
@@ -387,6 +443,7 @@ void AArenaDuelZombieGameMode::HandlePlayerDeath(AArenaDuelCharacter* DeadCharac
 	if (AArenaDuelZombieGameState* State = GetSurvivalState())
 	{
 		State->SetGameOver(true);
+		State->SetRunTimes(State->GetRunStartServerTime(), State->GetServerWorldTimeSeconds());
 		State->SetRoundState(1, false, INDEX_NONE);
 		State->Announce(TEXT("GAME OVER"));
 	}
@@ -440,4 +497,38 @@ void AArenaDuelZombieGameMode::DevKillAllZombies()
 	for (TActorIterator<AArenaDuelZombie> It(GetWorld()); It; ++It) It->KillSilently();
 	// Fast-forwarding also empties the queue down to what the alive limit lets through per tick, so the
 	// queue itself is left alone: the wave still has to spawn every enemy before it can end.
+}
+
+void AArenaDuelZombieGameMode::DevAutoPlayTick()
+{
+	AController* Credit = GetWorld()->GetFirstPlayerController();
+	int32 Budget = 6;
+	for (TActorIterator<AArenaDuelZombie> It(GetWorld()); It && Budget > 0; ++It)
+	{
+		if (It->IsDead()) continue;
+		for (TActorIterator<AArenaDuelCharacter> Player(GetWorld()); Player; ++Player)
+		{
+			if (Player->IsDead() || !Player->GetController() || FVector::Dist(Player->GetActorLocation(), It->GetActorLocation()) > 450.0f * FMath::Max(1.0f, It->GetActorScale3D().X)) continue;
+			It->KillCredited(Credit);
+			--Budget;
+			break;
+		}
+	}
+}
+
+void AArenaDuelZombieGameMode::DevLogStats() const
+{
+	int32 Alive = 0, Direct = 0, Freed = 0;
+	float Slowest = 0.0f;
+	for (TActorIterator<AArenaDuelZombie> It(GetWorld()); It; ++It)
+	{
+		if (It->IsDead()) continue;
+		++Alive;
+		if (It->IsDirectChasing()) ++Direct;
+		Freed += It->GetUnstickCount();
+		Slowest = FMath::Max(Slowest, It->GetSecondsWithoutProgress());
+	}
+	const UNavigationSystemV1* Navigation = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
+	UE_LOG(LogArenaDuelSurvival, Log, TEXT("Survival stats: wave=%d active=%d queue=%d alive=%d straight=%d freed=%d longestNoProgress=%.1f moved=%d fell=%d relaxedSpawns=%d navData=%d frameMs=%.1f"),
+		CurrentWave, bWaveActive ? 1 : 0, SpawnQueue.Num(), Alive, Direct, Freed, Slowest, StatRelocated, StatFellOut, StatRelaxedSpawns, Navigation && Navigation->GetDefaultNavDataInstance() ? 1 : 0, FApp::GetDeltaTime() * 1000.0);
 }

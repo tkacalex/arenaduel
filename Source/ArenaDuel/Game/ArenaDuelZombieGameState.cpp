@@ -28,4 +28,6 @@ void AArenaDuelZombieGameState::GetLifetimeReplicatedProps(TArray<FLifetimePrope
 	DOREPLIFETIME(AArenaDuelZombieGameState, BossName);
 	DOREPLIFETIME(AArenaDuelZombieGameState, Announcement);
 	DOREPLIFETIME(AArenaDuelZombieGameState, AnnouncementServerTime);
+	DOREPLIFETIME(AArenaDuelZombieGameState, RunStartServerTime);
+	DOREPLIFETIME(AArenaDuelZombieGameState, RunEndServerTime);
 }
