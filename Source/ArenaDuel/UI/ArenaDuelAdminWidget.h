@@ -86,6 +86,11 @@ protected:
 	UPROPERTY() TArray<TObjectPtr<UBorder>> NavAccents;
 	UPROPERTY() TArray<TObjectPtr<UArenaDuelAdminActionButton>> TargetButtons;
 	UPROPERTY() TArray<TObjectPtr<UTextBlock>> TargetReadoutValues;
+	UPROPERTY() TArray<TObjectPtr<UTextBlock>> SurvivalStatusValues;
+	UPROPERTY() TArray<TObjectPtr<UVerticalBox>> NavTabs;
+	UPROPERTY() TObjectPtr<UTextBlock> ModeReadout;
+	UPROPERTY() TObjectPtr<UTextBlock> ScoreRowLabel;
+	UPROPERTY() TObjectPtr<UArenaDuelAdminActionButton> ZombieDamageButton;
 
 	FOnArenaDuelAdminAction Action;
 	TWeakObjectPtr<AArenaDuelGameState> CachedGameState;

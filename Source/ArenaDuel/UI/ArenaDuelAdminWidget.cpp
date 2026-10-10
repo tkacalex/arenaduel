@@ -6,6 +6,8 @@
 #include "../Characters/ArenaDuelCharacterMovementComponent.h"
 #include "../Game/ArenaDuelGameState.h"
 #include "../Game/ArenaDuelMovementDebugHUD.h"
+#include "../Game/ArenaDuelZombieGameMode.h"
+#include "../Game/ArenaDuelZombieGameState.h"
 #include "../Player/ArenaDuelPlayerController.h"
 #include "../Player/ArenaDuelPlayerState.h"
 #include "../Weapons/ArenaDuelWeaponComponent.h"
@@ -158,209 +160,227 @@ void UArenaDuelAdminWidget::BuildWidgetTree()
 	if (!WidgetTree || RootOverlay) return;
 	RootOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
 	WidgetTree->RootWidget = RootOverlay;
+	const auto Fill = [](UOverlaySlot* OverlaySlot)
+	{
+		OverlaySlot->SetHorizontalAlignment(HAlign_Fill);
+		OverlaySlot->SetVerticalAlignment(VAlign_Fill);
+	};
 
+	// The game behind is dimmed, the tool itself is one opaque window in the middle of the screen.
 	Backdrop = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	Backdrop->SetBrushColor(RootColor);
-	RootOverlay->AddChildToOverlay(Backdrop);
+	Backdrop->SetBrushColor(FLinearColor(0.0f, 0.0f, 0.0f, 0.66f));
+	Fill(RootOverlay->AddChildToOverlay(Backdrop));
 
-	UBorder* InsetFrame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	InsetFrame->SetBrushColor(FLinearColor(0.027f, 0.063f, 0.106f, 0.0f));
-	InsetFrame->SetPadding(FMargin(32.0f, 24.0f));
-	RootOverlay->AddChildToOverlay(InsetFrame);
+	USizeBox* WindowSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	WindowSize->SetWidthOverride(1320.0f);
+	WindowSize->SetHeightOverride(800.0f);
+	UOverlaySlot* WindowSlot = RootOverlay->AddChildToOverlay(WindowSize);
+	WindowSlot->SetHorizontalAlignment(HAlign_Center);
+	WindowSlot->SetVerticalAlignment(VAlign_Center);
+	UBorder* WindowEdge = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+	WindowEdge->SetBrushColor(FLinearColor(0.475f, 0.914f, 1.0f, 0.35f));
+	WindowEdge->SetPadding(FMargin(1.0f, 3.0f, 1.0f, 1.0f));
+	WindowSize->AddChild(WindowEdge);
+	UBorder* Window = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+	Window->SetBrushColor(RootColor);
+	Window->SetPadding(FMargin(26.0f, 18.0f, 26.0f, 14.0f));
+	WindowEdge->SetContent(Window);
 
 	UVerticalBox* Shell = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-	InsetFrame->SetContent(Shell);
+	Window->SetContent(Shell);
 
+	// Header: what this is, which mode is running, how to close it.
 	UHorizontalBox* Header = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	Shell->AddChildToVerticalBox(Header)->SetPadding(FMargin(8.0f, 4.0f, 8.0f, 18.0f));
-	UVerticalBox* Brand = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-	Header->AddChildToHorizontalBox(Brand)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-	UHorizontalBox* TitleRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	Brand->AddChildToVerticalBox(TitleRow);
-	TitleRow->AddChildToHorizontalBox(MakeText(WidgetTree, FText::FromString(TEXT("ARENADUEL")), 32.0f, Cyan))->SetPadding(FMargin(0, 0, 12, 0));
-	TitleRow->AddChildToHorizontalBox(MakeText(WidgetTree, FText::FromString(TEXT("/")), 25.0f, MutedText))->SetPadding(FMargin(0, 2, 12, 0));
-	TitleRow->AddChildToHorizontalBox(MakeText(WidgetTree, FText::FromString(TEXT("ADMIN CONTROL")), 27.0f, PrimaryText))->SetVerticalAlignment(VAlign_Center);
-	Brand->AddChildToVerticalBox(MakeText(WidgetTree, FText::FromString(TEXT("DEVELOPMENT CONTROL CENTER     ·     HOST AUTHORIZED")), 12.0f, SecondaryText))->SetPadding(FMargin(1, 3, 0, 0));
-	UVerticalBox* HeaderRight = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-	Header->AddChildToHorizontalBox(HeaderRight)->SetVerticalAlignment(VAlign_Center);
-	HeaderRight->AddChildToVerticalBox(MakeText(WidgetTree, FText::FromString(TEXT("F1 / ESC")), 16.0f, PrimaryText, ETextJustify::Right));
-	HeaderRight->AddChildToVerticalBox(MakeText(WidgetTree, FText::FromString(TEXT("CLOSE MENU")), 11.0f, MutedText, ETextJustify::Right));
-
-	USizeBox* Divider = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-	Divider->SetHeightOverride(1.0f);
-	UBorder* DividerLine = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	DividerLine->SetBrushColor(FLinearColor(0.475f, 0.914f, 1.0f, 0.16f));
-	Divider->AddChild(DividerLine);
-	Shell->AddChildToVerticalBox(Divider)->SetPadding(FMargin(0, 0, 0, 18));
+	Shell->AddChildToVerticalBox(Header)->SetPadding(FMargin(0, 0, 0, 12));
+	UHorizontalBoxSlot* TitleSlot = Header->AddChildToHorizontalBox(MakeText(WidgetTree, FText::FromString(TEXT("ADMIN")), 26.0f, Cyan));
+	TitleSlot->SetVerticalAlignment(VAlign_Center);
+	TitleSlot->SetPadding(FMargin(0, 0, 16, 0));
+	UBorder* ModeChip = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+	ModeChip->SetBrushColor(ElevatedColor);
+	ModeChip->SetPadding(FMargin(12, 5));
+	ModeReadout = MakeText(WidgetTree, FText::FromString(TEXT("--")), 12.0f, PrimaryText);
+	ModeReadout->SetAutoWrapText(false);
+	ModeChip->SetContent(ModeReadout);
+	Header->AddChildToHorizontalBox(ModeChip)->SetVerticalAlignment(VAlign_Center);
+	Header->AddChildToHorizontalBox(WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass()))->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+	UTextBlock* CloseHint = MakeText(WidgetTree, FText::FromString(TEXT("F1 / ESC   CLOSE")), 12.0f, SecondaryText, ETextJustify::Right);
+	CloseHint->SetAutoWrapText(false);
+	Header->AddChildToHorizontalBox(CloseHint)->SetVerticalAlignment(VAlign_Center);
 
 	UHorizontalBox* Body = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	UVerticalBoxSlot* BodySlot = Shell->AddChildToVerticalBox(Body);
-	BodySlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-	BodySlot->SetPadding(FMargin(0, 0, 0, 14));
+	Shell->AddChildToVerticalBox(Body)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 
+	// Left: the player every command applies to, with their state as plain rows.
 	USizeBox* SidebarSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-	SidebarSize->SetWidthOverride(244.0f);
+	SidebarSize->SetWidthOverride(300.0f);
 	Body->AddChildToHorizontalBox(SidebarSize)->SetPadding(FMargin(0, 0, 20, 0));
 	UBorder* SidebarBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	SidebarBorder->SetBrushColor(FLinearColor(0.039f, 0.071f, 0.110f, 0.72f));
-	SidebarBorder->SetPadding(FMargin(10, 12));
+	SidebarBorder->SetBrushColor(CardColor);
+	SidebarBorder->SetPadding(FMargin(16, 14));
 	SidebarSize->AddChild(SidebarBorder);
 	UVerticalBox* Sidebar = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	SidebarBorder->SetContent(Sidebar);
-	Sidebar->AddChildToVerticalBox(MakeText(WidgetTree, FText::FromString(TEXT("CONTROL MODULES")), 11.0f, MutedText))->SetPadding(FMargin(10, 2, 8, 14));
-	const FText NavLabels[] = { FText::FromString(TEXT("PLAYER")), FText::FromString(TEXT("WEAPONS")), FText::FromString(TEXT("ROUND")), FText::FromString(TEXT("MOVEMENT")), FText::FromString(TEXT("DEBUG / NET")), FText::FromString(TEXT("SURVIVAL")) };
+	Sidebar->AddChildToVerticalBox(MakeText(WidgetTree, FText::FromString(TEXT("TARGET PLAYER")), 11.0f, MutedText))->SetPadding(FMargin(0, 0, 0, 8));
+	UHorizontalBox* TargetRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	Sidebar->AddChildToVerticalBox(TargetRow)->SetPadding(FMargin(0, 0, 0, 14));
+	TargetButtons.Add(AddButton(TargetRow, FText::FromString(TEXT("PLAYER 1")), EArenaDuelAdminCommand::SelectPlayer1, 0.0f, Active, 128.0f));
+	TargetButtons.Add(AddButton(TargetRow, FText::FromString(TEXT("PLAYER 2")), EArenaDuelAdminCommand::SelectPlayer2, 0.0f, Inactive, 128.0f));
+	const auto StatusRow = [this, Sidebar](const TCHAR* Label, const FLinearColor& Accent, UTextBlock** OutLabel = nullptr)
+	{
+		UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+		Sidebar->AddChildToVerticalBox(Row)->SetPadding(FMargin(0, 5));
+		UTextBlock* Name = MakeText(WidgetTree, FText::FromString(Label), 12.0f, SecondaryText);
+		Name->SetAutoWrapText(false);
+		Row->AddChildToHorizontalBox(Name)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+		UTextBlock* Value = MakeText(WidgetTree, FText::FromString(TEXT("--")), 14.0f, Accent, ETextJustify::Right);
+		Value->SetAutoWrapText(false);
+		Row->AddChildToHorizontalBox(Value);
+		if (OutLabel) *OutLabel = Name;
+		return Value;
+	};
+	// The order is the one RefreshAdminState fills.
+	TargetStatusValues.Add(StatusRow(TEXT("TARGET"), PrimaryText));
+	TargetStatusValues.Add(StatusRow(TEXT("HEALTH"), Cyan));
+	TargetStatusValues.Add(StatusRow(TEXT("STATE"), Cyan));
+	UTextBlock* ScoreLabel = nullptr;
+	TargetStatusValues.Add(StatusRow(TEXT("ROUND WINS"), Violet, &ScoreLabel));
+	ScoreRowLabel = ScoreLabel;
+	TargetStatusValues.Add(StatusRow(TEXT("WEAPON"), PrimaryText));
+	USizeBox* SidebarRule = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	SidebarRule->SetHeightOverride(1.0f);
+	UBorder* SidebarRuleLine = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+	SidebarRuleLine->SetBrushColor(FLinearColor(0.475f, 0.914f, 1.0f, 0.14f));
+	SidebarRule->AddChild(SidebarRuleLine);
+	Sidebar->AddChildToVerticalBox(SidebarRule)->SetPadding(FMargin(0, 10));
+	Sidebar->AddChildToVerticalBox(MakeText(WidgetTree, FText::FromString(TEXT("OVERRIDES")), 11.0f, MutedText))->SetPadding(FMargin(0, 0, 0, 4));
+	TargetStatusValues.Add(StatusRow(TEXT("GOD MODE"), Cyan));
+	TargetStatusValues.Add(StatusRow(TEXT("INFINITE AMMO"), Cyan));
+	TargetStatusValues.Add(StatusRow(TEXT("INFINITE STAMINA"), Violet));
+	Sidebar->AddChildToVerticalBox(WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass()))->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+	Sidebar->AddChildToVerticalBox(MakeText(WidgetTree, FText::FromString(TEXT("Development tool. It exists in the editor and in a game started with -ArenaDuelAdmin; players never see it.")), 10.0f, MutedText));
+
+	// Right: tabs across the top, the selected page below.
+	ContentHost = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	Body->AddChildToHorizontalBox(ContentHost)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+	UHorizontalBox* Tabs = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	ContentHost->AddChildToVerticalBox(Tabs)->SetPadding(FMargin(0, 0, 0, 14));
+	const FText NavLabels[] = { FText::FromString(TEXT("PLAYER")), FText::FromString(TEXT("WEAPONS")), FText::FromString(TEXT("ROUND")), FText::FromString(TEXT("MOVEMENT")), FText::FromString(TEXT("DEBUG")), FText::FromString(TEXT("SURVIVAL")) };
 	const EArenaDuelAdminCommand NavCommands[] = { EArenaDuelAdminCommand::SelectPlayerPage, EArenaDuelAdminCommand::SelectWeaponsPage, EArenaDuelAdminCommand::SelectRoundPage, EArenaDuelAdminCommand::SelectMovementPage, EArenaDuelAdminCommand::SelectDebugPage, EArenaDuelAdminCommand::SelectSurvivalPage };
 	for (int32 Index = 0; Index < UE_ARRAY_COUNT(NavLabels); ++Index)
 	{
-		UHorizontalBox* NavRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-		Sidebar->AddChildToVerticalBox(NavRow)->SetPadding(FMargin(0, 3));
+		UVerticalBox* Tab = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+		Tabs->AddChildToHorizontalBox(Tab);
+		UHorizontalBox* TabRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+		Tab->AddChildToVerticalBox(TabRow);
+		NavButtons.Add(AddButton(TabRow, NavLabels[Index], NavCommands[Index], 0.0f, Index == 0 ? Active : Inactive, 150.0f));
 		USizeBox* AccentSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-		AccentSize->SetWidthOverride(3.0f);
-		AccentSize->SetHeightOverride(48.0f);
+		AccentSize->SetWidthOverride(150.0f);
+		AccentSize->SetHeightOverride(3.0f);
 		UBorder* Accent = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 		Accent->SetBrushColor(Index == 0 ? Cyan : FLinearColor::Transparent);
 		AccentSize->AddChild(Accent);
-		NavRow->AddChildToHorizontalBox(AccentSize)->SetPadding(FMargin(0, 0, 8, 0));
+		Tab->AddChildToVerticalBox(AccentSize)->SetHorizontalAlignment(HAlign_Left);
 		NavAccents.Add(Accent);
-		NavButtons.Add(AddButton(NavRow, NavLabels[Index], NavCommands[Index], 0.0f, Index == 0 ? Active : Inactive, 196.0f, ETextJustify::Left));
+		NavTabs.Add(Tab);
 	}
-	UVerticalBoxSlot* SidebarSpacerSlot = Sidebar->AddChildToVerticalBox(WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass()));
-	SidebarSpacerSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-	Sidebar->AddChildToVerticalBox(MakeText(WidgetTree, FText::FromString(TEXT("DEVELOPMENT BUILD\nHOST COMMANDS ONLY")), 11.0f, MutedText))->SetPadding(FMargin(10, 12, 8, 4));
 
-	ContentHost = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-	Body->AddChildToHorizontalBox(ContentHost)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-
-	UHorizontalBox* PageHeading = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	ContentHost->AddChildToVerticalBox(PageHeading)->SetPadding(FMargin(8, 0, 8, 16));
-	UVerticalBox* PageHeadingStack = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-	PageHeading->AddChildToHorizontalBox(PageHeadingStack)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-	PageTitle = MakeText(WidgetTree, FText::FromString(TEXT("PLAYER CONTROL")), 26.0f, PrimaryText);
-	PageHeadingStack->AddChildToVerticalBox(PageTitle);
-	PageDescription = MakeText(WidgetTree, FText::FromString(TEXT("Manage player state and development overrides.")), 13.0f, SecondaryText);
-	PageHeadingStack->AddChildToVerticalBox(PageDescription)->SetPadding(FMargin(0, 3, 0, 0));
-
-	UVerticalBox* TargetArea = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-	ContentHost->AddChildToVerticalBox(TargetArea)->SetPadding(FMargin(8, 0, 8, 10));
-	TargetArea->AddChildToVerticalBox(MakeText(WidgetTree, FText::FromString(TEXT("TARGET PLAYER")), 11.0f, MutedText))->SetPadding(FMargin(0, 0, 0, 6));
-	UHorizontalBox* TargetRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	TargetArea->AddChildToVerticalBox(TargetRow);
-	TargetButtons.Add(AddButton(TargetRow, FText::FromString(TEXT("PLAYER 1")), EArenaDuelAdminCommand::SelectPlayer1, 0.0f, Active, 190.0f));
-	TargetButtons.Add(AddButton(TargetRow, FText::FromString(TEXT("PLAYER 2")), EArenaDuelAdminCommand::SelectPlayer2, 0.0f, Inactive, 190.0f));
-
-	UHorizontalBox* StatusRow1 = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	ContentHost->AddChildToVerticalBox(StatusRow1)->SetPadding(FMargin(8, 0, 8, 8));
-	TargetStatusValues.Add(AddStatusCard(StatusRow1, FText::FromString(TEXT("TARGET")), Cyan));
-	TargetStatusValues.Add(AddStatusCard(StatusRow1, FText::FromString(TEXT("HEALTH")), Cyan));
-	TargetStatusValues.Add(AddStatusCard(StatusRow1, FText::FromString(TEXT("STATE")), Cyan));
-	TargetStatusValues.Add(AddStatusCard(StatusRow1, FText::FromString(TEXT("ROUND WINS")), Violet));
-	TargetStatusValues.Add(AddStatusCard(StatusRow1, FText::FromString(TEXT("WEAPON")), Cyan));
-
-	UHorizontalBox* StatusRow2 = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	ContentHost->AddChildToVerticalBox(StatusRow2)->SetPadding(FMargin(8, 0, 8, 12));
-	TargetStatusValues.Add(AddStatusCard(StatusRow2, FText::FromString(TEXT("GOD MODE")), Cyan));
-	TargetStatusValues.Add(AddStatusCard(StatusRow2, FText::FromString(TEXT("INFINITE AMMO")), Cyan));
-	TargetStatusValues.Add(AddStatusCard(StatusRow2, FText::FromString(TEXT("INFINITE STAMINA")), Violet));
+	PageTitle = MakeText(WidgetTree, FText::FromString(TEXT("PLAYER")), 20.0f, PrimaryText);
+	ContentHost->AddChildToVerticalBox(PageTitle);
+	PageDescription = MakeText(WidgetTree, FText::FromString(TEXT("--")), 12.0f, SecondaryText);
+	ContentHost->AddChildToVerticalBox(PageDescription)->SetPadding(FMargin(0, 2, 0, 12));
 
 	PageScrollBox = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
 	PageScrollBox->SetScrollBarVisibility(ESlateVisibility::Visible);
 	ContentHost->AddChildToVerticalBox(PageScrollBox)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 
-	UVerticalBox* PlayerPage = CreatePage(TEXT("PLAYER CONTROL"), TEXT("Manage health and player development overrides."));
-	UVerticalBox* HealthCard = AddCard(PlayerPage, FText::FromString(TEXT("HEALTH CONTROL")), FText::FromString(TEXT("Set health directly or restore the selected player.")));
+	UVerticalBox* PlayerPage = CreatePage(TEXT("PLAYER"), TEXT("Health, state and archetype of the selected player."));
+	UVerticalBox* HealthCard = AddCard(PlayerPage, FText::FromString(TEXT("HEALTH")), FText::FromString(TEXT("Type a value and set it, or restore full health.")));
 	UHorizontalBox* HealthRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 	HealthCard->AddChildToVerticalBox(HealthRow)->SetPadding(FMargin(0, 8, 0, 0));
-	HealthInput = AddNumericInput(HealthRow, FText::FromString(TEXT("100")), FText::FromString(TEXT("HEALTH VALUE")), 145.0f);
-	SetHealthButton = AddButton(HealthRow, FText::FromString(TEXT("SET HEALTH")), EArenaDuelAdminCommand::SetHealth, 0.0f, Active, 158.0f);
-	AddButton(HealthRow, FText::FromString(TEXT("FULL HEAL")), EArenaDuelAdminCommand::FullHeal, 0.0f, ElevatedColor, 150.0f);
+	HealthInput = AddNumericInput(HealthRow, FText::FromString(TEXT("100")), FText::FromString(TEXT("HEALTH")), 120.0f);
+	SetHealthButton = AddButton(HealthRow, FText::FromString(TEXT("SET HEALTH")), EArenaDuelAdminCommand::SetHealth, 0.0f, Active, 200.0f);
+	AddButton(HealthRow, FText::FromString(TEXT("FULL HEAL")), EArenaDuelAdminCommand::FullHeal, 0.0f, ElevatedColor, 200.0f);
 
-	UVerticalBox* PlayerStateCard = AddCard(PlayerPage, FText::FromString(TEXT("PLAYER STATE")), FText::FromString(TEXT("Development-only state and recovery actions.")));
+	UVerticalBox* PlayerStateCard = AddCard(PlayerPage, FText::FromString(TEXT("STATE")), FText::FromString(TEXT("Reset works on a living player. A dead one comes back with the next round or run.")));
 	UHorizontalBox* PlayerActions = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 	PlayerStateCard->AddChildToVerticalBox(PlayerActions)->SetPadding(FMargin(0, 8, 0, 0));
-	GodModeButton = AddButton(PlayerActions, FText::FromString(TEXT("GOD MODE: OFF")), EArenaDuelAdminCommand::ToggleGodMode, 0.0f, ElevatedColor, 190.0f);
-	AddButton(PlayerActions, FText::FromString(TEXT("RESET PLAYER")), EArenaDuelAdminCommand::ResetPlayer, 0.0f, ElevatedColor, 190.0f);
-	AddButton(PlayerActions, FText::FromString(TEXT("KILL PLAYER")), EArenaDuelAdminCommand::Kill, 0.0f, Danger, 190.0f);
-	AddSectionLabel(PlayerStateCard, FText::FromString(TEXT("CHARACTER ARCHETYPE")));
-	UHorizontalBox* ArchetypeRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	PlayerStateCard->AddChildToVerticalBox(ArchetypeRow)->SetPadding(FMargin(0, 5, 0, 4));
-	ArchetypeButtons.Add(AddButton(ArchetypeRow, FText::FromString(TEXT("SHADOW")), EArenaDuelAdminCommand::SetArchetypeShadow, 0.0f, Active, 190.0f));
-	ArchetypeButtons.Add(AddButton(ArchetypeRow, FText::FromString(TEXT("WARDEN")), EArenaDuelAdminCommand::SetArchetypeWarden, 0.0f, ElevatedColor, 190.0f));
-	ArchetypeButtons.Add(AddButton(ArchetypeRow, FText::FromString(TEXT("RIFT")), EArenaDuelAdminCommand::SetArchetypeRift, 0.0f, ElevatedColor, 190.0f));
-	AddHelperText(PlayerStateCard, FText::FromString(TEXT("Reset Player is available while alive. Dead players recover through Restart Round.")));
+	GodModeButton = AddButton(PlayerActions, FText::FromString(TEXT("GOD MODE: OFF")), EArenaDuelAdminCommand::ToggleGodMode, 0.0f, ElevatedColor, 200.0f);
+	AddButton(PlayerActions, FText::FromString(TEXT("RESET PLAYER")), EArenaDuelAdminCommand::ResetPlayer, 0.0f, ElevatedColor, 200.0f);
+	AddButton(PlayerActions, FText::FromString(TEXT("KILL PLAYER")), EArenaDuelAdminCommand::Kill, 0.0f, Danger, 200.0f);
 
-	UVerticalBox* WeaponsPage = CreatePage(TEXT("WEAPONS"), TEXT("Equip weapons and control ammunition for the selected player."));
-	UVerticalBox* EquipCard = AddCard(WeaponsPage, FText::FromString(TEXT("EQUIP WEAPON")), FText::FromString(TEXT("The selected weapon is highlighted in cyan.")));
-	UGridPanel* WeaponGrid = WidgetTree->ConstructWidget<UGridPanel>(UGridPanel::StaticClass());
-	EquipCard->AddChildToVerticalBox(WeaponGrid)->SetPadding(FMargin(0, 10, 0, 0));
+	UVerticalBox* ArchetypeCard = AddCard(PlayerPage, FText::FromString(TEXT("ARCHETYPE")), FText::FromString(TEXT("The current one is highlighted.")));
+	UHorizontalBox* ArchetypeRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	ArchetypeCard->AddChildToVerticalBox(ArchetypeRow)->SetPadding(FMargin(0, 8, 0, 0));
+	ArchetypeButtons.Add(AddButton(ArchetypeRow, FText::FromString(TEXT("SHADOW")), EArenaDuelAdminCommand::SetArchetypeShadow, 0.0f, Active, 200.0f));
+	ArchetypeButtons.Add(AddButton(ArchetypeRow, FText::FromString(TEXT("WARDEN")), EArenaDuelAdminCommand::SetArchetypeWarden, 0.0f, ElevatedColor, 200.0f));
+	ArchetypeButtons.Add(AddButton(ArchetypeRow, FText::FromString(TEXT("RIFT")), EArenaDuelAdminCommand::SetArchetypeRift, 0.0f, ElevatedColor, 200.0f));
+
+	UVerticalBox* WeaponsPage = CreatePage(TEXT("WEAPONS"), TEXT("Weapon in hand and ammunition of the selected player."));
+	UVerticalBox* EquipCard = AddCard(WeaponsPage, FText::FromString(TEXT("EQUIP")), FText::FromString(TEXT("Gives all four firearms and puts the chosen one in hand.")));
+	UHorizontalBox* WeaponRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	EquipCard->AddChildToVerticalBox(WeaponRow)->SetPadding(FMargin(0, 8, 0, 0));
 	const FText WeaponLabels[] = { FText::FromString(TEXT("ARC RIFLE")), FText::FromString(TEXT("SHADE SMG")), FText::FromString(TEXT("RUNE DMR")), FText::FromString(TEXT("HEX SHOTGUN")) };
 	for (int32 Index = 0; Index < UE_ARRAY_COUNT(WeaponLabels); ++Index)
 	{
-		WeaponButtons.Add(AddGridButton(WeaponGrid, Index % 2, Index / 2, WeaponLabels[Index], EArenaDuelAdminCommand::EquipWeapon, static_cast<float>(Index), ElevatedColor, 250.0f));
+		WeaponButtons.Add(AddButton(WeaponRow, WeaponLabels[Index], EArenaDuelAdminCommand::EquipWeapon, static_cast<float>(Index), ElevatedColor, 200.0f));
 	}
-	UVerticalBox* AmmoCard = AddCard(WeaponsPage, FText::FromString(TEXT("AMMUNITION")), FText::FromString(TEXT("Development overrides do not change weapon balance.")));
+	UVerticalBox* AmmoCard = AddCard(WeaponsPage, FText::FromString(TEXT("AMMUNITION")), FText::FromString(TEXT("Weapon values themselves are not changed.")));
 	UHorizontalBox* AmmoRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 	AmmoCard->AddChildToVerticalBox(AmmoRow)->SetPadding(FMargin(0, 8, 0, 0));
-	AddButton(AmmoRow, FText::FromString(TEXT("REFILL ALL AMMO")), EArenaDuelAdminCommand::RefillAmmo, 0.0f, ElevatedColor, 220.0f);
-	InfiniteAmmoButton = AddButton(AmmoRow, FText::FromString(TEXT("INFINITE AMMO: OFF")), EArenaDuelAdminCommand::ToggleInfiniteAmmo, 0.0f, ElevatedColor, 220.0f);
+	AddButton(AmmoRow, FText::FromString(TEXT("REFILL ALL AMMO")), EArenaDuelAdminCommand::RefillAmmo, 0.0f, ElevatedColor, 200.0f);
+	InfiniteAmmoButton = AddButton(AmmoRow, FText::FromString(TEXT("INFINITE AMMO: OFF")), EArenaDuelAdminCommand::ToggleInfiniteAmmo, 0.0f, ElevatedColor, 240.0f);
 
-	UVerticalBox* RoundPage = CreatePage(TEXT("ROUND CONTROL"), TEXT("Manage round flow and score state."));
-	UVerticalBox* RoundFlowCard = AddCard(RoundPage, FText::FromString(TEXT("ROUND FLOW")));
+	UVerticalBox* RoundPage = CreatePage(TEXT("ROUND"), TEXT("Round flow and score of a duel."));
+	UVerticalBox* RoundFlowCard = AddCard(RoundPage, FText::FromString(TEXT("FLOW")));
 	UHorizontalBox* RoundFlowRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	RoundFlowCard->AddChildToVerticalBox(RoundFlowRow)->SetPadding(FMargin(0, 6, 0, 0));
-	AddButton(RoundFlowRow, FText::FromString(TEXT("RESTART ROUND")), EArenaDuelAdminCommand::RestartRound, 0.0f, ElevatedColor, 220.0f);
-	AddButton(RoundFlowRow, FText::FromString(TEXT("NEXT ROUND")), EArenaDuelAdminCommand::NextRound, 0.0f, Active, 220.0f);
+	RoundFlowCard->AddChildToVerticalBox(RoundFlowRow)->SetPadding(FMargin(0, 8, 0, 0));
+	AddButton(RoundFlowRow, FText::FromString(TEXT("RESTART ROUND")), EArenaDuelAdminCommand::RestartRound, 0.0f, ElevatedColor, 200.0f);
+	AddButton(RoundFlowRow, FText::FromString(TEXT("NEXT ROUND")), EArenaDuelAdminCommand::NextRound, 0.0f, Active, 200.0f);
+	AddButton(RoundFlowRow, FText::FromString(TEXT("AWARD PLAYER 1")), EArenaDuelAdminCommand::AwardRound, 0.0f, ElevatedColor, 200.0f);
+	AddButton(RoundFlowRow, FText::FromString(TEXT("AWARD PLAYER 2")), EArenaDuelAdminCommand::AwardRound, 1.0f, ElevatedColor, 200.0f);
 
-	UVerticalBox* RoundResultCard = AddCard(RoundPage, FText::FromString(TEXT("ROUND RESULT")));
-	UHorizontalBox* RoundResultRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	RoundResultCard->AddChildToVerticalBox(RoundResultRow)->SetPadding(FMargin(0, 6, 0, 0));
-	AddButton(RoundResultRow, FText::FromString(TEXT("AWARD PLAYER 1")), EArenaDuelAdminCommand::AwardRound, 0.0f, Active, 220.0f);
-	AddButton(RoundResultRow, FText::FromString(TEXT("AWARD PLAYER 2")), EArenaDuelAdminCommand::AwardRound, 1.0f, FLinearColor(0.20f, 0.12f, 0.29f, 1.0f), 220.0f);
+	UVerticalBox* ScoreCard = AddCard(RoundPage, FText::FromString(TEXT("SCORE")), FText::FromString(TEXT("Setting a score does not award or end a round. 0 to 5.")));
+	UHorizontalBox* ScoreRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	ScoreCard->AddChildToVerticalBox(ScoreRow)->SetPadding(FMargin(0, 8, 0, 0));
+	ScoreRow->AddChildToHorizontalBox(MakeText(WidgetTree, FText::FromString(TEXT("PLAYER 1")), 13, SecondaryText))->SetVerticalAlignment(VAlign_Center);
+	Player1WinsInput = AddNumericInput(ScoreRow, FText::FromString(TEXT("0")), FText::FromString(TEXT("0-5")), 70.0f);
+	SetPlayer1WinsButton = AddButton(ScoreRow, FText::FromString(TEXT("SET")), EArenaDuelAdminCommand::SetPlayer1Wins, 0.0f, ElevatedColor, 90.0f);
+	ScoreRow->AddChildToHorizontalBox(MakeText(WidgetTree, FText::FromString(TEXT("PLAYER 2")), 13, SecondaryText))->SetVerticalAlignment(VAlign_Center);
+	Player2WinsInput = AddNumericInput(ScoreRow, FText::FromString(TEXT("0")), FText::FromString(TEXT("0-5")), 70.0f);
+	SetPlayer2WinsButton = AddButton(ScoreRow, FText::FromString(TEXT("SET")), EArenaDuelAdminCommand::SetPlayer2Wins, 0.0f, ElevatedColor, 90.0f);
 
-	UVerticalBox* ScoreCard = AddCard(RoundPage, FText::FromString(TEXT("SCORE MANAGEMENT")), FText::FromString(TEXT("Manual score changes do not award or end a round.")));
-	UHorizontalBox* P1ScoreRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	ScoreCard->AddChildToVerticalBox(P1ScoreRow)->SetPadding(FMargin(0, 6, 0, 4));
-	P1ScoreRow->AddChildToHorizontalBox(MakeText(WidgetTree, FText::FromString(TEXT("PLAYER 1 WINS")), 13, SecondaryText))->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-	Player1WinsInput = AddNumericInput(P1ScoreRow, FText::FromString(TEXT("0")), FText::FromString(TEXT("0 TO 5")), 120.0f);
-	SetPlayer1WinsButton = AddButton(P1ScoreRow, FText::FromString(TEXT("SET")), EArenaDuelAdminCommand::SetPlayer1Wins, 0.0f, ElevatedColor, 104.0f);
-	UHorizontalBox* P2ScoreRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	ScoreCard->AddChildToVerticalBox(P2ScoreRow)->SetPadding(FMargin(0, 4, 0, 2));
-	P2ScoreRow->AddChildToHorizontalBox(MakeText(WidgetTree, FText::FromString(TEXT("PLAYER 2 WINS")), 13, SecondaryText))->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-	Player2WinsInput = AddNumericInput(P2ScoreRow, FText::FromString(TEXT("0")), FText::FromString(TEXT("0 TO 5")), 120.0f);
-	SetPlayer2WinsButton = AddButton(P2ScoreRow, FText::FromString(TEXT("SET")), EArenaDuelAdminCommand::SetPlayer2Wins, 0.0f, ElevatedColor, 104.0f);
-
-	UVerticalBox* DangerCard = AddCard(RoundPage, FText::FromString(TEXT("DANGER ZONE")), FText::FromString(TEXT("Resets round number and both player scores.")));
+	UVerticalBox* DangerCard = AddCard(RoundPage, FText::FromString(TEXT("RESET")), FText::FromString(TEXT("Round number and both scores back to the start. Asks once more.")));
 	UHorizontalBox* ResetRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	DangerCard->AddChildToVerticalBox(ResetRow)->SetPadding(FMargin(0, 6, 0, 0));
-	ResetMatchButton = AddButton(ResetRow, FText::FromString(TEXT("RESET MATCH")), EArenaDuelAdminCommand::ResetMatch, 0.0f, Danger, 220.0f);
+	DangerCard->AddChildToVerticalBox(ResetRow)->SetPadding(FMargin(0, 8, 0, 0));
+	ResetMatchButton = AddButton(ResetRow, FText::FromString(TEXT("RESET MATCH")), EArenaDuelAdminCommand::ResetMatch, 0.0f, Danger, 200.0f);
 
-	UVerticalBox* MovementPage = CreatePage(TEXT("MOVEMENT"), TEXT("Inspect movement and stamina state."));
-	UVerticalBox* MovementCard = AddCard(MovementPage, FText::FromString(TEXT("MOVEMENT DIAGNOSTICS")));
+	UVerticalBox* MovementPage = CreatePage(TEXT("MOVEMENT"), TEXT("Movement and stamina of the selected player, live."));
+	UVerticalBox* MovementCard = AddCard(MovementPage, FText::FromString(TEXT("NOW")));
 	UHorizontalBox* MovementRow1 = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	MovementCard->AddChildToVerticalBox(MovementRow1)->SetPadding(FMargin(0, 6, 0, 6));
+	MovementCard->AddChildToVerticalBox(MovementRow1)->SetPadding(FMargin(0, 8, 0, 6));
 	MovementStatusValues.Add(AddStatusCard(MovementRow1, FText::FromString(TEXT("STATE")), Cyan));
 	MovementStatusValues.Add(AddStatusCard(MovementRow1, FText::FromString(TEXT("SPEED")), Cyan));
 	MovementStatusValues.Add(AddStatusCard(MovementRow1, FText::FromString(TEXT("STAMINA")), Violet));
 	MovementStatusValues.Add(AddStatusCard(MovementRow1, FText::FromString(TEXT("MODE")), Cyan));
 	UHorizontalBox* MovementRow2 = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 	MovementCard->AddChildToVerticalBox(MovementRow2)->SetPadding(FMargin(0, 4, 0, 0));
-	MovementStatusValues.Add(AddStatusCard(MovementRow2, FText::FromString(TEXT("POSITION  ·  X / Y / Z")), SecondaryText));
-	UVerticalBox* StaminaCard = AddCard(MovementPage, FText::FromString(TEXT("STAMINA CONTROL")));
+	MovementStatusValues.Add(AddStatusCard(MovementRow2, FText::FromString(TEXT("POSITION  X / Y / Z")), SecondaryText));
+	UVerticalBox* StaminaCard = AddCard(MovementPage, FText::FromString(TEXT("STAMINA")));
 	UHorizontalBox* StaminaRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	StaminaCard->AddChildToVerticalBox(StaminaRow)->SetPadding(FMargin(0, 6, 0, 0));
-	AddButton(StaminaRow, FText::FromString(TEXT("REFILL STAMINA")), EArenaDuelAdminCommand::RefillStamina, 0.0f, ElevatedColor, 220.0f);
-	InfiniteStaminaButton = AddButton(StaminaRow, FText::FromString(TEXT("INFINITE STAMINA: OFF")), EArenaDuelAdminCommand::ToggleInfiniteStamina, 0.0f, ElevatedColor, 230.0f);
-	AddHelperText(StaminaCard, FText::FromString(TEXT("Advanced movement tuning remains disabled to preserve network prediction.")));
+	StaminaCard->AddChildToVerticalBox(StaminaRow)->SetPadding(FMargin(0, 8, 0, 0));
+	AddButton(StaminaRow, FText::FromString(TEXT("REFILL STAMINA")), EArenaDuelAdminCommand::RefillStamina, 0.0f, ElevatedColor, 200.0f);
+	InfiniteStaminaButton = AddButton(StaminaRow, FText::FromString(TEXT("INFINITE STAMINA: OFF")), EArenaDuelAdminCommand::ToggleInfiniteStamina, 0.0f, ElevatedColor, 260.0f);
 
-	UVerticalBox* DebugPage = CreatePage(TEXT("DEBUG / NETWORK"), TEXT("Inspect runtime networking and local debug visualization."));
-	UVerticalBox* LocalDebugCard = AddCard(DebugPage, FText::FromString(TEXT("LOCAL DEBUG")));
+	UVerticalBox* DebugPage = CreatePage(TEXT("DEBUG"), TEXT("Local drawing and the state of the connection."));
+	UVerticalBox* LocalDebugCard = AddCard(DebugPage, FText::FromString(TEXT("DRAW ON THIS SCREEN")), FText::FromString(TEXT("Only this machine sees these. Collision is not changed.")));
 	UHorizontalBox* DebugActions = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	LocalDebugCard->AddChildToVerticalBox(DebugActions)->SetPadding(FMargin(0, 6, 0, 0));
-	DebugOverlayButton = AddButton(DebugActions, FText::FromString(TEXT("DEBUG OVERLAY: OFF")), EArenaDuelAdminCommand::ToggleDebugOverlay, 0.0f, ElevatedColor, 230.0f);
-	HitZonesButton = AddButton(DebugActions, FText::FromString(TEXT("HIT ZONES: OFF")), EArenaDuelAdminCommand::ToggleHitZones, 0.0f, ElevatedColor, 230.0f);
+	LocalDebugCard->AddChildToVerticalBox(DebugActions)->SetPadding(FMargin(0, 8, 0, 0));
+	DebugOverlayButton = AddButton(DebugActions, FText::FromString(TEXT("DEBUG OVERLAY: OFF")), EArenaDuelAdminCommand::ToggleDebugOverlay, 0.0f, ElevatedColor, 240.0f);
+	HitZonesButton = AddButton(DebugActions, FText::FromString(TEXT("HIT ZONES: OFF")), EArenaDuelAdminCommand::ToggleHitZones, 0.0f, ElevatedColor, 240.0f);
 
-	UVerticalBox* NetworkCard = AddCard(DebugPage, FText::FromString(TEXT("NETWORK STATUS")));
+	UVerticalBox* NetworkCard = AddCard(DebugPage, FText::FromString(TEXT("NETWORK AND ROUND")));
 	UHorizontalBox* NetRow1 = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	NetworkCard->AddChildToVerticalBox(NetRow1)->SetPadding(FMargin(0, 6, 0, 6));
+	NetworkCard->AddChildToVerticalBox(NetRow1)->SetPadding(FMargin(0, 8, 0, 6));
 	NetworkStatusValues.Add(AddStatusCard(NetRow1, FText::FromString(TEXT("NET MODE")), Cyan));
 	NetworkStatusValues.Add(AddStatusCard(NetRow1, FText::FromString(TEXT("LOCAL ROLE")), Cyan));
 	NetworkStatusValues.Add(AddStatusCard(NetRow1, FText::FromString(TEXT("PING")), Violet));
@@ -370,27 +390,36 @@ void UArenaDuelAdminWidget::BuildWidgetTree()
 	NetworkStatusValues.Add(AddStatusCard(NetRow2, FText::FromString(TEXT("ROUND")), Violet));
 	NetworkStatusValues.Add(AddStatusCard(NetRow2, FText::FromString(TEXT("ROUND STATE")), Cyan));
 	NetworkStatusValues.Add(AddStatusCard(NetRow2, FText::FromString(TEXT("LAST WINNER")), SecondaryText));
-	AddHelperText(NetworkCard, FText::FromString(TEXT("Hit-zone display is local debug drawing only. Collision remains unchanged.")));
 
-	UVerticalBox* SurvivalPage = CreatePage(TEXT("ZOMBIE SURVIVAL"), TEXT("Control a survival run. These do nothing in a duel."));
+	UVerticalBox* SurvivalPage = CreatePage(TEXT("SURVIVAL"), TEXT("The running Zombie Survival run."));
+	UVerticalBox* RunCard = AddCard(SurvivalPage, FText::FromString(TEXT("NOW")));
+	UHorizontalBox* RunRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	RunCard->AddChildToVerticalBox(RunRow)->SetPadding(FMargin(0, 8, 0, 0));
+	SurvivalStatusValues.Add(AddStatusCard(RunRow, FText::FromString(TEXT("WAVE")), Cyan));
+	SurvivalStatusValues.Add(AddStatusCard(RunRow, FText::FromString(TEXT("ZOMBIES LEFT")), Cyan));
+	SurvivalStatusValues.Add(AddStatusCard(RunRow, FText::FromString(TEXT("PHASE")), Violet));
+	SurvivalStatusValues.Add(AddStatusCard(RunRow, FText::FromString(TEXT("ZOMBIE DAMAGE")), Cyan));
 	UVerticalBox* WaveCard = AddCard(SurvivalPage, FText::FromString(TEXT("WAVE")), FText::FromString(TEXT("Kill All removes the whole wave, also what has not spawned yet. Next Wave Now skips the break as well.")));
 	UHorizontalBox* WaveRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 	WaveCard->AddChildToVerticalBox(WaveRow)->SetPadding(FMargin(0, 8, 0, 0));
 	AddButton(WaveRow, FText::FromString(TEXT("KILL ALL ZOMBIES")), EArenaDuelAdminCommand::SurvivalKillAll, 0.0f, ElevatedColor, 220.0f);
 	AddButton(WaveRow, FText::FromString(TEXT("NEXT WAVE NOW")), EArenaDuelAdminCommand::SurvivalFinishWave, 0.0f, Active, 220.0f);
 	AddButton(WaveRow, FText::FromString(TEXT("RESTART RUN")), EArenaDuelAdminCommand::SurvivalRestart, 0.0f, Danger, 220.0f);
-	UVerticalBox* SurvivalPlayerCard = AddCard(SurvivalPage, FText::FromString(TEXT("PLAYER AND ENEMIES")), FText::FromString(TEXT("Points go to the selected player. Harmless applies to zombies spawned from then on.")));
+	UVerticalBox* SurvivalPlayerCard = AddCard(SurvivalPage, FText::FromString(TEXT("POINTS AND ENEMIES")), FText::FromString(TEXT("Points go to the selected player. Zombie damage applies to zombies that spawn from then on.")));
 	UHorizontalBox* SurvivalPlayerRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 	SurvivalPlayerCard->AddChildToVerticalBox(SurvivalPlayerRow)->SetPadding(FMargin(0, 8, 0, 0));
 	AddButton(SurvivalPlayerRow, FText::FromString(TEXT("+5000 POINTS")), EArenaDuelAdminCommand::SurvivalAddPoints, 0.0f, ElevatedColor, 220.0f);
-	AddButton(SurvivalPlayerRow, FText::FromString(TEXT("TOGGLE ZOMBIE DAMAGE")), EArenaDuelAdminCommand::SurvivalToggleHarmless, 0.0f, ElevatedColor, 260.0f);
+	ZombieDamageButton = AddButton(SurvivalPlayerRow, FText::FromString(TEXT("ZOMBIE DAMAGE: ON")), EArenaDuelAdminCommand::SurvivalToggleHarmless, 0.0f, ElevatedColor, 260.0f);
 
+	// Footer: what the last command was and who it went to.
 	UHorizontalBox* Footer = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	Shell->AddChildToVerticalBox(Footer)->SetPadding(FMargin(8, 8, 8, 0));
-	StatusReadout = MakeText(WidgetTree, FText::FromString(TEXT("SERVER AUTHORIZED")), 11.0f, Cyan);
+	Shell->AddChildToVerticalBox(Footer)->SetPadding(FMargin(0, 10, 0, 0));
+	StatusReadout = MakeText(WidgetTree, FText::FromString(TEXT("READY")), 12.0f, Cyan);
+	StatusReadout->SetAutoWrapText(false);
 	Footer->AddChildToHorizontalBox(StatusReadout)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-	Footer->AddChildToHorizontalBox(MakeText(WidgetTree, FText::FromString(TEXT("COMMANDS EXECUTE ON AUTHORITY")), 10.0f, MutedText, ETextJustify::Center))->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-	Footer->AddChildToHorizontalBox(MakeText(WidgetTree, FText::FromString(TEXT("BUILD: DEVELOPMENT")), 10.0f, MutedText, ETextJustify::Right))->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+	UTextBlock* Authority = MakeText(WidgetTree, FText::FromString(TEXT("COMMANDS RUN ON THE HOST")), 10.0f, MutedText, ETextJustify::Right);
+	Authority->SetAutoWrapText(false);
+	Footer->AddChildToHorizontalBox(Authority);
 
 	SelectPage(0);
 }
@@ -546,7 +575,16 @@ void UArenaDuelAdminWidget::HandleAction(EArenaDuelAdminCommand Command, float V
 	default: break;
 	}
 	Action.ExecuteIfBound(Command, Value);
-	SetActionStatus(TEXT("COMMAND SENT TO SERVER"), Cyan);
+	// Says what was done and to whom, so a click is never a guess.
+	const bool bPerPlayer = Command <= EArenaDuelAdminCommand::ToggleInfiniteAmmo || (Command >= EArenaDuelAdminCommand::RefillStamina && Command <= EArenaDuelAdminCommand::SetArchetypeRift) || Command == EArenaDuelAdminCommand::SurvivalAddPoints;
+	FString Name = StaticEnum<EArenaDuelAdminCommand>()->GetNameStringByValue(static_cast<int64>(Command));
+	FString Spaced;
+	for (int32 Index = 0; Index < Name.Len(); ++Index)
+	{
+		if (Index > 0 && FChar::IsUpper(Name[Index]) && !FChar::IsUpper(Name[Index - 1])) Spaced.AppendChar(TEXT(' '));
+		Spaced.AppendChar(FChar::ToUpper(Name[Index]));
+	}
+	SetActionStatus(bPerPlayer ? FString::Printf(TEXT("%s  >  PLAYER %d"), *Spaced, SelectedDuelSlot + 1) : Spaced, Cyan);
 	RefreshAdminState();
 }
 
@@ -710,6 +748,31 @@ void UArenaDuelAdminWidget::RefreshAdminState()
 		{
 			HitZonesButton->SetLabel(FText::FromString(DebugHUD->IsShowingHitZones() ? TEXT("HIT ZONES: ON") : TEXT("HIT ZONES: OFF")));
 			HitZonesButton->SetVisualColor(DebugHUD->IsShowingHitZones() ? Active : ElevatedColor);
+		}
+	}
+	// The mode decides which tabs make sense and what the score row means.
+	const AArenaDuelZombieGameState* Survival = Cast<AArenaDuelZombieGameState>(GameState);
+	SetTextIfChanged(ModeReadout, Survival ? TEXT("ZOMBIE SURVIVAL") : TEXT("1 VS 1 DUEL"));
+	if (NavTabs.Num() == 6)
+	{
+		NavTabs[2]->SetVisibility(Survival ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+		NavTabs[5]->SetVisibility(Survival ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+		if ((Survival && SelectedPage == 2) || (!Survival && SelectedPage == 5)) SelectPage(0);
+	}
+	SetTextIfChanged(ScoreRowLabel, Survival ? TEXT("POINTS") : TEXT("ROUND WINS"));
+	if (Survival && TargetState && TargetStatusValues.Num() >= 8) SetTextIfChanged(TargetStatusValues[3], FString::FromInt(TargetState->GetSurvivalPoints()));
+	if (SurvivalStatusValues.Num() == 4)
+	{
+		const AArenaDuelZombieGameMode* Rules = World ? World->GetAuthGameMode<AArenaDuelZombieGameMode>() : nullptr;
+		const bool bHarmless = Rules && Rules->GetZombieDamageScale() <= 0.0f;
+		SetTextIfChanged(SurvivalStatusValues[0], Survival ? FString::FromInt(Survival->GetWave()) : TEXT("--"));
+		SetTextIfChanged(SurvivalStatusValues[1], Survival ? FString::FromInt(Survival->GetZombiesRemaining()) : TEXT("--"));
+		SetTextIfChanged(SurvivalStatusValues[2], !Survival ? TEXT("--") : Survival->IsGameOver() ? TEXT("GAME OVER") : Survival->IsIntermission() ? TEXT("BREAK") : TEXT("WAVE RUNNING"));
+		SetTextIfChanged(SurvivalStatusValues[3], !Rules ? TEXT("--") : bHarmless ? TEXT("OFF") : TEXT("ON"));
+		if (ZombieDamageButton)
+		{
+			ZombieDamageButton->SetLabel(FText::FromString(bHarmless ? TEXT("ZOMBIE DAMAGE: OFF") : TEXT("ZOMBIE DAMAGE: ON")));
+			ZombieDamageButton->SetVisualColor(bHarmless ? Active : ElevatedColor);
 		}
 	}
 	if (Player1WinsInput && !Player1WinsInput->HasKeyboardFocus())
