@@ -221,6 +221,7 @@ void AArenaDuelZombieGameMode::BeginRun()
 	GetWorldTimerManager().ClearTimer(SpawnTimer);
 	for (TActorIterator<AArenaDuelZombie> It(GetWorld()); It; ++It) It->Destroy();
 	SpawnQueue.Reset();
+	NextSwingAllowed.Reset();
 	CurrentWave = 0;
 	TotalKills = 0;
 	bWaveActive = false;
@@ -243,6 +244,16 @@ void AArenaDuelZombieGameMode::BeginRun()
 	RestartDuelPlayers();
 	GetWorldTimerManager().SetTimer(WatchTimer, this, &AArenaDuelZombieGameMode::WatchTick, 0.5f, true);
 	BeginIntermission(FirstWaveDelay);
+}
+
+bool AArenaDuelZombieGameMode::ClaimAttackOn(const AActor* Target)
+{
+	if (!Target || !GetWorld()) return false;
+	const float Now = GetWorld()->GetTimeSeconds();
+	float& Next = NextSwingAllowed.FindOrAdd(Target);
+	if (Now < Next) return false;
+	Next = Now + SecondsBetweenSwingsAtPlayer;
+	return true;
 }
 
 void AArenaDuelZombieGameMode::RestartSurvival()

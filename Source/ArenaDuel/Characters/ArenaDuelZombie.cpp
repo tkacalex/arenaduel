@@ -572,7 +572,8 @@ void AArenaDuelZombie::ServerThink(float DeltaSeconds)
 	GetCharacterMovement()->MaxWalkSpeed = Speed;
 
 	// Melee.
-	if (Distance <= Reach && bSameLevel && Now >= NextAttackTime && Now >= StaggerEndTime && HasLineTo(Target))
+	AArenaDuelZombieGameMode* Rules = World->GetAuthGameMode<AArenaDuelZombieGameMode>();
+	if (Distance <= Reach && bSameLevel && Now >= NextAttackTime && Now >= StaggerEndTime && HasLineTo(Target) && (IsBossType() || !Rules || Rules->ClaimAttackOn(Target)))
 	{
 		bWindingUp = true; bSlamWindup = false;
 		WindupEndTime = Now + Config.AttackWindup;

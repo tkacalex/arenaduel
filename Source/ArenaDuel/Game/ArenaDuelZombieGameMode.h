@@ -47,6 +47,8 @@ public:
 	float GetPlayerDamageScale(const AController* Player) const;
 	float GetCorpseSeconds(bool bBoss) const { return bBoss ? BossCorpseSeconds : CorpseSeconds; }
 	void RestartSurvival();
+	/** Server only. A normal enemy asks before it swings: hits on one player are spaced out, so being surrounded hurts but is not instant death. */
+	bool ClaimAttackOn(const AActor* Target);
 	int32 GetCurrentWave() const { return CurrentWave; }
 	const TArray<FArenaDuelWaveDefinition>& GetWaveTable() const { return WaveTable; }
 	const TArray<FArenaDuelZombieTypeConfig>& GetTypeConfigs() const { return TypeConfigs; }
@@ -84,6 +86,8 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Survival|Balance", meta = (ClampMin = "0")) float ZombieDamageScale = 1.0f;
 	/** Weapon damage against zombies, all weapons. The duel values themselves stay as they are. */
 	UPROPERTY(EditDefaultsOnly, Category = "Survival|Balance", meta = (ClampMin = "0")) float WeaponDamageScale = 1.0f;
+	/** Shortest time between two swings of normal enemies at the same player. Bosses ignore it. */
+	UPROPERTY(EditDefaultsOnly, Category = "Survival|Balance", meta = (ClampMin = "0")) float SecondsBetweenSwingsAtPlayer = 0.45f;
 	/** Health a living player gets back per second between waves. */
 	UPROPERTY(EditDefaultsOnly, Category = "Survival|Balance", meta = (ClampMin = "0")) float IntermissionRegenPerSecond = 6.0f;
 	/** Share of every weapon's reserve that a cleared wave gives back, so a run cannot end for lack of ammunition. */
@@ -121,6 +125,7 @@ protected:
 	int32 TotalKills = 0;
 	float DevTimeScale = 1.0f;
 	bool bDevAutoPlay = false;
+	TMap<TWeakObjectPtr<const AActor>, float> NextSwingAllowed;
 	float LastSpawnWorldTime = 0.0f;
 	float WaveStartWorldTime = 0.0f;
 	int32 StatRelocated = 0;

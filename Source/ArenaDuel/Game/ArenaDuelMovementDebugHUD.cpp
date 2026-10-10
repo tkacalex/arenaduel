@@ -1,6 +1,8 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "ArenaDuelMovementDebugHUD.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
 #include "../UI/ArenaDuelHUDWidget.h"
 #include "ArenaDuelGameState.h"
 #include "ArenaDuelZombieGameMode.h"
@@ -183,6 +185,16 @@ namespace
 			FCanvasTileItem Fill(FVector2D(X, Y), FVector2D(BarWidth * FMath::Clamp(Boss, 0.0f, 1.0f), BarHeight), Red);
 			Fill.BlendMode = SE_BLEND_Translucent;
 			Canvas->DrawItem(Fill);
+		}
+
+		// A horn with every wave start, once per announcement.
+		static float HeardAnnouncementTime = -1000.0f;
+		if (State->GetAnnouncementServerTime() > HeardAnnouncementTime + 0.01f || State->GetAnnouncementServerTime() < HeardAnnouncementTime - 1.0f)
+		{
+			HeardAnnouncementTime = State->GetAnnouncementServerTime();
+			static TWeakObjectPtr<USoundBase> Horn;
+			if (!Horn.IsValid()) Horn = LoadObject<USoundBase>(nullptr, TEXT("/Game/ArenaDuel/Audio/S_SurvivalWaveStart.S_SurvivalWaveStart"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+			if (Horn.IsValid() && Controller && State->GetAnnouncement().StartsWith(TEXT("WAVE")) && !State->GetAnnouncement().EndsWith(TEXT("CLEARED")) && Now - HeardAnnouncementTime < 2.0f) UGameplayStatics::PlaySound2D(Controller, Horn.Get(), 0.6f);
 		}
 
 		// Announcement: large, centred, fading over three seconds.
