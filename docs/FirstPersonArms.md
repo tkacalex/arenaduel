@@ -72,3 +72,7 @@ With a mesh that reaches up to the shoulder, the first person arms are no longer
 Aiming now shows the weapon in the middle with a forearm coming in from each lower corner; at the hip the hands sit on the weapon at the lower right (`docs/media/fp_2026-10-10_arms_ik.png`, all weapons, hip and aim). `ArenaDuel.Arms.Rigid 1` switches back to the old placement for comparison. The world body and its hit zones are not touched by any of this.
 
 Checked: stills of every weapon and item at the hip and aiming; 13 of 13 visual, loadout, hit zone and survival tests. Not checked: motion (walking, firing, reloading, switching), extreme pitch, walls, other fields of view, and what the reload clip does to the arms now.
+
+### Support hand on the modelled weapons
+
+The support hand's grip points moved forward to where the new models have something to hold: the rifle's handguard (33), the SMG's foregrip (24), the DMR's handguard (36) and the shotgun's pump (37), in mesh units along the barrel. In the stills taken afterwards the hand cannot be told apart from before; whether it now sits on those parts is not established. There are still no finger poses per weapon and no first person clips for firing, equipping or sprinting.
