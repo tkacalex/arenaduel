@@ -64,7 +64,7 @@ AArenaDuelCharacter::AArenaDuelCharacter(const FObjectInitializer& ObjectInitial
 	GetMesh()->SetOwnerNoSee(true);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GetMesh()->SetAnimInstanceClass(UArenaDuelVisualAnimInstance::StaticClass());
-	static ConstructorHelpers::FObjectFinder<USkeletalMesh> Arms(TEXT("/Game/ArenaDuel/Characters/Common/SKM_ArenaDuelFPSArms"));
+	static ConstructorHelpers::FObjectFinder<USkeletalMesh> Arms(TEXT("/Game/ArenaDuel/Characters/Common/SKM_ArenaDuelFPHands"));
 	if (Arms.Succeeded()) FirstPersonArms->SetSkeletalMesh(Arms.Object);
 	FirstPersonArms->SetAnimInstanceClass(UArenaDuelVisualAnimInstance::StaticClass());
 	FirstPersonCamera->bEnableFirstPersonFieldOfView = true;

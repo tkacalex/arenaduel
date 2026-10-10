@@ -91,7 +91,7 @@ bool FArenaDuelVisualContract::RunTest(const FString& Parameters)
 	const auto* BlueprintDefaults = BlueprintClass ? BlueprintClass->GetDefaultObject<AArenaDuelCharacter>() : nullptr;
 	TestTrue(TEXT("Saved Blueprint inherits body and first-person mesh"), BlueprintDefaults && BlueprintDefaults->GetMesh()->GetSkeletalMeshAsset() && BlueprintDefaults->GetFirstPersonArms()->GetSkeletalMeshAsset());
 	TestNotNull(TEXT("Compatible skeletal first-person mesh"), Character->GetFirstPersonArms()->GetSkeletalMeshAsset());
-	TestTrue(TEXT("First person uses the dedicated forearm and hand mesh"), Character->GetFirstPersonArms()->GetSkeletalMeshAsset() && Character->GetFirstPersonArms()->GetSkeletalMeshAsset()->GetName() == TEXT("SKM_ArenaDuelFPSArms"));
+	TestTrue(TEXT("First person uses the gloved hands mesh"), Character->GetFirstPersonArms()->GetSkeletalMeshAsset() && Character->GetFirstPersonArms()->GetSkeletalMeshAsset()->GetName() == TEXT("SKM_ArenaDuelFPHands"));
 	TestTrue(TEXT("Primitives no longer render"), Character->BodyVisual->bHiddenInGame && Character->HeadVisual->bHiddenInGame);
 	TestTrue(TEXT("Body/arms visibility separated"), VisualSmoke::Flag(Character->GetMesh(), TEXT("bOwnerNoSee")) && VisualSmoke::Flag(Character->GetFirstPersonArms(), TEXT("bOnlyOwnerSee")));
 	TestEqual(TEXT("Body hit extent unchanged"), Character->BodyHitZone->GetUnscaledBoxExtent(), FVector(38,38,70));

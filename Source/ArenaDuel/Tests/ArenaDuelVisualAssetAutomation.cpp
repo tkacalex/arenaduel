@@ -44,7 +44,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelCreateArmsAsset, "ArenaDuel.VisualAss
 bool FArenaDuelCreateArmsAsset::RunTest(const FString& Parameters)
 {
 	const TCHAR* PackagePath = TEXT("/Game/ArenaDuel/Characters/Common/SKM_ArenaDuelFPSArms");
-	USkeletalMesh* Arms = LoadObject<USkeletalMesh>(nullptr, PackagePath, nullptr, LOAD_NoWarn);
+	// The gloved hands made in Blender (Tools/Editor/SetupFirstPersonHands.py) are the first person mesh.
+	// The cut-out mannequin forearms below are only the fallback for a checkout without them.
+	USkeletalMesh* Arms = LoadObject<USkeletalMesh>(nullptr, TEXT("/Game/ArenaDuel/Characters/Common/SKM_ArenaDuelFPHands"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	if (!Arms) Arms = LoadObject<USkeletalMesh>(nullptr, PackagePath, nullptr, LOAD_NoWarn);
 	if (!Arms)
 	{
 		USkeletalMesh* Source = LoadObject<USkeletalMesh>(nullptr, TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"));
