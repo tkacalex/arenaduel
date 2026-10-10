@@ -75,19 +75,23 @@ AArenaDuelZombieGameMode::AArenaDuelZombieGameMode()
 	FArenaDuelZombieTypeConfig& Fast = TypeConfigs[static_cast<int32>(EArenaDuelZombieType::Fast)];
 	Fast.DisplayName = TEXT("RUNNER"); Fast.Health = 55.0f; Fast.MoveSpeed = 760.0f; Fast.Damage = 9.0f; Fast.AttackInterval = 0.8f; Fast.AttackWindup = 0.25f; Fast.Scale = 0.9f; Fast.Points = 150;
 	Fast.MaterialPath = TEXT("/Game/ArenaDuel/Characters/Common/M_SurvivalRunner.M_SurvivalRunner");
+	Fast.MeshPath = TEXT("/Game/ArenaDuel/Characters/Zombies/SKM_Zombie_Runner.SKM_Zombie_Runner");
 
 	// Armour: the body shrugs off more than half of a hit, the head takes more than usual.
 	FArenaDuelZombieTypeConfig& Armored = TypeConfigs[static_cast<int32>(EArenaDuelZombieType::Armored)];
 	Armored.DisplayName = TEXT("ARMOURED"); Armored.Health = 260.0f; Armored.MoveSpeed = 230.0f; Armored.Damage = 20.0f; Armored.AttackInterval = 1.4f; Armored.Scale = 1.12f; Armored.BodyDamageFactor = 0.45f; Armored.HeadDamageFactor = 1.5f; Armored.Points = 250;
 	Armored.MaterialPath = TEXT("/Game/ArenaDuel/Characters/Common/M_SurvivalArmoured.M_SurvivalArmoured");
+	Armored.MeshPath = TEXT("/Game/ArenaDuel/Characters/Zombies/SKM_Zombie_Armoured.SKM_Zombie_Armoured");
 
 	FArenaDuelZombieTypeConfig& MiniBoss = TypeConfigs[static_cast<int32>(EArenaDuelZombieType::MiniBoss)];
 	MiniBoss.DisplayName = TEXT("BRUTE"); MiniBoss.Health = 1500.0f; MiniBoss.MoveSpeed = 380.0f; MiniBoss.Damage = 28.0f; MiniBoss.AttackInterval = 1.5f; MiniBoss.AttackRange = 190.0f; MiniBoss.AttackWindup = 0.45f; MiniBoss.Scale = 1.45f; MiniBoss.Points = 1000;
 	MiniBoss.MaterialPath = TEXT("/Game/ArenaDuel/Characters/Common/M_SurvivalBrute.M_SurvivalBrute");
+	MiniBoss.MeshPath = TEXT("/Game/ArenaDuel/Characters/Zombies/SKM_Zombie_Brute.SKM_Zombie_Brute");
 
 	FArenaDuelZombieTypeConfig& Boss = TypeConfigs[static_cast<int32>(EArenaDuelZombieType::Boss)];
 	Boss.DisplayName = TEXT("ABOMINATION"); Boss.Health = 6000.0f; Boss.MoveSpeed = 360.0f; Boss.Damage = 38.0f; Boss.AttackInterval = 1.7f; Boss.AttackRange = 240.0f; Boss.AttackWindup = 0.55f; Boss.Scale = 2.0f; Boss.Points = 5000;
 	Boss.MaterialPath = TEXT("/Game/ArenaDuel/Characters/Common/M_SurvivalAbomination.M_SurvivalAbomination");
+	Boss.MeshPath = TEXT("/Game/ArenaDuel/Characters/Zombies/SKM_Zombie_Abomination.SKM_Zombie_Abomination");
 }
 
 TArray<FArenaDuelWaveDefinition> AArenaDuelZombieGameMode::DefaultWaveTable()
