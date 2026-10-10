@@ -428,7 +428,8 @@ UArenaDuelAdminActionButton* UArenaDuelAdminWidget::AddButton(UHorizontalBox* Ro
 {
 	if (!Row) return nullptr;
 	UArenaDuelAdminActionButton* Button = WidgetTree->ConstructWidget<UArenaDuelAdminActionButton>(UArenaDuelAdminActionButton::StaticClass());
-	UTextBlock* ButtonLabel = MakeText(WidgetTree, Label, 14.0f, PrimaryText, ETextJustify::Center);
+	UTextBlock* ButtonLabel = MakeText(WidgetTree, Label, 13.0f, PrimaryText, ETextJustify::Center);
+	ButtonLabel->SetAutoWrapText(false);
 	FOnArenaDuelAdminAction ActionDelegate;
 	ActionDelegate.BindUObject(this, &UArenaDuelAdminWidget::HandleAction);
 	Button->Configure(Command, Value, ButtonLabel, Color, MoveTemp(ActionDelegate), Justification);
