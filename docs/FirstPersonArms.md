@@ -59,3 +59,16 @@ Still the placeholder described above: forearms and hands cut from the mannequin
 ### Textures on the hands
 
 The hands use a baked set as well: `T_FPHands_BaseColor`, `T_FPHands_Normal`, `T_FPHands_Roughness` (2048 px), made by `Tools/Art/bake_zombie_textures.py` with `TARGET = 'FPHands'` on `Tools/Art/fp_arms.blend`: woven cloth for the sleeve, grained leather for the glove and the trim. `SetupFirstPersonHands.py` imports them and builds the three materials from them; without the maps it falls back to plain colours. Seen in play only as dark gloves and a woven sleeve at a distance (`docs/media/fp_2026-10-10_hands_textured.png`); no close look at the detail was taken.
+
+## Arms solved as arms (2026-10-10)
+
+With a mesh that reaches up to the shoulder, the first person arms are no longer placed as rigid pieces. Each arm is a two bone IK chain (`SolveArm` in `ArenaDuelVisualAnimInstance.cpp`):
+
+- **Shoulder**: a point fixed to the camera, below and beside the view (`ArenaDuel.Arms.ShoulderX/Y/Z`, default -6, 20, -26 cm; the left one mirrored). The shoulders of the clip are no use here, because the viewmodel is shifted to the right and they move with it: solved from them, the free arm lay across the whole screen.
+- **Wrist**: the weapon hand stays where the clip and the hand socket put it; the support hand goes to the grip point, the free hand of knife and flashbang to its own point.
+- **Elbow**: bent towards the existing elbow directions (`ArenaDuel.Arms.LeftElbow*`, `RightElbow*`).
+- If a wrist is further from its shoulder than the arm is long, the shoulder comes closer, so a hand never lets go of the weapon.
+
+Aiming now shows the weapon in the middle with a forearm coming in from each lower corner; at the hip the hands sit on the weapon at the lower right (`docs/media/fp_2026-10-10_arms_ik.png`, all weapons, hip and aim). `ArenaDuel.Arms.Rigid 1` switches back to the old placement for comparison. The world body and its hit zones are not touched by any of this.
+
+Checked: stills of every weapon and item at the hip and aiming; 13 of 13 visual, loadout, hit zone and survival tests. Not checked: motion (walking, firing, reloading, switching), extreme pitch, walls, other fields of view, and what the reload clip does to the arms now.
