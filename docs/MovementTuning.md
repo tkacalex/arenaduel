@@ -94,3 +94,23 @@ See `docs/Bunnyhop.md`, section Shadow Step. The dash speed is 6750 with a 200 l
 A sprint jump keeps its speed. Two things took it away before: the strong ground braking friction (`GroundBrakingFriction`) was applied by the engine in every movement mode, and the speed limit in the air was walk speed, so anything faster was braked. Now the braking friction only applies while walking, and the limit in the air is the horizontal speed the player already has (never less than walk speed). Steering in the air turns the velocity without adding to it. Landing while still holding sprint continues at sprint speed. The same change lets Shadow Step and a slide jump carry their speed through the air.
 
 `ArenaDuel.Phase4.SprintJumpKeepsSpeed` checks that 900 stays 900 over a jump with forward held. A real sprint jump with key input was not tried in a play session.
+
+## Wall movement for skilled play (2026-10-11)
+
+Ground speeds, slide, bunnyhop, vault and mantle are unchanged. What changed is everything around walls. All of it runs in `UArenaDuelCharacterMovementComponent`, on the server and predicted on the owner through the existing advanced jump flags; every value is a property.
+
+| What | Before | Now |
+| --- | --- | --- |
+| Wall kick | none: a wall jump needed a wall run | Jump in the air next to any wall (eight directions around the body, `WallKickReach` 48) kicks off it: `WallKickAwayForce` 620 off the wall, the speed along it kept, `WallJumpUpForce` up. No sprint and no minimum speed needed |
+| Kick limits | | `MaxWallKicks` 3 per time in the air, `WallKickStaminaCost` 12 each, `WallKickCooldown` 0.18 s, and never the same wall twice in a row. A landing or a wall run gives the kicks back. Climbing therefore takes two walls |
+| Wall jump speed | 75 % of the fixed wall run speed | all of the speed carried along the wall (`WallJumpForwardRetention` 1.0) plus the push (`WallJumpAwayForce` 520, up 460) |
+| Chains | none | every wall jump or kick in a row adds `WallChainSpeedBonus` 70; a chain may carry up to `WallChainSpeedCap` 1550 until the next landing, above the ordinary cap of 1350 |
+| Steering | fixed direction | the look direction turns the jump by `WallJumpAimInfluence` 0.35, only as far as it points away from the wall |
+| Wall run entry | 650 minimum speed | `WallRunMinSpeed` 520 |
+| Wall run speed | always pulled to 900 | keeps the speed it was entered with; what is above 900 bleeds off at `WallRunSpeedDecay` 160 per second |
+| Wall run height | sinks at 20 % gravity from the start, upward speed cut | caught on the way up it keeps rising (up to `WallRunMaxRiseSpeed` 320); gravity grows from `WallRunStartGravityScale` 0.02 to `WallRunGravityScale` 0.3 over the run, so it starts flat and sinks late |
+| Wall run stamina | 20 per second | `WallRunDrain` 16 |
+
+Tests: `ArenaDuel.Phase4.WallKick` (kick without a wall run, speed kept, stamina, the cooldown, the same wall refused, no wall and the ground) and `ArenaDuel.Phase4.WallMomentum` (entry speed kept, rising entry, wall jump keeping its speed, chain cap) next to the existing wall run and wall jump tests, which pass unchanged; the whole movement, hop, slide and ability suites pass (48 tests), the network wall run and wall jump among them.
+
+Not checked: none of this has been played by hand. One attempt with real input did not reach the game window. The kick is covered at component level only, not in a network test (it travels the same way a wall jump does). How it feels, whether 1550 is too fast for the map and whether three kicks are too many are questions for a play test.
