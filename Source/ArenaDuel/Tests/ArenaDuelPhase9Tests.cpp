@@ -792,6 +792,113 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 			}, FTimespan::FromSeconds(8.0));
 	}
 
+	// 9C.3: what the owner shows follows what the server fires. With the trigger held through the end of a
+	// magazine on a client with simulated latency: as many shown shots as rounds, and no shown fire after the
+	// reload the server started, for which the trigger has to be pressed again.
+	TEST_METHOD(OwnerShowsNoShotBeyondTheMagazineAndStopsWithTheServersReload)
+	{
+		using namespace ArenaDuelPhase9Tests;
+		const auto ClientWeapon = [](FArenaDuelPhase9State& State) -> UArenaDuelWeaponComponent*
+		{
+			const APlayerController* Controller = State.World->GetFirstPlayerController();
+			const AArenaDuelCharacter* Pawn = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
+			return Pawn ? Pawn->GetWeaponComponent() : nullptr;
+		};
+		const int32 WeaponIndex = ArenaDuelPhase9FireRate::AutomaticWeapons().Num() > 0 ? ArenaDuelPhase9FireRate::AutomaticWeapons().Last() : 0;
+		Network
+			.UntilServer(TEXT("Both duel players have pawns"), [](FArenaDuelPhase9State& State) { return PawnForSlot(State.World, 0) && PawnForSlot(State.World, 1); }, FTimespan::FromSeconds(10.0))
+			.ThenServer(TEXT("Start a round"), [](FArenaDuelPhase9State& State) { StartMatch(State.World); })
+			.UntilServer(TEXT("Round one runs"), [](FArenaDuelPhase9State& State) { return BothAliveInRound(State.World); }, FTimespan::FromSeconds(6.0))
+			.ThenServer(TEXT("The client's pawn holds an automatic weapon with five rounds in it"), [WeaponIndex](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 1)->GetWeaponComponent();
+				Weapon->GrantAllWeaponsForDevelopment();
+				Weapon->EquipWeapon(WeaponIndex);
+				Weapon->RefillAllAmmoForDevelopment();
+				Weapon->ClearActionTimesForTests();
+				Weapon->ConsumeAmmoForTests(Weapon->GetCurrentMagazineAmmo() - 5);
+				State.Sequence = Weapon->GetLastShotSequence();
+			})
+			.UntilClient(TEXT("Client: it has the weapon and the five rounds"), 0, [ClientWeapon, WeaponIndex](FArenaDuelPhase9State& State)
+			{
+				const UArenaDuelWeaponComponent* Weapon = ClientWeapon(State);
+				return Weapon && Weapon->GetEquippedWeaponIndex() == WeaponIndex && Weapon->GetActiveSlot() == EArenaDuelLoadoutSlot::Primary && Weapon->GetCurrentMagazineAmmo() == 5 && !Weapon->IsReloading();
+			}, FTimespan::FromSeconds(6.0))
+			.ThenClient(TEXT("Client: latency on, press and hold"), 0, [this, ClientWeapon](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = ClientWeapon(State);
+				// A tenth of a second each way: the replicated magazine count is then several shots behind.
+				if (GEngine) GEngine->Exec(State.World, TEXT("NetEmulation.PktLag 100"));
+				State.Ammo = Weapon->GetShownShotCount();
+				State.Mark = State.World->GetTimeSeconds();
+				Weapon->StartFire();
+				if (!Weapon->IsLocalFireHeld()) TestRunner->AddError(TEXT("The client does not hold the trigger"));
+			})
+			.UntilClient(TEXT("Client: five shown shots for five rounds, and the shown fire ends with the server's reload"), 0, [this, ClientWeapon](FArenaDuelPhase9State& State)
+			{
+				const UArenaDuelWeaponComponent* Weapon = ClientWeapon(State);
+				const int32 Shown = Weapon->GetShownShotCount() - State.Ammo;
+				if (Shown > 5) { TestRunner->AddError(FString::Printf(TEXT("The owner showed %d shots from a magazine of five"), Shown)); return true; }
+				if (Weapon->GetOwnerPredictedMagazine() < 0) TestRunner->AddError(TEXT("The owner's assumed magazine went below zero"));
+				if (!Weapon->IsReloading()) return false;
+				if (Shown != 5) TestRunner->AddError(FString::Printf(TEXT("The owner showed %d shots from a magazine of five"), Shown));
+				if (Weapon->IsLocalFireHeld()) TestRunner->AddError(TEXT("The owner's shown fire did not end with the reload the server started"));
+				State.Mark = State.World->GetTimeSeconds();
+				return true;
+			}, FTimespan::FromSeconds(8.0))
+			.UntilClient(TEXT("Client: after the reload nothing more is shown, although the trigger was never let go"), 0, [this, ClientWeapon](FArenaDuelPhase9State& State)
+			{
+				const UArenaDuelWeaponComponent* Weapon = ClientWeapon(State);
+				if (Weapon->IsReloading()) { State.Mark = State.World->GetTimeSeconds(); return false; }
+				if (State.World->GetTimeSeconds() - State.Mark < 0.7) return false;
+				const int32 Shown = Weapon->GetShownShotCount() - State.Ammo;
+				if (Shown != 5) TestRunner->AddError(FString::Printf(TEXT("After the reload the owner went on showing shots: %d in all for five rounds"), Shown));
+				if (Weapon->GetOwnerPredictedMagazine() != Weapon->GetCurrentMagazineAmmo() || Weapon->GetUnconfirmedShownShots() != 0) TestRunner->AddError(TEXT("After the reload the owner's assumed magazine is not the real one"));
+				if (GEngine) GEngine->Exec(State.World, TEXT("NetEmulation.PktLag 0"));
+				return true;
+			}, FTimespan::FromSeconds(10.0))
+			.ThenServer(TEXT("Server: five real shots, and the fire ended with the reload"), [this](FArenaDuelPhase9State& State)
+			{
+				const UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 1)->GetWeaponComponent();
+				if (Weapon->GetLastShotSequence() - State.Sequence != 5) TestRunner->AddError(FString::Printf(TEXT("The server fired %d shots from a magazine of five"), Weapon->GetLastShotSequence() - State.Sequence));
+				if (Weapon->IsServerFiring() || Weapon->IsServerFirePending()) TestRunner->AddError(TEXT("The server still holds the trigger after its reload"));
+			})
+			// The eye hint belongs to one shot of the burst: kept for the server's shot with that number, used by it,
+			// and not kept for a shot that has left or that is too far ahead.
+			.ThenServer(TEXT("Server: a burst begins; hints for the next shot, a past one and a far one"), [this](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 1)->GetWeaponComponent();
+				Weapon->ClearActionTimesForTests();
+				State.Mark = State.World->GetTimeSeconds();
+				State.Serial = 0;
+			})
+			.UntilServer(TEXT("Server: the hint for shot one is there until shot one leaves"), [this](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 1)->GetWeaponComponent();
+				if (State.Serial == 0)
+				{
+					// One interval after the last real shot, so the press fires at once.
+					if (State.World->GetTimeSeconds() - State.Mark < 0.3) return false;
+					State.Serial = 1;
+					Weapon->SetFireHeldForTests(true, 1000.0f, 1000.0f);
+					if (Weapon->GetServerBurstShotIndex() != 1) { TestRunner->AddError(TEXT("The first shot of the burst did not leave with the press")); return true; }
+					Weapon->EyeEaseHintForTests(1, 0.05f, 1000.0f);
+					Weapon->EyeEaseHintForTests(0, 0.05f, 1000.0f);
+					Weapon->EyeEaseHintForTests(40, 0.05f, 1000.0f);
+					if (!Weapon->HasEyeHintForTests(1)) TestRunner->AddError(TEXT("The hint for the next shot was not kept"));
+					if (Weapon->HasEyeHintForTests(0)) TestRunner->AddError(TEXT("A hint for a shot that has left was kept"));
+					if (Weapon->HasEyeHintForTests(40)) TestRunner->AddError(TEXT("A hint for a shot far ahead was kept"));
+					return false;
+				}
+				if (Weapon->GetServerBurstShotIndex() < 2) return false;
+				if (Weapon->HasEyeHintForTests(1)) TestRunner->AddError(TEXT("The hint was not used by the shot it belonged to"));
+				Weapon->SetFireHeldForTests(false, 1000.0f, 1000.0f);
+				Weapon->EyeEaseHintForTests(3, 0.05f, 1000.0f);
+				if (Weapon->HasEyeHintForTests(3)) TestRunner->AddError(TEXT("A hint was kept although the trigger is not held"));
+				return true;
+			}, FTimespan::FromSeconds(4.0));
+	}
+
 	// E07: a choice names its selection; one from an earlier selection is refused in a later one.
 	TEST_METHOD(UpgradeChoiceFromAnEarlierSelectionIsRefused)
 	{

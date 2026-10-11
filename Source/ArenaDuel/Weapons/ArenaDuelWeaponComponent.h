@@ -289,6 +289,7 @@ public:
 	/** Tests: the eye hint for one shot of the burst as the server receives it. */
 	void EyeEaseHintForTests(uint8 BurstShotIndex, float OwnerCrouchEaseAge, float OwnerSlideEaseAge);
 	uint8 GetServerBurstShotIndex() const { return ServerBurstShotIndex; }
+	bool HasEyeHintForTests(uint8 BurstShotIndex) const { const FEyeHint& Hint = ServerEyeHints[BurstShotIndex % UE_ARRAY_COUNT(ServerEyeHints)]; return Hint.bValid && Hint.Index == BurstShotIndex; }
 	/** Tests: what the server's fire timer calls. */
 	void FireAuthoritativeForTests();
 	/** Tests: take rounds out of the magazine in the hands without firing. */
