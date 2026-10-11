@@ -9,6 +9,8 @@
 #include "ArenaDuelTestUpgrades.h"
 #include "Components/PIENetworkComponent.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformProcess.h"
 
@@ -723,6 +725,8 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9FireRateTest, "ArenaDuel.Phase9.FireRate")
 					UE_LOG(LogTemp, Display, TEXT("FireRate %s"), *Case);
 					// With a hitch the shots of at most the long frame may be missing, less what was made up for.
 					const int32 MayMiss = Fps == -2.0f ? FMath::CeilToInt32(0.25 / Interval(Weapon)) + 1 : 1;
+					// -FireRateMeasureOnly on the command line: log every case and judge none, to measure a build as it is.
+					if (FParse::Param(FCommandLine::Get(), TEXT("FireRateMeasureOnly"))) return true;
 					if (Shots > Due) TestRunner->AddError(FString::Printf(TEXT("More shots than the rate allows (%s)"), *Case));
 					if (Shots < Due - MayMiss) TestRunner->AddError(FString::Printf(TEXT("Shots were left out (%s)"), *Case));
 					if (State.Ammo - Weapon->GetCurrentMagazineAmmo() != Shots) TestRunner->AddError(FString::Printf(TEXT("Rounds used and shots fired differ (%s)"), *Case));
