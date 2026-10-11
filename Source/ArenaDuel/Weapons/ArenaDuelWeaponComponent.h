@@ -379,6 +379,11 @@ public:
 	/** Owner: the hits the server has confirmed since this was last asked, oldest first, and none of them again. Only what met a body is here; a miss and a hit on the world are never feedback. */
 	void TakeHitFeedback(TArray<FHitFeedback>& OutHits) { OutHits = MoveTemp(PendingHitFeedback); PendingHitFeedback.Reset(); }
 	int32 GetPendingHitFeedbackCount() const { return PendingHitFeedback.Num(); }
+	/** Owner: the rounds in the magazine as the owner has to assume them: what the server last confirmed, less the shots this machine has shown and not heard back about. This, not the replicated count that arrives late, decides whether another shot is shown. */
+	int32 GetOwnerPredictedMagazine() const;
+	/** Owner: shots shown on this machine since this weapon exists, and how many of them are waiting for the server's word. */
+	int32 GetShownShotCount() const { return ShownShotCount; }
+	int32 GetUnconfirmedShownShots() const { return OwnerUnconfirmedShots; }
 	/** Owner: confirmed hits on a head, and on a body or limb, since this weapon exists. */
 	int32 GetConfirmedHeadHits() const { return ConfirmedHeadHits; }
 	int32 GetConfirmedBodyHits() const { return ConfirmedBodyHits; }
@@ -395,6 +400,9 @@ public:
 protected:
 	UFUNCTION(Server, Reliable)
 	void ServerSetFireHeld(bool bHeld, float OwnerCrouchEaseAge, float OwnerSlideEaseAge);
+	/** While the owner's eye eases and it shows shots: how far along the eye is, sent with a shown shot. Taken like the hint that comes with the press. */
+	UFUNCTION(Server, Unreliable)
+	void ServerEyeEaseHint(float OwnerCrouchEaseAge, float OwnerSlideEaseAge);
 
 	UFUNCTION(Server, Reliable)
 	void ServerSetAiming(bool bAimingState);
@@ -575,6 +583,15 @@ protected:
 	float LastShotDistance = 0.0f;
 	TWeakObjectPtr<AActor> LastShotTarget;
 	int32 LastShotSequence = 0;
+	// Owner on a client: bookkeeping between what is shown and what the server confirmed.
+	int32 ShownShotCount = 0;
+	int32 OwnerUnconfirmedShots = 0;
+	int32 OwnerConfirmedMagazine = -1;
+	int32 OwnerConfirmedMagazineWeapon = -1;
+	double LastShownShotWorldTime = -100.0;
+	/** Development: the eye of each shown shot that waits for its confirmation, to pair it with the server's shot of that sequence number. */
+	TArray<float> ShownShotEyeLog;
+	void StopShownFireForReload();
 	// Owner: confirmed hits not yet taken by the HUD. Bounded: a HUD that is not drawn loses the oldest ones.
 	TArray<FHitFeedback> PendingHitFeedback;
 	int32 LastQueuedHitSequence = 0;
@@ -639,5 +656,5 @@ protected:
 	void MulticastShotFired(const TArray<FVector_NetQuantize>& TraceEnds);
 
 	UFUNCTION(Client, Unreliable)
-	void ClientShotConfirmation(int32 Sequence, EArenaDuelShotResult Result, float Distance, int32 PelletsHit, int32 HeadPellets);
+	void ClientShotConfirmation(int32 Sequence, EArenaDuelShotResult Result, float Distance, int32 PelletsHit, int32 HeadPellets, int32 MagazineAfter);
 };

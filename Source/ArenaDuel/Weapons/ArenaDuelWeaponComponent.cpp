@@ -509,7 +509,10 @@ void UArenaDuelWeaponComponent::StartFire()
 		return;
 	}
 	if (bFireHeld) return;
-	if (bReloading || (GetCurrentMagazineAmmo() <= 0 && !HasInfiniteAmmoForDevelopment()) || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
+	// A new press starts from what the server has said: shots shown earlier and never confirmed are forgotten once
+	// they are older than any answer could be.
+	if (GetWorld() && GetWorld()->GetTimeSeconds() - LastShownShotWorldTime > 1.0) { OwnerUnconfirmedShots = 0; ShownShotEyeLog.Reset(); }
+	if (bReloading || (GetOwnerPredictedMagazine() <= 0 && !HasInfiniteAmmoForDevelopment()) || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	bFireHeld = true;
 	if (AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled() && GetWorld())
 	{
@@ -872,7 +875,7 @@ void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 }
 void UArenaDuelWeaponComponent::RequestReloadForTests() { ServerRequestReload_Implementation(); }
 void UArenaDuelWeaponComponent::FireAuthoritativeForTests() { FireAuthoritative(); }
-void UArenaDuelWeaponComponent::ConfirmShotForTests(int32 Sequence, EArenaDuelShotResult Result) { ClientShotConfirmation_Implementation(Sequence, Result, 0.0f, 1, Result == EArenaDuelShotResult::Head ? 1 : 0); }
+void UArenaDuelWeaponComponent::ConfirmShotForTests(int32 Sequence, EArenaDuelShotResult Result) { ClientShotConfirmation_Implementation(Sequence, Result, 0.0f, 1, Result == EArenaDuelShotResult::Head ? 1 : 0, -1); }
 void UArenaDuelWeaponComponent::SelectSlotForTests(EArenaDuelLoadoutSlot Slot) { ServerSelectSlot_Implementation(static_cast<uint8>(Slot)); }
 void UArenaDuelWeaponComponent::UseEquipmentForTests(bool bAlternate) { ServerUseEquipment_Implementation(bAlternate); }
 void UArenaDuelWeaponComponent::SetFireHeldForTests(bool bHeld, float OwnerCrouchEaseAge, float OwnerSlideEaseAge) { ServerSetFireHeld_Implementation(bHeld, OwnerCrouchEaseAge, OwnerSlideEaseAge); }
@@ -914,7 +917,7 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 	const FVector Origin = Character->GetPawnViewLocation();
 	const FVector Direction = Controller->GetControlRotation().Vector();
 #if !UE_BUILD_SHIPPING
-	if (CVarShotLog.GetValueOnGameThread() != 0) UE_LOG(LogArenaDuel, Log, TEXT("ShotLog real %s weapon=%d t=%.3f magazine=%d eye=%.1f ease=%.1f crouched=%d since_switch=%.3f crouch_age=%.3f slide_age=%.3f wall=%.3f"), *GetNameSafe(GetOwner()), DefinitionIndex, ServerTime, State->MagazineAmmo, Origin.Z - Character->GetActorLocation().Z, Character->GetEyeEaseOffset(), Character->bIsCrouched ? 1 : 0, ServerTime - (EquipmentReadyServerTime - SwitchSeconds), Character->GetCrouchEaseAge(), Character->GetSlideEaseAge(), FPlatformTime::Seconds());
+	if (CVarShotLog.GetValueOnGameThread() != 0) UE_LOG(LogArenaDuel, Log, TEXT("ShotLog real %s seq=%d weapon=%d t=%.3f magazine=%d eye=%.1f ease=%.1f crouched=%d since_switch=%.3f crouch_age=%.3f slide_age=%.3f wall=%.3f"), *GetNameSafe(GetOwner()), LastShotSequence + 1, DefinitionIndex, ServerTime, State->MagazineAmmo, Origin.Z - Character->GetActorLocation().Z, Character->GetEyeEaseOffset(), Character->bIsCrouched ? 1 : 0, ServerTime - (EquipmentReadyServerTime - SwitchSeconds), Character->GetCrouchEaseAge(), Character->GetSlideEaseAge(), FPlatformTime::Seconds());
 #endif
 	FRandomStream Random(++LastShotSequence);
 	int32 BodyPellets = 0, HeadPellets = 0, LimbPellets = 0, WorldPellets = 0;
@@ -1070,9 +1073,22 @@ void UArenaDuelWeaponComponent::ApplyLocalRecoil()
 }
 void UArenaDuelWeaponComponent::LocalCosmeticShot()
 {
-	if (!bFireHeld || bReloading || (GetCurrentMagazineAmmo() <= 0 && !HasInfiniteAmmoForDevelopment()) || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
+	// The owner shows a shot only for a round it can still assume to be in the magazine: the replicated count
+	// arrives late, and going by it showed up to two shots more than the magazine held.
+	if (!bFireHeld || bReloading || (GetOwnerPredictedMagazine() <= 0 && !HasInfiniteAmmoForDevelopment()) || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	LastCosmeticShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
 	PartShotWorldTime = LastCosmeticShotWorldTime;
+	++ShownShotCount;
+	LastShownShotWorldTime = LastCosmeticShotWorldTime;
+	if (const AArenaDuelCharacter* Owning = Cast<AArenaDuelCharacter>(GetOwner()); Owning && GetOwnerRole() != ROLE_Authority)
+	{
+		if (!HasInfiniteAmmoForDevelopment()) ++OwnerUnconfirmedShots;
+		ShownShotEyeLog.Add(Owning->GetEyeEaseOffset());
+		if (ShownShotEyeLog.Num() > 64) ShownShotEyeLog.RemoveAt(0);
+		// The eye began to ease while the trigger was already held (a crouch in the middle of a burst): no press
+		// carries the hint, so the shown shots do, for as long as the ease lasts.
+		if (Owning->GetCrouchEaseAge() < 0.6f || Owning->GetSlideEaseAge() < 0.6f) ServerEyeEaseHint(Owning->GetCrouchEaseAge(), Owning->GetSlideEaseAge());
+	}
 #if !UE_BUILD_SHIPPING
 	if (const AArenaDuelCharacter* Shooter = Cast<AArenaDuelCharacter>(GetOwner()); Shooter && CVarShotLog.GetValueOnGameThread() != 0)
 		UE_LOG(LogArenaDuel, Log, TEXT("ShotLog shown %s t=%.3f magazine=%d eye=%.1f ease=%.1f crouched=%d since_switch=%.3f crouch_age=%.3f slide_age=%.3f wall=%.3f"), *GetNameSafe(GetOwner()), LastCosmeticShotWorldTime, GetCurrentMagazineAmmo(), Shooter->GetPawnViewLocation().Z - Shooter->GetActorLocation().Z, Shooter->GetEyeEaseOffset(), Shooter->bIsCrouched ? 1 : 0, LastCosmeticShotWorldTime - (LocalSwitchReadyWorldTime - SwitchSeconds), Shooter->GetCrouchEaseAge(), Shooter->GetSlideEaseAge(), FPlatformTime::Seconds());
@@ -1502,10 +1518,58 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 void UArenaDuelWeaponComponent::SetLastShot(EArenaDuelShotResult Result, float Distance, AActor* Target)
 {
 	LastShotResult = Result; LastShotDistance = Distance; LastShotTarget = Target; LastShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
-	if (GetOwnerRole() == ROLE_Authority) ClientShotConfirmation(LastShotSequence, Result, Distance, LastPelletsHit, LastHeadPellets);
+	// With the confirmation the owner learns how many rounds are left after this shot (a knife stroke or a throw says none: -1).
+	if (GetOwnerRole() == ROLE_Authority) ClientShotConfirmation(LastShotSequence, Result, Distance, LastPelletsHit, LastHeadPellets, GetActiveSlot() == EArenaDuelLoadoutSlot::Primary ? GetCurrentMagazineAmmo() : -1);
 }
-void UArenaDuelWeaponComponent::ClientShotConfirmation_Implementation(int32 Sequence, EArenaDuelShotResult Result, float Distance, int32 PelletsHit, int32 HeadPellets)
+int32 UArenaDuelWeaponComponent::GetOwnerPredictedMagazine() const
 {
+	const int32 Replicated = GetCurrentMagazineAmmo();
+	// The server's own machine needs no guess.
+	if (GetOwnerRole() == ROLE_Authority) return Replicated;
+	// What the last confirmation said, as long as it is about this weapon and no reload has ended since (the end
+	// of a reload forgets it, and the replicated count is the truth again). The replicated count is not used to
+	// second-guess it: it arrives after the confirmation as often as before it.
+	const bool bConfirmed = OwnerConfirmedMagazine >= 0 && OwnerConfirmedMagazineWeapon == static_cast<int32>(EquippedWeaponIndex);
+	return FMath::Max(0, (bConfirmed ? OwnerConfirmedMagazine : Replicated) - OwnerUnconfirmedShots);
+}
+
+void UArenaDuelWeaponComponent::StopShownFireForReload()
+{
+	// A reload the server started (the magazine ran empty) ends the server's fire, and the trigger has to be
+	// pressed again afterwards. The owner's shown fire ends with it: left running, it would kick again when the
+	// reload is over, for shots that never leave.
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	if (!Character || !Character->IsLocallyControlled()) return;
+	OwnerUnconfirmedShots = 0;
+	ShownShotEyeLog.Reset();
+	if (!bFireHeld) return;
+	bFireHeld = false;
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(LocalCosmeticFireTimerHandle);
+		LocalRecoilRecoveryTimeRemaining = 0.35f;
+		World->GetTimerManager().SetTimer(LocalCosmeticRecoveryTimerHandle, this, &UArenaDuelWeaponComponent::RecoverCosmeticKick, 0.02f, true);
+	}
+}
+
+void UArenaDuelWeaponComponent::ServerEyeEaseHint_Implementation(float OwnerCrouchEaseAge, float OwnerSlideEaseAge)
+{
+	if (AArenaDuelCharacter* Shooter = Cast<AArenaDuelCharacter>(GetOwner()); Shooter && bServerFireHeld) Shooter->ApplyOwnerEyeEaseHint(OwnerCrouchEaseAge, OwnerSlideEaseAge);
+}
+
+void UArenaDuelWeaponComponent::ClientShotConfirmation_Implementation(int32 Sequence, EArenaDuelShotResult Result, float Distance, int32 PelletsHit, int32 HeadPellets, int32 MagazineAfter)
+{
+	// A confirmed shot of the firearm answers the oldest shown shot that was waiting, and says what is left.
+	if (MagazineAfter >= 0 && GetOwnerRole() != ROLE_Authority)
+	{
+		OwnerConfirmedMagazine = MagazineAfter;
+		OwnerConfirmedMagazineWeapon = static_cast<int32>(EquippedWeaponIndex);
+		OwnerUnconfirmedShots = FMath::Max(0, OwnerUnconfirmedShots - 1);
+#if !UE_BUILD_SHIPPING
+		if (CVarShotLog.GetValueOnGameThread() != 0 && ShownShotEyeLog.Num() > 0) UE_LOG(LogArenaDuel, Log, TEXT("ShotLog pair seq=%d shown_ease=%.1f magazine=%d wall=%.3f"), Sequence, ShownShotEyeLog[0], MagazineAfter, FPlatformTime::Seconds());
+#endif
+		if (ShownShotEyeLog.Num() > 0) ShownShotEyeLog.RemoveAt(0);
+	}
 	LastShotSequence = Sequence; LastShotResult = Result; LastShotDistance = Distance; LastPelletsHit = PelletsHit; LastHeadPellets = HeadPellets; LastShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
 	// Every confirmation that met a body becomes one event for the HUD. Reading only the last result would lose
 	// a head shot that is followed by a miss, or by a body hit, before the HUD draws again. This message runs on
@@ -1865,6 +1929,8 @@ void UArenaDuelWeaponComponent::OnRep_Reloading()
 	// off on a weapon that is not the local player's once nothing moves. A reload has to switch it on again,
 	// or someone who fired, waited and then reloaded would be seen reloading a rigid weapon.
 	if (bReloading && GetWorld() && GetNetMode() != NM_DedicatedServer) SetComponentTickEnabled(true);
+	if (bReloading) StopShownFireForReload();
+	else { OwnerConfirmedMagazine = -1; OwnerUnconfirmedShots = 0; }   // the magazine was filled: what was confirmed before is history
 }
 
 void UArenaDuelWeaponComponent::MulticastKnifeSwing_Implementation(bool bHit, bool bHeavy)
