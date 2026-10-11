@@ -5,6 +5,7 @@
 #include "../Characters/ArenaDuelZombie.h"
 #include "../Player/ArenaDuelPlayerState.h"
 #include "../Weapons/ArenaDuelWeaponComponent.h"
+#include "Misc/PackageName.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/TargetPoint.h"
 #include "Engine/World.h"
@@ -38,6 +39,43 @@ namespace
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World) { if (AArenaDuelZombieGameMode* Mode = SurvivalMode(World); Mode && Args.Num() > 0) Mode->DevSetAutoPlay(FCString::Atoi(*Args[0]) != 0); }));
 	FAutoConsoleCommandWithWorld CmdStats(TEXT("ArenaDuel.Zombie.Stats"), TEXT("Log the state of the run and of the enemies alive"),
 		FConsoleCommandWithWorldDelegate::CreateLambda([](UWorld* World) { if (const AArenaDuelZombieGameMode* Mode = SurvivalMode(World)) Mode->DevLogStats(); }));
+	FAutoConsoleCommandWithWorld CmdNextWave(TEXT("ArenaDuel.Zombie.NextWave"), TEXT("End the running wave and start the next one at once"),
+		FConsoleCommandWithWorldDelegate::CreateLambda([](UWorld* World) { if (AArenaDuelZombieGameMode* Mode = SurvivalMode(World)) Mode->DevNextWaveNow(); }));
+	// ArenaDuel.Dev.AssetCheck: load everything the game asks for by path at run time and say what is missing.
+	// Most of these loads are quiet in play (a missing sound or model falls back to nothing), so a packaged
+	// game that lacks them would not complain by itself.
+	FAutoConsoleCommand CmdAssetCheck(TEXT("ArenaDuel.Dev.AssetCheck"), TEXT("Load every asset the game asks for by path and log the ones that are missing"),
+		FConsoleCommandDelegate::CreateLambda([]()
+		{
+			TArray<FString> Paths;
+			for (const TCHAR* Sound : { TEXT("S_FlashBang"), TEXT("S_FlashBounce"), TEXT("S_FlashPin"), TEXT("S_FlashRing"), TEXT("S_KnifeHit"), TEXT("S_KnifeStab"), TEXT("S_KnifeSwing"), TEXT("S_SurvivalAmbience"), TEXT("S_SurvivalWaveStart"), TEXT("S_ZombieAttack"), TEXT("S_ZombieDeath"), TEXT("S_ZombieGrowl"), TEXT("S_ZombieHit") })
+				Paths.Add(FString::Printf(TEXT("/Game/ArenaDuel/Audio/%s.%s"), Sound, Sound));
+			for (const FArenaDuelZombieTypeConfig& Config : GetDefault<AArenaDuelZombieGameMode>()->GetTypeConfigs()) { Paths.Add(Config.MeshPath); Paths.Add(Config.MaterialPath); }
+			for (const TCHAR* Clip : { TEXT("Shamble"), TEXT("Charge"), TEXT("Slam"), TEXT("DeathBack"), TEXT("DeathFront") }) Paths.Add(FString::Printf(TEXT("/Game/ArenaDuel/Characters/Zombies/A_Zombie_%s.A_Zombie_%s"), Clip, Clip));
+			for (const TCHAR* Weapon : { TEXT("ArcRifle"), TEXT("HexShotgun"), TEXT("RuneDMR"), TEXT("ShadeSMG") })
+			{
+				Paths.Add(FString::Printf(TEXT("/Game/ArenaDuel/Weapons/%s/SM_%s.SM_%s"), Weapon, Weapon, Weapon));
+				Paths.Add(FString::Printf(TEXT("/Game/ArenaDuel/Weapons/%s/SM_%s_Bolt.SM_%s_Bolt"), Weapon, Weapon, Weapon));
+				if (FCString::Strcmp(Weapon, TEXT("HexShotgun")) != 0) Paths.Add(FString::Printf(TEXT("/Game/ArenaDuel/Weapons/%s/SM_%s_Mag.SM_%s_Mag"), Weapon, Weapon, Weapon));
+			}
+			for (const TCHAR* Path : { TEXT("/Game/ArenaDuel/Weapons/Equipment/SM_Flashbang.SM_Flashbang"), TEXT("/Game/ArenaDuel/Weapons/Equipment/SM_Knife.SM_Knife"), TEXT("/Game/ArenaDuel/Weapons/M_BulletImpact.M_BulletImpact"),
+				TEXT("/Game/ArenaDuel/Props/SM_AmmoBox.SM_AmmoBox"), TEXT("/Game/ArenaDuel/Characters/Common/M_SurvivalAmmo.M_SurvivalAmmo"), TEXT("/Game/ArenaDuel/Characters/Common/M_SurvivalBlood.M_SurvivalBlood"),
+				TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneMetal.M_ArcaneMetal"), TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneCyan.M_ArcaneCyan"), TEXT("/Game/ArenaDuel/Characters/Common/M_ArcaneViolet.M_ArcaneViolet"),
+				TEXT("/Game/ArenaDuel/Characters/Common/SKM_ArenaDuelFPHands.SKM_ArenaDuelFPHands"), TEXT("/Game/Characters/Mannequins/Rigs/PA_Mannequin.PA_Mannequin"),
+				TEXT("/Game/Weapons/GrenadeLauncher/Audio/FirstPersonTemplateWeaponFire02.FirstPersonTemplateWeaponFire02"), TEXT("/Game/ArenaDuel/Characters/BP_ArenaDuelCharacter.BP_ArenaDuelCharacter_C"), TEXT("/Game/ArenaDuel/Game/BP_ArenaDuelGameMode.BP_ArenaDuelGameMode_C") })
+				Paths.Add(Path);
+			int32 Missing = 0;
+			for (const FString& Path : Paths)
+			{
+				if (Path.IsEmpty()) continue;
+				if (!StaticLoadObject(UObject::StaticClass(), nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet)) { ++Missing; UE_LOG(LogArenaDuelSurvival, Error, TEXT("AssetCheck MISSING %s"), *Path); }
+			}
+			for (const TCHAR* Map : { TEXT("/Game/ArenaDuel/Maps/L_MainMenu"), TEXT("/Game/ArenaDuel/Maps/L_ArenaDistrict"), TEXT("/Game/ArenaDuel/Maps/L_ZombieArena") })
+			{
+				if (!FPackageName::DoesPackageExist(Map)) { ++Missing; UE_LOG(LogArenaDuelSurvival, Error, TEXT("AssetCheck MISSING map %s"), Map); }
+			}
+			UE_LOG(LogArenaDuelSurvival, Log, TEXT("AssetCheck done: %d paths and 3 maps asked for, %d missing"), Paths.Num(), Missing);
+		}));
 	FAutoConsoleCommandWithWorld CmdRestart(TEXT("ArenaDuel.Zombie.Restart"), TEXT("Restart the survival run"),
 		FConsoleCommandWithWorldDelegate::CreateLambda([](UWorld* World) { if (AArenaDuelZombieGameMode* Mode = SurvivalMode(World)) Mode->RestartSurvival(); }));
 	FAutoConsoleCommandWithWorldAndArgs CmdPoints(TEXT("ArenaDuel.Zombie.Points"), TEXT("Give the first player this many points"),
