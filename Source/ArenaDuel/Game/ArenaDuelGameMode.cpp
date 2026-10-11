@@ -9,6 +9,7 @@
 #include "../Abilities/ArenaDuelPhaseGateVisual.h"
 #include "../Player/ArenaDuelPlayerController.h"
 #include "../Player/ArenaDuelPlayerState.h"
+#include "../Weapons/ArenaDuelWeaponComponent.h"
 #include "ArenaDuelMovementDebugHUD.h"
 #include "AbilitySystemComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -100,6 +101,8 @@ void AArenaDuelGameMode::AssignDuelSlot(AArenaDuelPlayerState* JoiningPlayerStat
 void AArenaDuelGameMode::RestartPlayer(AController* NewPlayer)
 {
 	Super::RestartPlayer(NewPlayer);
+	// The new pawn starts with what its player has taken so far in this match.
+	if (const AArenaDuelCharacter* Spawned = NewPlayer ? Cast<AArenaDuelCharacter>(NewPlayer->GetPawn()) : nullptr; Spawned && Spawned->GetWeaponComponent()) Spawned->GetWeaponComponent()->ApplyMatchUpgrades();
 	const AArenaDuelGameState* State = GetGameState<AArenaDuelGameState>();
 	if (State && !State->IsRoundInProgress() && NewPlayer)
 	{
@@ -149,6 +152,8 @@ void AArenaDuelGameMode::EnterCharacterSelect()
 		if (AArenaDuelPlayerState* DuelPlayer = Cast<AArenaDuelPlayerState>(Player))
 		{
 			DuelPlayer->SetRoundWinsForDevelopment(0);
+			// Upgrades belong to one match: they end with it, however it ends.
+			DuelPlayer->ResetUpgradesAuthoritatively();
 			DuelPlayer->SetCharacterReadyAuthoritatively(false);
 		}
 	}
@@ -264,6 +269,8 @@ bool AArenaDuelGameMode::IsRoundTimeLimitPending() const
 
 void AArenaDuelGameMode::SetRoundTimingForTests(float InRoundDurationSeconds, float InRoundBreakSeconds, float InMatchResultSeconds)
 {
+	// The selection that follows a decided round is as short as the break, unless a test sets it itself.
+	UpgradeSelectSeconds = FMath::Max(0.1f, InRoundBreakSeconds);
 	RoundDurationSeconds = FMath::Max(0.0f, InRoundDurationSeconds);
 	RoundBreakSeconds = FMath::Max(0.1f, InRoundBreakSeconds);
 	MatchResultSeconds = FMath::Max(0.1f, InMatchResultSeconds);
@@ -364,8 +371,70 @@ void AArenaDuelGameMode::EndRoundForDevelopment(AArenaDuelPlayerState* WinningPl
 	}
 	else if (GetWorld())
 	{
-		GetWorldTimerManager().SetTimer(RoundRestartTimer, this, &AArenaDuelGameMode::StartNextRound, RoundBreakSeconds, false);
+		// A decided round is followed by the upgrade selection; a round without a winner by the plain break.
+		if (WinningPlayerState && UsesMatchUpgrades()) BeginUpgradeSelection();
+		else GetWorldTimerManager().SetTimer(RoundRestartTimer, this, &AArenaDuelGameMode::StartNextRound, RoundBreakSeconds, false);
 	}
+}
+
+void AArenaDuelGameMode::BeginUpgradeSelection()
+{
+	AArenaDuelGameState* State = GetGameState<AArenaDuelGameState>();
+	if (!HasAuthority() || !State || !GetWorld()) return;
+	bool bAnythingToChoose = false;
+	for (uint8 DuelSlot = 0; DuelSlot < 2; ++DuelSlot)
+	{
+		if (AArenaDuelPlayerState* Player = FindPlayerStateByDuelSlot(DuelSlot))
+		{
+			// A player who has everything is done at once.
+			Player->SetUpgradeChosenAuthoritatively(!Player->HasAnyUpgradeAvailable());
+			bAnythingToChoose |= Player->HasAnyUpgradeAvailable();
+		}
+	}
+	if (!bAnythingToChoose)
+	{
+		GetWorldTimerManager().SetTimer(RoundRestartTimer, this, &AArenaDuelGameMode::StartNextRound, RoundBreakSeconds, false);
+		return;
+	}
+	// Nobody moves during the selection, the round winner included.
+	State->BeginUpgradeSelect(static_cast<float>(State->GetServerWorldTimeSeconds()) + UpgradeSelectSeconds);
+	GetWorldTimerManager().SetTimer(UpgradeSelectTimer, this, &AArenaDuelGameMode::FinishUpgradeSelection, UpgradeSelectSeconds, false);
+}
+
+void AArenaDuelGameMode::RequestUpgradeChoice(APlayerController* Requester, uint8 UpgradeId)
+{
+	const AArenaDuelGameState* State = GetGameState<AArenaDuelGameState>();
+	AArenaDuelPlayerState* Player = Requester ? Requester->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
+	// Only a duel player, only for themselves, only while the selection is open, only one upgrade, only a
+	// known kind that is not at its maximum. Anything else, a second or a late request included, changes nothing.
+	if (!HasAuthority() || !State || !State->IsUpgradeSelect() || !IsUpgradeSelectionPending()) return;
+	if (!Player || Player->GetOwner() != Requester || Player->GetDuelSlot() > 1 || Player->HasChosenUpgrade()) return;
+	if (!ArenaDuelUpgrades::IsValidId(UpgradeId) || !Player->AddUpgradeLevelAuthoritatively(static_cast<EArenaDuelUpgrade>(UpgradeId))) return;
+	Player->SetUpgradeChosenAuthoritatively(true);
+	const AArenaDuelPlayerState* Left = FindPlayerStateByDuelSlot(0);
+	const AArenaDuelPlayerState* Right = FindPlayerStateByDuelSlot(1);
+	if (Left && Right && Left->HasChosenUpgrade() && Right->HasChosenUpgrade()) FinishUpgradeSelection();
+}
+
+void AArenaDuelGameMode::FinishUpgradeSelection()
+{
+	const AArenaDuelGameState* State = GetGameState<AArenaDuelGameState>();
+	if (!HasAuthority() || !State || !State->IsUpgradeSelect() || !GetWorld()) return;
+	GetWorldTimerManager().ClearTimer(UpgradeSelectTimer);
+	for (uint8 DuelSlot = 0; DuelSlot < 2; ++DuelSlot)
+	{
+		AArenaDuelPlayerState* Player = FindPlayerStateByDuelSlot(DuelSlot);
+		if (!Player || Player->HasChosenUpgrade()) continue;
+		// Too late: the player gets an available upgrade with the lowest own level, ties in the fixed order.
+		if (const int32 Automatic = Player->PickAutomaticUpgrade(); Automatic != INDEX_NONE) Player->AddUpgradeLevelAuthoritatively(static_cast<EArenaDuelUpgrade>(Automatic));
+		Player->SetUpgradeChosenAuthoritatively(true);
+	}
+	StartNextRound();
+}
+
+bool AArenaDuelGameMode::IsUpgradeSelectionPending() const
+{
+	return GetWorld() && GetWorldTimerManager().IsTimerActive(UpgradeSelectTimer);
 }
 
 void AArenaDuelGameMode::AdminRestartRound()
@@ -415,6 +484,7 @@ void AArenaDuelGameMode::AdminResetMatch()
 			if (AArenaDuelPlayerState* ArenaPlayerState = Cast<AArenaDuelPlayerState>(PlayerState))
 			{
 				ArenaPlayerState->SetRoundWinsForDevelopment(0);
+				ArenaPlayerState->ResetUpgradesAuthoritatively();
 			}
 		}
 		ArenaGameState->SetMatchComplete(false, INDEX_NONE);
@@ -448,6 +518,7 @@ void AArenaDuelGameMode::ClearPendingRoundAndMatchTimers()
 	GetWorldTimerManager().ClearTimer(RoundRestartTimer);
 	GetWorldTimerManager().ClearTimer(MatchResetTimer);
 	GetWorldTimerManager().ClearTimer(RoundTimeLimitTimer);
+	GetWorldTimerManager().ClearTimer(UpgradeSelectTimer);
 	GetWorldTimerManager().ClearTimer(CharacterCountdownTimer);
 	GetWorldTimerManager().ClearTimer(CharacterAutoReadyTimer);
 }

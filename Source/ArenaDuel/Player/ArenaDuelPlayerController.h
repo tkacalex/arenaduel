@@ -11,6 +11,7 @@
 
 class UArenaDuelAdminWidget;
 class UArenaDuelCharacterSelectWidget;
+class UArenaDuelUpgradeWidget;
 class UArenaDuelPlayerMenuWidget;
 
 UCLASS()
@@ -41,6 +42,14 @@ public:
 	UFUNCTION(Server, Reliable)
 	void ServerSetCharacterReady(bool bReady);
 
+	// Match upgrades between rounds.
+	/** Asks the server for one level of an upgrade in the running selection. */
+	void ChooseUpgrade(uint8 UpgradeId);
+	UFUNCTION(Server, Reliable)
+	void ServerChooseUpgrade(uint8 UpgradeId);
+	bool IsUpgradeSelectOpen() const { return bUpgradeSelectOpen; }
+	UArenaDuelUpgradeWidget* GetUpgradeWidget() const { return UpgradeWidget; }
+
 	// Zombie Survival.
 	UFUNCTION(Server, Reliable)
 	void ServerSurvivalPurchase(uint8 Item);
@@ -58,6 +67,9 @@ protected:
 	TObjectPtr<UArenaDuelCharacterSelectWidget> CharacterSelectWidget;
 	FTimerHandle MatchPresentationTimer;
 	bool bCharacterSelectOpen = false;
+	UPROPERTY(Transient)
+	TObjectPtr<UArenaDuelUpgradeWidget> UpgradeWidget;
+	bool bUpgradeSelectOpen = false;
 	void ToggleAdminMenu();
 	void SurvivalBuyAmmo();
 	void SurvivalBuyHeal();

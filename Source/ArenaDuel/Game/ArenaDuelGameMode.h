@@ -33,6 +33,16 @@ public:
 	void AdminResetMatch();
 	AArenaDuelPlayerState* FindPlayerStateByDuelSlot(uint8 DuelSlot) const;
 
+	/** The duel offers match upgrades between rounds. Modes built on the duel classes that have none say no. */
+	virtual bool UsesMatchUpgrades() const { return true; }
+	float GetUpgradeSelectSeconds() const { return UpgradeSelectSeconds; }
+	/** A player's choice in the running selection. Checked on the server: the player, the phase, the id, the level, one per selection. */
+	void RequestUpgradeChoice(APlayerController* Requester, uint8 UpgradeId);
+	bool IsUpgradeSelectionPending() const;
+	void SetUpgradeSelectSecondsForTests(float Seconds) { UpgradeSelectSeconds = FMath::Max(0.1f, Seconds); }
+	/** A round that ends with nobody left standing, for tests. */
+	void EndRoundWithoutWinnerForTests() { EndRoundForDevelopment(nullptr); }
+
 	/** The duel has a round clock. Modes built on the duel classes that have no timed rounds say no. */
 	virtual bool UsesRoundTimer() const { return true; }
 	float GetRoundDurationSeconds() const { return RoundDurationSeconds; }
@@ -62,6 +72,13 @@ protected:
 	float MatchResultSeconds = 5.0f;
 	UPROPERTY(EditDefaultsOnly, Category="Round", meta=(ClampMin="1"))
 	int32 RoundWinsToWinMatch = 5;
+	/** How long both players have to take a match upgrade after a decided round. It replaces the round break. */
+	UPROPERTY(EditDefaultsOnly, Category="Round", meta=(ClampMin="0.1"))
+	float UpgradeSelectSeconds = 10.0f;
+
+	void BeginUpgradeSelection();
+	void FinishUpgradeSelection();
+	FTimerHandle UpgradeSelectTimer;
 
 	/** Starts round RoundNumber: round state, a fresh serial and, for a timed mode, the clock. */
 	void BeginRound(int32 RoundNumber, int32 LastWinnerSlot);

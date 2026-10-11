@@ -6,11 +6,14 @@
 #include "GameFramework/PlayerState.h"
 #include "AbilitySystemInterface.h"
 #include "GameplayTagContainer.h"
+#include "ActiveGameplayEffectHandle.h"
+#include "../Game/ArenaDuelUpgrades.h"
 #include "ArenaDuelPlayerState.generated.h"
 
 class UAbilitySystemComponent;
 class UArenaDuelAttributeSet;
 class UGameplayAbility;
+struct FGameplayEffectSpec;
 
 UENUM(BlueprintType)
 enum class EArenaDuelCharacterArchetype : uint8
@@ -65,6 +68,28 @@ public:
 	float GetShadowStepCooldownRemaining() const;
 	float GetVeilWallCooldownRemaining() const;
 	void SetDuelSlot(uint8 NewDuelSlot);
+
+	// Match upgrades. Levels live here so they survive rounds and respawns; the server is the only writer.
+	int32 GetUpgradeLevel(EArenaDuelUpgrade Kind) const { return ArenaDuelUpgrades::IsValidId(static_cast<uint8>(Kind)) ? UpgradeLevels[static_cast<int32>(Kind)] : 0; }
+	int32 GetMaxUpgradeLevel() const { return MaxUpgradeLevel; }
+	bool CanTakeUpgrade(EArenaDuelUpgrade Kind) const { return ArenaDuelUpgrades::IsValidId(static_cast<uint8>(Kind)) && GetUpgradeLevel(Kind) < MaxUpgradeLevel; }
+	bool HasAnyUpgradeAvailable() const;
+	/** True once this player has taken (or been given) the upgrade of the running selection. */
+	bool HasChosenUpgrade() const { return bUpgradeChosen; }
+	/** What one level of a kind changes, as a share of the unchanged base value. */
+	float GetUpgradeStep(EArenaDuelUpgrade Kind) const;
+	/** The effect of a level, relative to the base value: additive per level, never compounding. */
+	float GetUpgradeScaleAtLevel(EArenaDuelUpgrade Kind, int32 Level) const;
+	float GetReserveAmmoScale() const { return GetUpgradeScaleAtLevel(EArenaDuelUpgrade::Reserve, GetUpgradeLevel(EArenaDuelUpgrade::Reserve)); }
+	float GetReloadTimeScale() const { return GetUpgradeScaleAtLevel(EArenaDuelUpgrade::Reload, GetUpgradeLevel(EArenaDuelUpgrade::Reload)); }
+	float GetAbilityCooldownScale() const { return GetUpgradeScaleAtLevel(EArenaDuelUpgrade::Ability, GetUpgradeLevel(EArenaDuelUpgrade::Ability)); }
+	/** The upgrade a player gets who did not choose in time: an available kind with the lowest own level, ties in enum order. INDEX_NONE if nothing is left. */
+	int32 PickAutomaticUpgrade() const;
+	/** Server only. Adds one level; false at the maximum or for an unknown kind. */
+	bool AddUpgradeLevelAuthoritatively(EArenaDuelUpgrade Kind);
+	void SetUpgradeChosenAuthoritatively(bool bChosen);
+	/** Server only. Back to the base values: match reset, return to selection, abandoned match. */
+	void ResetUpgradesAuthoritatively();
 	void AwardRoundWin();
 	void SetRoundWinsForDevelopment(int32 NewRoundWins);
 	void ToggleAdminGodMode();
@@ -93,6 +118,28 @@ protected:
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
 	int32 RoundWins = 0;
+
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Upgrades")
+	uint8 UpgradeLevels[ArenaDuelUpgrades::KindCount] = {};
+
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Upgrades")
+	bool bUpgradeChosen = false;
+
+	// Starting values for play tests.
+	UPROPERTY(EditDefaultsOnly, Category="Upgrades", meta=(ClampMin="1", ClampMax="10"))
+	int32 MaxUpgradeLevel = 3;
+	/** Reserve ammunition gained per level, as a share of the base reserve. */
+	UPROPERTY(EditDefaultsOnly, Category="Upgrades", meta=(ClampMin="0"))
+	float ReserveAmmoPerLevel = 0.10f;
+	/** Reload time removed per level, as a share of the base reload time. */
+	UPROPERTY(EditDefaultsOnly, Category="Upgrades", meta=(ClampMin="0", ClampMax="0.3"))
+	float ReloadTimePerLevel = 0.05f;
+	/** Ability cooldown removed per level, as a share of the base cooldown. */
+	UPROPERTY(EditDefaultsOnly, Category="Upgrades", meta=(ClampMin="0", ClampMax="0.3"))
+	float AbilityCooldownPerLevel = 0.05f;
+
+	/** Server: shortens a regular ability cooldown the moment it is applied, by this player's upgrade. */
+	void HandleEffectApplied(UAbilitySystemComponent* Target, const FGameplayEffectSpec& Spec, FActiveGameplayEffectHandle Handle);
 
 	UPROPERTY(Replicated) int32 SurvivalPoints = 0;
 	UPROPERTY(Replicated) int32 SurvivalKills = 0;

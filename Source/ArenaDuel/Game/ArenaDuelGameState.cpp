@@ -36,8 +36,23 @@ void AArenaDuelGameState::SetMatchPhase(EArenaDuelMatchPhase NewPhase, float End
 	CountdownEndServerTime = NewPhase == EArenaDuelMatchPhase::Countdown ? EndServerTime : 0.0f;
 	if (NewPhase != EArenaDuelMatchPhase::CharacterSelect) CharacterAutoReadyEndServerTime = 0.0f;
 	if (NewPhase != EArenaDuelMatchPhase::InRound) ClearRoundClock();
+	if (NewPhase != EArenaDuelMatchPhase::UpgradeSelect) UpgradeSelectEndServerTime = 0.0f;
 	OnRep_MatchPhase();
 	ForceNetUpdate();
+}
+
+void AArenaDuelGameState::BeginUpgradeSelect(float EndServerTime)
+{
+	if (!HasAuthority()) return;
+	SetMatchPhase(EArenaDuelMatchPhase::UpgradeSelect);
+	UpgradeSelectEndServerTime = FMath::Max(0.0f, EndServerTime);
+	ForceNetUpdate();
+}
+
+float AArenaDuelGameState::GetUpgradeSelectSecondsRemaining() const
+{
+	if (!IsUpgradeSelect() || UpgradeSelectEndServerTime <= 0.0f) return 0.0f;
+	return FMath::Max(0.0f, UpgradeSelectEndServerTime - static_cast<float>(GetServerWorldTimeSeconds()));
 }
 
 void AArenaDuelGameState::ClearRoundClock()
@@ -110,6 +125,7 @@ void AArenaDuelGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	DOREPLIFETIME(AArenaDuelGameState, RoundEndServerTime);
 	DOREPLIFETIME(AArenaDuelGameState, bOvertime);
 	DOREPLIFETIME(AArenaDuelGameState, OvertimeStartServerTime);
+	DOREPLIFETIME(AArenaDuelGameState, UpgradeSelectEndServerTime);
 }
 
 void AArenaDuelGameState::OnRep_RoundInProgress()

@@ -393,6 +393,8 @@ void UArenaDuelWeaponComponent::GetLifetimeReplicatedProps(TArray<FLifetimePrope
 	DOREPLIFETIME_CONDITION(UArenaDuelWeaponComponent, RuntimeAmmo, COND_OwnerOnly);
 	DOREPLIFETIME(UArenaDuelWeaponComponent, bReloading);
 	DOREPLIFETIME(UArenaDuelWeaponComponent, bAiming);
+	DOREPLIFETIME(UArenaDuelWeaponComponent, ReloadTimeScale);
+	DOREPLIFETIME(UArenaDuelWeaponComponent, ReserveAmmoScale);
 	DOREPLIFETIME(UArenaDuelWeaponComponent, ActiveSlot);
 	DOREPLIFETIME(UArenaDuelWeaponComponent, LoadoutFirearms);
 	DOREPLIFETIME(UArenaDuelWeaponComponent, FlashbangsRemaining);
@@ -408,7 +410,31 @@ FArenaDuelWeaponRuntimeState* UArenaDuelWeaponComponent::GetMutableCurrentRuntim
 void UArenaDuelWeaponComponent::InitializeRuntimeAmmo()
 {
 	RuntimeAmmo.SetNum(WeaponDefinitions.Num());
-	for (int32 Index = 0; Index < WeaponDefinitions.Num(); ++Index) { RuntimeAmmo[Index].MagazineAmmo = WeaponDefinitions[Index].MagazineCapacity; RuntimeAmmo[Index].ReserveAmmo = WeaponDefinitions[Index].ReserveCapacity; }
+	for (int32 Index = 0; Index < WeaponDefinitions.Num(); ++Index) { RuntimeAmmo[Index].MagazineAmmo = WeaponDefinitions[Index].MagazineCapacity; RuntimeAmmo[Index].ReserveAmmo = GetReserveCapacity(Index); }
+}
+float UArenaDuelWeaponComponent::GetReloadDuration() const
+{
+	return FMath::Max(0.1f, GetCurrentDefinition().ReloadDuration * ReloadTimeScale);
+}
+int32 UArenaDuelWeaponComponent::GetReserveCapacity(int32 WeaponIndex) const
+{
+	return WeaponDefinitions.IsValidIndex(WeaponIndex) ? FMath::RoundToInt(static_cast<float>(WeaponDefinitions[WeaponIndex].ReserveCapacity) * ReserveAmmoScale) : 0;
+}
+void UArenaDuelWeaponComponent::ApplyMatchUpgrades()
+{
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	const AArenaDuelPlayerState* PlayerState = Character ? Character->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
+	if (GetOwnerRole() != ROLE_Authority || !PlayerState) return;
+	ReloadTimeScale = PlayerState->GetReloadTimeScale();
+	const float NewReserveScale = PlayerState->GetReserveAmmoScale();
+	if (!FMath::IsNearlyEqual(NewReserveScale, ReserveAmmoScale))
+	{
+		// A fresh pawn carries a full reserve; the upgrade makes that reserve larger. Magazines are not touched.
+		ReserveAmmoScale = NewReserveScale;
+		if (RuntimeAmmo.Num() != WeaponDefinitions.Num()) RuntimeAmmo.SetNum(WeaponDefinitions.Num());
+		for (int32 Index = 0; Index < WeaponDefinitions.Num(); ++Index) RuntimeAmmo[Index].ReserveAmmo = GetReserveCapacity(Index);
+	}
+	if (AActor* OwnerActor = GetOwner()) OwnerActor->ForceNetUpdate();
 }
 EArenaDuelWeaponId UArenaDuelWeaponComponent::GetCurrentWeaponId() const { return GetCurrentDefinition().Id; }
 FName UArenaDuelWeaponComponent::GetCurrentWeaponName() const { return GetCurrentDefinition().DisplayName; }
@@ -608,7 +634,7 @@ void UArenaDuelWeaponComponent::RefillAllAmmoForDevelopment()
 	for (int32 Index = 0; Index < WeaponDefinitions.Num(); ++Index)
 	{
 		RuntimeAmmo[Index].MagazineAmmo = WeaponDefinitions[Index].MagazineCapacity;
-		RuntimeAmmo[Index].ReserveAmmo = WeaponDefinitions[Index].ReserveCapacity;
+		RuntimeAmmo[Index].ReserveAmmo = GetReserveCapacity(Index);
 	}
 	if (AActor* Owner = GetOwner()) Owner->ForceNetUpdate();
 }
@@ -619,7 +645,7 @@ void UArenaDuelWeaponComponent::AddReserveAmmoShare(float Share)
 	if (RuntimeAmmo.Num() != WeaponDefinitions.Num()) RuntimeAmmo.SetNum(WeaponDefinitions.Num());
 	for (int32 Index = 0; Index < WeaponDefinitions.Num(); ++Index)
 	{
-		const int32 Capacity = WeaponDefinitions[Index].ReserveCapacity;
+		const int32 Capacity = GetReserveCapacity(Index);
 		RuntimeAmmo[Index].ReserveAmmo = FMath::Min(Capacity, RuntimeAmmo[Index].ReserveAmmo + FMath::CeilToInt(Capacity * Share));
 	}
 	if (AActor* Owner = GetOwner()) Owner->ForceNetUpdate();
@@ -708,7 +734,7 @@ void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 	bReloading = true;
 	OnRep_Reloading();
 	FTimerDelegate ReloadDelegate; ReloadDelegate.BindUObject(this, &UArenaDuelWeaponComponent::CompleteReload);
-	GetWorld()->GetTimerManager().SetTimer(ReloadTimerHandle, ReloadDelegate, GetCurrentDefinition().ReloadDuration, false);
+	GetWorld()->GetTimerManager().SetTimer(ReloadTimerHandle, ReloadDelegate, GetReloadDuration(), false);
 }
 void UArenaDuelWeaponComponent::ServerRequestEquip_Implementation(int32 Index)
 {
@@ -1103,7 +1129,7 @@ void UArenaDuelWeaponComponent::TickWeaponParts()
 	const float PreviewReload = CVarPreviewReload.GetValueOnGameThread();
 	if (bReloading || PreviewReload >= 0.0f)
 	{
-		const float T = PreviewReload >= 0.0f ? FMath::Min(PreviewReload, 1.0f) : FMath::Clamp((Now - PartReloadStartWorldTime) / FMath::Max(GetCurrentDefinition().ReloadDuration, 0.1f), 0.0f, 1.0f);
+		const float T = PreviewReload >= 0.0f ? FMath::Min(PreviewReload, 1.0f) : FMath::Clamp((Now - PartReloadStartWorldTime) / FMath::Max(GetReloadDuration(), 0.1f), 0.0f, 1.0f);
 		const bool bHasMagazine = FirstPersonMagMesh && FirstPersonMagMesh->GetStaticMesh();
 		if (bHasMagazine)
 		{

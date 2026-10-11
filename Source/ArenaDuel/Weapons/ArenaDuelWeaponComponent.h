@@ -306,6 +306,13 @@ public:
 	int32 GetCurrentMagazineAmmo() const;
 	int32 GetReserveAmmo() const;
 	bool IsReloading() const { return bReloading; }
+	/** How long the reload of the weapon in hand takes for this player: the weapon's own time, shortened by a match upgrade. Animation, hands and parts all run on this. */
+	float GetReloadDuration() const;
+	float GetReloadTimeScale() const { return ReloadTimeScale; }
+	/** Reserve ammunition this player may carry for a weapon: the weapon's own reserve, raised by a match upgrade. */
+	int32 GetReserveCapacity(int32 WeaponIndex) const;
+	/** Server only, once per spawned pawn: takes the player's match upgrades. The weapon definitions stay untouched. */
+	void ApplyMatchUpgrades();
 	bool IsFireHeld() const { return bFireHeld; }
 	bool IsAiming() const { return bAiming; }
 	/** Cosmetic: which firearm is in hand and when the trigger was last pulled on this machine. */
@@ -407,6 +414,12 @@ protected:
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Weapons")
 	bool bAiming = false;
+
+	// This player's match upgrades as they apply to the weapons; 1 is the unchanged base value.
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Weapons")
+	float ReloadTimeScale = 1.0f;
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Weapons")
+	float ReserveAmmoScale = 1.0f;
 	/** Local input intent. Not replicated; the server only ever sees the resulting aim state. */
 	bool bAimHeld = false;
 	float AimStartWorldTime = -1000.0f;

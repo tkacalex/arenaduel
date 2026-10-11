@@ -30,6 +30,7 @@ public:
 	virtual void HandlePlayerDeath(AArenaDuelCharacter* DeadCharacter) override;
 	/** Survival has waves, not timed rounds: the duel's round clock neither runs nor shows here. */
 	virtual bool UsesRoundTimer() const override { return false; }
+	virtual bool UsesMatchUpgrades() const override { return false; }
 
 	/** The ten authored waves. */
 	static TArray<FArenaDuelWaveDefinition> DefaultWaveTable();

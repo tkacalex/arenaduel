@@ -15,7 +15,9 @@ enum class EArenaDuelMatchPhase : uint8
 	Countdown,
 	InRound,
 	RoundBreak,
-	MatchResult
+	MatchResult,
+	/** Between two rounds: both players take a match upgrade. Nobody moves or fights. */
+	UpgradeSelect
 };
 
 UCLASS()
@@ -38,6 +40,14 @@ public:
 	int32 GetMatchWinnerSlot() const { return MatchWinnerSlot; }
 	void SetRoundState(int32 NewRoundNumber, bool bNewRoundInProgress, int32 NewLastRoundWinnerSlot);
 	void SetMatchComplete(bool bNewMatchComplete, int32 NewMatchWinnerSlot);
+
+	// Upgrade selection between rounds.
+	bool IsUpgradeSelect() const { return MatchPhase == EArenaDuelMatchPhase::UpgradeSelect; }
+	float GetUpgradeSelectEndServerTime() const { return UpgradeSelectEndServerTime; }
+	/** Seconds until the selection closes on its own. */
+	float GetUpgradeSelectSecondsRemaining() const;
+	/** Server only. Opens the selection after a decided round; it ends at EndServerTime at the latest. */
+	void BeginUpgradeSelect(float EndServerTime);
 
 	// Round clock. The server publishes when the regular round ends; every machine derives the remaining
 	// time from that and the synchronised server time, so nothing local (a menu, a hitch) can stop it.
@@ -91,6 +101,9 @@ protected:
 
 	UPROPERTY(Replicated)
 	float OvertimeStartServerTime = 0.0f;
+
+	UPROPERTY(Replicated)
+	float UpgradeSelectEndServerTime = 0.0f;
 
 	void ClearRoundClock();
 

@@ -32,6 +32,79 @@ void AArenaDuelPlayerState::BeginPlay()
 {
 	Super::BeginPlay();
 	GrantCharacterAbilities();
+	if (HasAuthority() && AbilitySystemComponent) AbilitySystemComponent->OnActiveGameplayEffectAddedDelegateToSelf.AddUObject(this, &AArenaDuelPlayerState::HandleEffectApplied);
+}
+
+void AArenaDuelPlayerState::HandleEffectApplied(UAbilitySystemComponent* Target, const FGameplayEffectSpec& Spec, FActiveGameplayEffectHandle Handle)
+{
+	// The cooldown effects themselves stay what they are for everyone. A player's upgrade moves the start of
+	// the applied cooldown back, which shortens what is left by the upgraded share; the change replicates
+	// with the effect, so the owner's HUD shows the shorter time.
+	const float Scale = GetAbilityCooldownScale();
+	if (!HasAuthority() || !Target || !Handle.IsValid() || Scale >= 1.0f) return;
+	static const FGameplayTag CooldownRoot = FGameplayTag::RequestGameplayTag(TEXT("Cooldown"), false);
+	FGameplayTagContainer Granted;
+	Spec.GetAllGrantedTags(Granted);
+	const float Duration = Spec.GetDuration();
+	if (!CooldownRoot.IsValid() || !Granted.HasTag(CooldownRoot) || Duration <= 0.0f) return;
+	Target->ModifyActiveEffectStartTime(Handle, -Duration * (1.0f - Scale));
+}
+
+bool AArenaDuelPlayerState::HasAnyUpgradeAvailable() const
+{
+	return PickAutomaticUpgrade() != INDEX_NONE;
+}
+
+float AArenaDuelPlayerState::GetUpgradeStep(EArenaDuelUpgrade Kind) const
+{
+	switch (Kind)
+	{
+	case EArenaDuelUpgrade::Reserve: return ReserveAmmoPerLevel;
+	case EArenaDuelUpgrade::Reload: return ReloadTimePerLevel;
+	case EArenaDuelUpgrade::Ability: return AbilityCooldownPerLevel;
+	default: return 0.0f;
+	}
+}
+
+float AArenaDuelPlayerState::GetUpgradeScaleAtLevel(EArenaDuelUpgrade Kind, int32 Level) const
+{
+	const float Change = GetUpgradeStep(Kind) * static_cast<float>(FMath::Clamp(Level, 0, MaxUpgradeLevel));
+	// More reserve, less time: always measured against the unchanged base value.
+	return Kind == EArenaDuelUpgrade::Reserve ? 1.0f + Change : FMath::Max(0.1f, 1.0f - Change);
+}
+
+int32 AArenaDuelPlayerState::PickAutomaticUpgrade() const
+{
+	int32 Best = INDEX_NONE;
+	for (int32 Index = 0; Index < ArenaDuelUpgrades::KindCount; ++Index)
+	{
+		if (UpgradeLevels[Index] >= MaxUpgradeLevel) continue;
+		if (Best == INDEX_NONE || UpgradeLevels[Index] < UpgradeLevels[Best]) Best = Index;
+	}
+	return Best;
+}
+
+bool AArenaDuelPlayerState::AddUpgradeLevelAuthoritatively(EArenaDuelUpgrade Kind)
+{
+	if (!HasAuthority() || !CanTakeUpgrade(Kind)) return false;
+	++UpgradeLevels[static_cast<int32>(Kind)];
+	ForceNetUpdate();
+	return true;
+}
+
+void AArenaDuelPlayerState::SetUpgradeChosenAuthoritatively(bool bChosen)
+{
+	if (!HasAuthority() || bUpgradeChosen == bChosen) return;
+	bUpgradeChosen = bChosen;
+	ForceNetUpdate();
+}
+
+void AArenaDuelPlayerState::ResetUpgradesAuthoritatively()
+{
+	if (!HasAuthority()) return;
+	for (uint8& Level : UpgradeLevels) Level = 0;
+	bUpgradeChosen = false;
+	ForceNetUpdate();
 }
 
 void AArenaDuelPlayerState::GrantCharacterAbilities()
@@ -296,6 +369,8 @@ void AArenaDuelPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME(AArenaDuelPlayerState, AbilitySystemComponent);
 	DOREPLIFETIME(AArenaDuelPlayerState, DuelSlot);
 	DOREPLIFETIME(AArenaDuelPlayerState, RoundWins);
+	DOREPLIFETIME(AArenaDuelPlayerState, UpgradeLevels);
+	DOREPLIFETIME(AArenaDuelPlayerState, bUpgradeChosen);
 	DOREPLIFETIME(AArenaDuelPlayerState, SurvivalPoints);
 	DOREPLIFETIME(AArenaDuelPlayerState, SurvivalKills);
 	DOREPLIFETIME(AArenaDuelPlayerState, SurvivalDamageLevel);

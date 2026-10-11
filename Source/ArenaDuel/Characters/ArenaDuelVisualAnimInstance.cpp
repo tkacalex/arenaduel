@@ -160,7 +160,7 @@ namespace
 			if (bReloadingBody)
 			{
 				// The clip is stretched to the reload time of the weapon, as the first-person arms do.
-				const float Rate = ReloadOverlay->GetPlayLength() / FMath::Max(Weapon->GetCurrentDefinition().ReloadDuration, 0.1f);
+				const float Rate = ReloadOverlay->GetPlayLength() / FMath::Max(Weapon->GetReloadDuration(), 0.1f);
 				ReloadTime = bWasReloading ? FMath::Min(ReloadTime + FMath::Max(DeltaSeconds, 0.0f) * Rate, ReloadOverlay->GetPlayLength()) : 0.0f;
 			}
 			bWasReloading = bReloadingBody;
@@ -581,6 +581,6 @@ void UArenaDuelVisualAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		if (bLocomotion && bWasLocomotion) SetPosition(Phase * Desired->GetPlayLength(), false);
 	}
 	SetPlaying(true);	// Slower stride for crouch, animation only. No movement tuning is changed.
-	const float ReloadRate = Reload && Character->GetWeaponComponent() ? Reload->GetPlayLength() / FMath::Max(Character->GetWeaponComponent()->GetCurrentDefinition().ReloadDuration, 0.1f) : 1.0f;
+	const float ReloadRate = Reload && Character->GetWeaponComponent() ? Reload->GetPlayLength() / FMath::Max(Character->GetWeaponComponent()->GetReloadDuration(), 0.1f) : 1.0f;
 	SetPlayRate(Desired == Reload ? ReloadRate : bLocomotion ? FMath::Clamp(Speed / (bRunning ? 600.0f : 200.0f), 0.4f, 1.8f) : 1.0f);
 }
