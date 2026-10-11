@@ -212,7 +212,9 @@ void AArenaDuelCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalf
 	// does the same for the shot origin.
 	if (IsLocallyControlled() || HasAuthority())
 	{
-		StepCrouchEye(ScaledHalfHeightAdjust);
+		// Only when the capsule centre really dropped: on the ground the base stays and the centre moves, in the
+		// air the capsule shrinks around its centre and the eye has nothing to make up for.
+		if (GetCharacterMovement() && GetCharacterMovement()->bCrouchMaintainsBaseLocation) StepCrouchEye(ScaledHalfHeightAdjust);
 	}
 }
 
@@ -221,7 +223,7 @@ void AArenaDuelCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHe
 	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
 	if (IsLocallyControlled() || HasAuthority())
 	{
-		StepCrouchEye(-ScaledHalfHeightAdjust);
+		if (GetCharacterMovement() && GetCharacterMovement()->bCrouchMaintainsBaseLocation) StepCrouchEye(-ScaledHalfHeightAdjust);
 	}
 }
 

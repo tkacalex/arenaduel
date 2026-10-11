@@ -445,6 +445,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 				// Held in the air and treated as walking, so the crouch itself is all that moves the capsule.
 				Pawn->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
 				Pawn->GetCharacterMovement()->GravityScale = 0.0f;
+				Pawn->GetCharacterMovement()->bCrouchMaintainsBaseLocation = true;
 				const double EyeBefore = Pawn->GetPawnViewLocation().Z;
 				if (!FMath::IsNearlyZero(Pawn->GetEyeEaseOffset(), 0.01f)) TestRunner->AddError(TEXT("The eye is not at rest before the crouch"));
 				Pawn->GetCharacterMovement()->bWantsToCrouch = true;
