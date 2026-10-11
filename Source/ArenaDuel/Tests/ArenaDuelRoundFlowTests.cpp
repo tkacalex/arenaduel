@@ -146,7 +146,8 @@ NETWORK_TEST_CLASS(FArenaDuelRoundFlowNetworkTest, "ArenaDuel.Phase8.RoundFlow")
 				{
 					if (!FMath::IsNearlyEqual(Pawn->GetHealth(), State.HealthBefore, 0.1f)) TestRunner->AddError(TEXT("Overtime changed health"));
 					if (Pawn->GetWeaponComponent() && Pawn->GetWeaponComponent()->GetCurrentMagazineAmmo() != State.AmmoBefore) TestRunner->AddError(TEXT("Overtime changed ammunition"));
-					if (FVector::Dist(Pawn->GetActorLocation(), State.LocationBefore) > 5.0f) TestRunner->AddError(TEXT("Overtime moved the player"));
+					// Horizontal only: a pawn that has just spawned still settles onto the floor.
+					if (FVector::Dist2D(Pawn->GetActorLocation(), State.LocationBefore) > 5.0f) TestRunner->AddError(TEXT("Overtime moved the player"));
 				}
 				if (GameState->GetRoundSecondsRemaining() != 0.0f) TestRunner->AddError(TEXT("Overtime still reports regular time"));
 			})
