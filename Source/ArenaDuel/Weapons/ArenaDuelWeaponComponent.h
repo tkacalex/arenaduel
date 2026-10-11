@@ -387,7 +387,7 @@ public:
 	int32 GetOwnerPredictedMagazine() const;
 	/** Owner: shots shown on this machine since this weapon exists, and how many of them are waiting for the server's word. */
 	int32 GetShownShotCount() const { return ShownShotCount; }
-	int32 GetUnconfirmedShownShots() const { return OwnerUnconfirmedShots; }
+	int32 GetUnconfirmedShownShots() const;
 	/** Owner: confirmed hits on a head, and on a body or limb, since this weapon exists. */
 	int32 GetConfirmedHeadHits() const { return ConfirmedHeadHits; }
 	int32 GetConfirmedBodyHits() const { return ConfirmedBodyHits; }
@@ -400,9 +400,9 @@ public:
 	/** Tests: the owner's bookkeeping of a press and of one shown shot, without the trigger and without a word to the server. */
 	void BeginShownBurstForTests();
 	void ShowShotForTests();
-	uint8 GetOwnerBurstId() const { return 0; }
-	uint8 GetServerBurstId() const { return 0; }
-	uint8 GetMagazineRefillSerial() const { return 0; }
+	uint8 GetOwnerBurstId() const { return OwnerBurstId; }
+	uint8 GetServerBurstId() const { return ServerBurstId; }
+	uint8 GetMagazineRefillSerial() const { return MagazineRefillSerial; }
 	/** Owner: the number (as GetShownShotCount counted it) of the shown shot the last confirmation was paired with, 0 for none. */
 	int32 GetLastPairedShownShot() const { return LastPairedShownShot; }
 	/** Server: eye hints that were applied to a shot. */
@@ -417,10 +417,10 @@ public:
 
 protected:
 	UFUNCTION(Server, Reliable)
-	void ServerSetFireHeld(bool bHeld, float OwnerCrouchEaseAge, float OwnerSlideEaseAge);
-	/** While the owner's eye eases and it shows shots: how far along the eye was at the shown shot with this number in the burst (0 is the first). The server uses it for its own shot with that number, within the same limits as the hint that comes with the press. */
+	void ServerSetFireHeld(bool bHeld, uint8 BurstId, float OwnerCrouchEaseAge, float OwnerSlideEaseAge);
+	/** While the owner's eye eases and it shows shots: how far along the eye was at the shown shot with this number in the burst (0 is the first) of the burst with this number (every press is a new one). The server uses it for its own shot with that number in that burst and for no other, within the same limits as the hint that comes with the press. */
 	UFUNCTION(Server, Unreliable)
-	void ServerEyeEaseHint(uint8 BurstShotIndex, float OwnerCrouchEaseAge, float OwnerSlideEaseAge);
+	void ServerEyeEaseHint(uint8 BurstId, uint8 BurstShotIndex, float OwnerCrouchEaseAge, float OwnerSlideEaseAge);
 
 	UFUNCTION(Server, Reliable)
 	void ServerSetAiming(bool bAimingState);
@@ -481,6 +481,10 @@ protected:
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Weapons")
 	TArray<FArenaDuelWeaponRuntimeState> RuntimeAmmo;
+
+	/** Counts the fillings of a magazine (a reload that ended, a refill). Every shot confirmation carries the count it was fired under, so the owner can tell one that is about the magazine before a filling. */
+	UPROPERTY(Replicated)
+	uint8 MagazineRefillSerial = 0;
 
 	UPROPERTY(ReplicatedUsing=OnRep_Reloading, VisibleInstanceOnly, BlueprintReadOnly, Category="Weapons")
 	bool bReloading = false;
@@ -603,19 +607,25 @@ protected:
 	int32 LastShotSequence = 0;
 	// Owner on a client: bookkeeping between what is shown and what the server confirmed.
 	int32 ShownShotCount = 0;
-	int32 OwnerUnconfirmedShots = 0;
 	int32 OwnerConfirmedMagazine = -1;
 	int32 OwnerConfirmedMagazineWeapon = -1;
+	int32 OwnerConfirmedSequence = 0;
+	uint8 OwnerConfirmedRefill = 0;
 	double LastShownShotWorldTime = -100.0;
 	/** Owner: number of the next shown shot in the running burst. Server: number of the next real shot in it. The two count the same shots. */
 	uint8 OwnerBurstShotIndex = 0;
 	uint8 ServerBurstShotIndex = 0;
+	/** Every press of the trigger is a burst with its own number; the owner counts them and says the number with the press. Shot numbers start again in every burst, so only burst and shot together name one shot. */
+	uint8 OwnerBurstId = 0;
+	uint8 ServerBurstId = 0;
+	uint8 LastRealShotBurstIndex = 0;
 	struct FEyeHint { uint8 Index = 0; float CrouchAge = 1000.0f; float SlideAge = 1000.0f; bool bValid = false; };
 	/** Server: what the owner said about its eye for the shots of the running burst that are still to come. */
 	FEyeHint ServerEyeHints[8];
-	/** Development: the eye of each shown shot that waits for its confirmation, to pair it with the server's shot of that sequence number. */
-	TArray<float> ShownShotEyeLog;
-	TArray<int32> ShownShotNumberLog;
+	/** Owner: a shown shot that waits for the server's word, with what names it (weapon, burst, shot in the burst) and the eye it was shown from. */
+	struct FShownShot { int32 Number = 0; uint8 Weapon = 0; uint8 Burst = 0; uint8 Index = 0; bool bCountsAmmo = true; float Eye = 0.0f; };
+	TArray<FShownShot> OwnerPendingShots;
+	void RecordShownShot(float Eye);
 	int32 LastPairedShownShot = 0;
 	int32 EyeHintsUsed = 0;
 	void StopShownFireForReload();
@@ -683,5 +693,7 @@ protected:
 	void MulticastShotFired(const TArray<FVector_NetQuantize>& TraceEnds);
 
 	UFUNCTION(Client, Unreliable)
-	void ClientShotConfirmation(int32 Sequence, EArenaDuelShotResult Result, float Distance, int32 PelletsHit, int32 HeadPellets, int32 MagazineAfter);
+	// Unreliable: it can be lost, arrive late or after a later one. So it says itself which shot it is about: the
+	// weapon it was fired from, the burst and the shot in it, and the filling of the magazine it was fired under.
+	void ClientShotConfirmation(int32 Sequence, EArenaDuelShotResult Result, float Distance, int32 PelletsHit, int32 HeadPellets, int32 MagazineAfter, uint8 WeaponIndex, uint8 BurstId, uint8 BurstShotIndex, uint8 RefillSerial);
 };
