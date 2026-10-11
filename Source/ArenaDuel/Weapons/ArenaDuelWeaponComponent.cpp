@@ -757,6 +757,7 @@ void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 	FTimerDelegate ReloadDelegate; ReloadDelegate.BindUObject(this, &UArenaDuelWeaponComponent::CompleteReload);
 	GetWorld()->GetTimerManager().SetTimer(ReloadTimerHandle, ReloadDelegate, GetReloadDuration(), false);
 }
+void UArenaDuelWeaponComponent::RequestReloadForTests() { ServerRequestReload_Implementation(); }
 void UArenaDuelWeaponComponent::ServerRequestEquip_Implementation(int32 Index)
 {
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
