@@ -340,8 +340,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallRun")
 	float WallReattachCooldown = 0.25f;
 
+	/** On the way down a wall run only starts with at least this much air under the feet. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallRun")
+	float WallRunMinGroundClearance = 45.0f;
+
 protected:
 	bool TryFindWall(FHitResult& OutHit, FVector& OutNormal) const;
+	bool CanStartWallRun(const FVector& Normal) const;
+	bool IsSteeringAwayFromWall(const FVector& Normal) const;
 	/** The nearest wall in reach in any horizontal direction, for a kick. */
 	bool TryFindKickWall(FVector& OutNormal) const;
 	/** The jump itself, shared by wall jump and wall kick. */

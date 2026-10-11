@@ -441,7 +441,7 @@ void UArenaDuelCharacterMovementComponent::UpdateCharacterStateBeforeMovement(fl
 	{
 		FHitResult WallHit;
 		FVector CandidateNormal;
-		if (bWantsSprint && Stamina > 0.0f && TryFindWall(WallHit, CandidateNormal))
+		if (bWantsSprint && Stamina > 0.0f && TryFindWall(WallHit, CandidateNormal) && CanStartWallRun(CandidateNormal))
 		{
 			EnterWallRun(CandidateNormal);
 		}
@@ -578,6 +578,12 @@ void UArenaDuelCharacterMovementComponent::PhysWallRun(float DeltaSeconds, int32
 		return;
 	}
 
+	// Steering away from the wall lets go of it.
+	if (IsSteeringAwayFromWall(CandidateNormal))
+	{
+		ExitWallRun();
+		return;
+	}
 	WallNormal = CandidateNormal;
 	WallRunElapsed += DeltaSeconds;
 	ConsumeStamina(WallRunDrain * DeltaSeconds);
@@ -595,7 +601,45 @@ void UArenaDuelCharacterMovementComponent::PhysWallRun(float DeltaSeconds, int32
 	const float GravityShare = FMath::Lerp(WallRunStartGravityScale, WallRunGravityScale, FMath::Clamp(WallRunElapsed / FMath::Max(WallRunMaxDuration, 0.1f), 0.0f, 1.0f));
 	Velocity = FVector(DesiredVelocity.X, DesiredVelocity.Y, FMath::Clamp(Velocity.Z, -120.0f, WallRunMaxRiseSpeed));
 	Velocity.Z += GetGravityZ() * GravityShare * DeltaSeconds;
-	SafeMoveUpdatedComponent(Velocity * DeltaSeconds, UpdatedComponent->GetComponentQuat(), true, WallHit);
+	const FVector Delta = Velocity * DeltaSeconds;
+	FHitResult MoveHit;
+	SafeMoveUpdatedComponent(Delta, UpdatedComponent->GetComponentQuat(), true, MoveHit);
+	if (MoveHit.IsValidBlockingHit())
+	{
+		// The floor, or something standing in the way, ends the run: falling lands or slides past it. Without
+		// this the run stayed pressed against it, in place, until its time or the stamina ran out.
+		if (IsWalkable(MoveHit) || FVector::DotProduct(MoveHit.ImpactNormal, AlongWall) < -0.5f)
+		{
+			ExitWallRun();
+			return;
+		}
+		SlideAlongSurface(Delta, 1.0f - MoveHit.Time, MoveHit.Normal, MoveHit, true);
+	}
+}
+
+bool UArenaDuelCharacterMovementComponent::IsSteeringAwayFromWall(const FVector& Normal) const
+{
+	// The held input is part of every saved move, so the owner and the server decide the same.
+	return !Acceleration.IsNearlyZero() && FVector::DotProduct(Acceleration.GetSafeNormal2D(), FVector(Normal.X, Normal.Y, 0.0f).GetSafeNormal()) > 0.5f;
+}
+
+bool UArenaDuelCharacterMovementComponent::CanStartWallRun(const FVector& Normal) const
+{
+	if (!CharacterOwner || !GetWorld()) return false;
+	// Not when running straight at the wall, and not when steering away from it.
+	const FVector Flat = FVector(Normal.X, Normal.Y, 0.0f).GetSafeNormal();
+	if (FMath::Abs(FVector::DotProduct(Velocity.GetSafeNormal2D(), Flat)) > 0.8f || IsSteeringAwayFromWall(Normal)) return false;
+	// Not on the way down with the floor right below: the end of a sprint jump or a step off a kerb next to
+	// a wall would otherwise grab the wall for a moment instead of landing.
+	if (Velocity.Z < -1.0f)
+	{
+		const FVector Start = CharacterOwner->GetActorLocation();
+		const float Reach = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + WallRunMinGroundClearance;
+		FHitResult Floor;
+		const FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelWallRunFloor), false, CharacterOwner);
+		if (GetWorld()->LineTraceSingleByChannel(Floor, Start, Start - FVector::UpVector * Reach, ECC_Visibility, Params)) return false;
+	}
+	return true;
 }
 
 void UArenaDuelCharacterMovementComponent::PhysFalling(float DeltaSeconds, int32 Iterations)

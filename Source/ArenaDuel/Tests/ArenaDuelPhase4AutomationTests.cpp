@@ -546,6 +546,27 @@ ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4WallMomentumTest, "ArenaDuel.Phase4.
 	return true;
 })
 
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4WallRunNoStickTest, "ArenaDuel.Phase4.WallRunNoStick", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World();
+	// Coming down beside a wall with the floor right below: land, do not grab the wall.
+	AArenaDuelCharacter* Landing = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(800.0f, 390.0f, 100.0f), FVector(900.0f, 0.0f, -300.0f)); UArenaDuelCharacterMovementComponent* LandingMove = ArenaDuelPhase4HardeningTests::Movement(Landing);
+	LandingMove->StartSprint(); LandingMove->UpdateCharacterStateBeforeMovement(0.016f);
+	TestFalse(TEXT("About to land beside a wall does not start a wall run"), LandingMove->IsWallRunning());
+	// Running straight at a wall is not a wall run either.
+	AArenaDuelCharacter* HeadOn = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(800.0f, 390.0f, 100.0f), FVector(0.0f, 900.0f, 0.0f)); UArenaDuelCharacterMovementComponent* HeadOnMove = ArenaDuelPhase4HardeningTests::Movement(HeadOn);
+	HeadOnMove->StartSprint(); HeadOnMove->UpdateCharacterStateBeforeMovement(0.016f);
+	TestFalse(TEXT("Straight at the wall does not start a wall run"), HeadOnMove->IsWallRunning());
+	// A run that sinks to the floor ends there instead of staying pressed against it.
+	AArenaDuelCharacter* Sinking = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(800.0f, 390.0f, 100.0f), FVector(900.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* SinkingMove = ArenaDuelPhase4HardeningTests::Movement(Sinking);
+	SinkingMove->StartSprint(); SinkingMove->UpdateCharacterStateBeforeMovement(0.016f);
+	TestTrue(TEXT("Sinking test enters wall run"), SinkingMove->IsWallRunning());
+	const float StartX = Sinking->GetActorLocation().X;
+	for (int32 Index = 0; Index < 12 && SinkingMove->IsWallRunning(); ++Index) { SinkingMove->Velocity.Z = -120.0f; SinkingMove->PhysCustom(0.016f, 0); }
+	TestFalse(TEXT("Reaching the floor ends the wall run"), SinkingMove->IsWallRunning());
+	TestTrue(TEXT("The run moved along the wall until then"), Sinking->GetActorLocation().X > StartX);
+	return true;
+})
+
 ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4VaultProgressionTest, "ArenaDuel.Phase4.VaultProgression", {
 	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World(); AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(930.0f, 0.0f, 88.0f), FVector(800.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character); const FVector Start = Character->GetActorLocation(); Move->UpdateCharacterStateBeforeMovement(0.016f); TestEqual(TEXT("Vault starts custom traversal"), Move->CustomMovementMode, static_cast<uint8>(EArenaDuelCustomMovementMode::Vault)); bool bMoved = false; for (int32 Index = 0; Index < 20 && Move->MovementMode == MOVE_Custom; ++Index) { const FVector Before = Character->GetActorLocation(); Move->PhysCustom(0.016f, Index); bMoved |= !Character->GetActorLocation().Equals(Before, 0.1f); } AddInfo(FString::Printf(TEXT("Vault final location: %s"), *Character->GetActorLocation().ToString())); TestTrue(TEXT("Vault progresses over multiple frames"), bMoved); TestTrue(TEXT("Vault crosses obstacle"), Character->GetActorLocation().X > 1050.0f); TestTrue(TEXT("Vault ends in valid mode"), Move->MovementMode == MOVE_Walking || Move->MovementMode == MOVE_Falling); TestFalse(TEXT("Vault destination is clear"), ArenaDuelPhase4HardeningTests::IsCapsuleOverlapping(Character)); TestTrue(TEXT("Vault transform is finite"), ArenaDuelPhase4HardeningTests::IsFinite(Character->GetActorLocation()) && ArenaDuelPhase4HardeningTests::IsFinite(Move->Velocity)); return true;
 })
