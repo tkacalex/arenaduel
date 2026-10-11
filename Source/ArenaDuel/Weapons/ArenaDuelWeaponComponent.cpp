@@ -1650,8 +1650,8 @@ void UArenaDuelWeaponComponent::ClientShotConfirmation_Implementation(int32 Sequ
 #if !UE_BUILD_SHIPPING
 		if (CVarShotLog.GetValueOnGameThread() != 0)
 		{
-			if (Found != INDEX_NONE) UE_LOG(LogArenaDuel, Log, TEXT("ShotLog pair seq=%d shown_ease=%.1f magazine=%d burst=%d shot=%d passed_over=%d wall=%.3f"), Sequence, OwnerPendingShots[Found].Eye, MagazineAfter, static_cast<int32>(BurstId), static_cast<int32>(BurstShotIndex), Found, FPlatformTime::Seconds());
-			else UE_LOG(LogArenaDuel, Log, TEXT("ShotLog unpaired seq=%d magazine=%d burst=%d shot=%d wall=%.3f"), Sequence, MagazineAfter, static_cast<int32>(BurstId), static_cast<int32>(BurstShotIndex), FPlatformTime::Seconds());
+			if (Found != INDEX_NONE) { UE_LOG(LogArenaDuel, Log, TEXT("ShotLog pair seq=%d shown_ease=%.1f magazine=%d burst=%d shot=%d passed_over=%d wall=%.3f"), Sequence, OwnerPendingShots[Found].Eye, MagazineAfter, static_cast<int32>(BurstId), static_cast<int32>(BurstShotIndex), Found, FPlatformTime::Seconds()); }
+			else { UE_LOG(LogArenaDuel, Log, TEXT("ShotLog unpaired seq=%d magazine=%d burst=%d shot=%d wall=%.3f"), Sequence, MagazineAfter, static_cast<int32>(BurstId), static_cast<int32>(BurstShotIndex), FPlatformTime::Seconds()); }
 		}
 #endif
 		if (Found != INDEX_NONE) OwnerPendingShots.RemoveAt(0, Found + 1);
