@@ -30,6 +30,8 @@ public:
 	virtual void HandlePlayerDeath(AArenaDuelCharacter* DeadCharacter) override;
 	/** Ends the run when no living player is left. Asked after a death and when a player leaves. */
 	void EndRunIfNobodyStands(const AController* Leaving);
+	/** Centre of a capsule of this half height standing on the floor under a picked spawn location. */
+	static FVector SpawnCentreForCapsule(const FVector& PickedLocation, float HalfHeight);
 	/** Survival has waves, not timed rounds: the duel's round clock neither runs nor shows here. */
 	virtual bool UsesRoundTimer() const override { return false; }
 	virtual bool UsesMatchUpgrades() const override { return false; }
@@ -130,6 +132,9 @@ protected:
 	void FinishWaveIfDone();
 	/** bRelaxed halves the distance rule; bUnseenOnly refuses points a player can see. */
 	bool PickSpawnLocation(FVector& OutLocation, FRotator& OutRotation, bool bRelaxed = false, bool bUnseenOnly = false);
+	/** Moves a picked spawn location to where a capsule of this size stands on the floor there; false when it does not fit. */
+	bool PlaceCapsuleAtSpawn(FVector& InOutLocation, float Radius, float HalfHeight, const AActor* Ignore) const;
+	int32 StatTightSpawns = 0;
 	bool IsSeenByAnyPlayer(const FVector& Location) const;
 	void DevAutoPlayTick();
 	void SpawnAmmoPickupIfDue();

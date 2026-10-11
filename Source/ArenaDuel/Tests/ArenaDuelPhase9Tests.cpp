@@ -21,6 +21,7 @@
 #include "ArenaDuel/UI/ArenaDuelPlayerMenuWidget.h"
 #include "ArenaDuel/Player/ArenaDuelPlayerState.h"
 #include "ArenaDuel/Weapons/ArenaDuelWeaponComponent.h"
+#include "Camera/CameraComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
@@ -48,6 +49,18 @@ bool FArenaDuelPhase9ResetDefaultsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Reset shows the defaults, the resolution included"), Widget->DescribeShownForTests(), FString(TEXT("Borderless|1920 x 1080|Off|144")));
 	TestTrue(TEXT("What Apply would take is the defaults"), Now.WindowMode == Defaults.WindowMode && Now.ResolutionX == Defaults.ResolutionX && Now.ResolutionY == Defaults.ResolutionY && Now.bVSync == Defaults.bVSync && Now.FPSLimit == Defaults.FPSLimit
 		&& FMath::IsNearlyEqual(Now.MouseSensitivity, Defaults.MouseSensitivity) && FMath::IsNearlyEqual(Now.ADSMultiplier, Defaults.ADSMultiplier) && FMath::IsNearlyEqual(Now.FOV, Defaults.FOV) && FMath::IsNearlyEqual(Now.MasterVolume, Defaults.MasterVolume));
+	return true;
+}
+
+// E12: a capsule of any height is centred on the floor under the picked point.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelPhase9SpawnCentreTest, "ArenaDuel.Phase9.Survival.SpawnCentre", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FArenaDuelPhase9SpawnCentreTest::RunTest(const FString& Parameters)
+{
+	const FVector Picked(100.0f, -40.0f, 96.0f);   // what PickSpawnLocation answers over a floor at 0
+	TestTrue(TEXT("An ordinary zombie stands where it stood"), FMath::IsNearlyEqual(AArenaDuelZombieGameMode::SpawnCentreForCapsule(Picked, 96.0f).Z, 98.0, 0.01));
+	TestTrue(TEXT("A capsule twice as tall has its centre twice as high"), FMath::IsNearlyEqual(AArenaDuelZombieGameMode::SpawnCentreForCapsule(Picked, 192.0f).Z, 194.0, 0.01));
+	TestTrue(TEXT("Its feet are on the floor, not in it"), AArenaDuelZombieGameMode::SpawnCentreForCapsule(Picked, 250.0f).Z - 250.0 > 0.0);
+	TestTrue(TEXT("The place on the floor is kept"), FMath::IsNearlyEqual(AArenaDuelZombieGameMode::SpawnCentreForCapsule(Picked, 192.0f).X, 100.0) && FMath::IsNearlyEqual(AArenaDuelZombieGameMode::SpawnCentreForCapsule(Picked, 192.0f).Y, -40.0));
 	return true;
 }
 
@@ -416,6 +429,44 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 				Weapon->RefillAllAmmoForDevelopment();
 				if (!Weapon->IsAllAmmoFull()) TestRunner->AddError(TEXT("After a refill the pawn does not count as fully loaded"));
 			});
+	}
+
+	// E08: while the eye eases into a crouch the shot leaves from the eased eye, on the server and for the owner.
+	TEST_METHOD(ShotOriginFollowsTheEasedEyeThroughACrouch)
+	{
+		using namespace ArenaDuelPhase9Tests;
+		Network
+			.UntilServer(TEXT("Both duel players have pawns"), [](FArenaDuelPhase9State& State) { return PawnForSlot(State.World, 0) && PawnForSlot(State.World, 1); }, FTimespan::FromSeconds(10.0))
+			.ThenServer(TEXT("Start a round"), [](FArenaDuelPhase9State& State) { StartMatch(State.World); })
+			.UntilServer(TEXT("Round one runs"), [](FArenaDuelPhase9State& State) { return BothAliveInRound(State.World); }, FTimespan::FromSeconds(6.0))
+			.ThenServer(TEXT("The remote player's pawn crouches on the server"), [this](FArenaDuelPhase9State& State)
+			{
+				AArenaDuelCharacter* Pawn = PawnForSlot(State.World, 1);
+				// Held in the air and treated as walking, so the crouch itself is all that moves the capsule.
+				Pawn->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+				Pawn->GetCharacterMovement()->GravityScale = 0.0f;
+				const double EyeBefore = Pawn->GetPawnViewLocation().Z;
+				if (!FMath::IsNearlyZero(Pawn->GetEyeEaseOffset(), 0.01f)) TestRunner->AddError(TEXT("The eye is not at rest before the crouch"));
+				Pawn->GetCharacterMovement()->bWantsToCrouch = true;
+				Pawn->GetCharacterMovement()->Crouch(false);
+				if (!Pawn->bIsCrouched) { TestRunner->AddError(TEXT("The pawn did not crouch")); return; }
+				// The capsule has shrunk at once; the eye, and with it the shot origin, has not moved yet.
+				if (Pawn->GetEyeEaseOffset() < 5.0f) TestRunner->AddError(TEXT("The server does not ease the eye of a remote player's pawn"));
+				if (!FMath::IsNearlyEqual(Pawn->GetPawnViewLocation().Z, EyeBefore, 1.5)) TestRunner->AddError(FString::Printf(TEXT("The shot origin jumped by %.1f cm with the crouch"), Pawn->GetPawnViewLocation().Z - EyeBefore));
+				State.Health = Pawn->GetEyeEaseOffset();
+				State.Mark = State.World->GetTimeSeconds();
+			})
+			.UntilServer(TEXT("The eased offset shrinks and ends at the settled camera height"), [this](FArenaDuelPhase9State& State)
+			{
+				const AArenaDuelCharacter* Pawn = PawnForSlot(State.World, 1);
+				const double Age = State.World->GetTimeSeconds() - State.Mark;
+				if (Age < 0.08) return false;
+				if (Age < 0.3 && !(Pawn->GetEyeEaseOffset() < State.Health)) TestRunner->AddError(TEXT("The eye does not ease down"));
+				if (Age < 1.0) return false;
+				if (!FMath::IsNearlyZero(Pawn->GetEyeEaseOffset(), 0.01f)) TestRunner->AddError(TEXT("The eye did not settle"));
+				if (!FMath::IsNearlyEqual(Pawn->GetPawnViewLocation().Z - Pawn->GetActorLocation().Z, Pawn->GetFirstPersonCamera()->GetRelativeLocation().Z, 12.0)) TestRunner->AddError(TEXT("Settled, the shot origin is not at the camera height"));
+				return true;
+			}, FTimespan::FromSeconds(4.0));
 	}
 
 	// E18: two lethal hits in one frame. The first death decides, in either order, and the round is decided once.

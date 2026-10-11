@@ -99,6 +99,8 @@ public:
 	void KillCredited(AController* Killer);
 
 	bool IsDead() const { return bDead; }
+
+	FVector GetDeathVelocity() const { return FVector(DeathVelocity); }
 	EArenaDuelZombieType GetZombieType() const { return ZombieType; }
 	bool IsBossType() const { return ZombieType == EArenaDuelZombieType::Boss || ZombieType == EArenaDuelZombieType::MiniBoss; }
 	float GetHealthFraction() const { return MaxHealth > 0.0f ? FMath::Clamp(Health / MaxHealth, 0.0f, 1.0f) : 0.0f; }
@@ -160,6 +162,8 @@ protected:
 	/** How hard the killing hit throws the body. */
 	UPROPERTY(Replicated) float DeathImpulse = 3500.0f;
 	UPROPERTY(Replicated) bool bDeathHeadshot = false;
+	/** The speed in the moment of death, before the body was stopped. */
+	UPROPERTY(Replicated) FVector_NetQuantize DeathVelocity;
 	UPROPERTY(Replicated) bool bCharging = false;
 	FTimerHandle RagdollTimerHandle;
 

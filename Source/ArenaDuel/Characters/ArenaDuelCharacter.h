@@ -73,10 +73,14 @@ public:
 	void PlayRiftCameraImpulse();
 	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult) override;
 	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
-	/** Where the camera settles, on every machine. Shots, throws and sight checks start here. */
+	/** Where shots, throws and sight checks start: the camera, eased like the picture on the owner and the server, and where it settles on other machines. */
 	virtual FVector GetPawnViewLocation() const override;
 	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
-	float GetSlideCameraBlend() const { return SlideCameraBlend; }
+	/** 0 standing to 1 in a slide, eased over time from the last slide start or end. */
+	float GetSlideCameraBlend() const;
+	/** How far the eye is from where it settles while it eases after a crouch, a stand-up or a slide change. */
+	float GetEyeEaseOffset() const;
+	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode = 0) override;
 
 	/** Extra field of view at full slide, in degrees. Local presentation only. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Camera|Movement")
@@ -244,8 +248,14 @@ protected:
 	float LocalDeathCameraStartTime = 0.0f;
 	bool bDeathPresentationLatched = false;
 	void UpdateLocalMovementCamera(float DeltaSeconds);
+	// The eye's easing is kept as a value and the time it was true, and read as a function of the time since.
+	float GetCrouchEyeOffsetNow() const;
+	void StepCrouchEye(float Step);
 	float CrouchEyeOffset = 0.0f;
+	double CrouchEyeTime = 0.0;
 	float SlideCameraBlend = 0.0f;
+	double SlideBlendTime = 0.0;
+	bool bSlideBlendTarget = false;
 	float SlideCameraRoll = 0.0f;
 	FVector CameraBaseRelativeLocation = FVector(0.0f, 0.0f, 64.0f);
 	FVector LivingMeshRelativeLocation = FVector::ZeroVector;

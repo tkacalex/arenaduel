@@ -318,6 +318,22 @@ bool AArenaDuelZombieGameMode::IsSeenByAnyPlayer(const FVector& Location) const
 	return false;
 }
 
+FVector AArenaDuelZombieGameMode::SpawnCentreForCapsule(const FVector& PickedLocation, float HalfHeight)
+{
+	// PickSpawnLocation answers 96 cm above the floor, the centre of an ordinary zombie. A capsule of another
+	// height stands on the same floor with its own centre, and a little air under it.
+	return FVector(PickedLocation.X, PickedLocation.Y, PickedLocation.Z - 96.0f + HalfHeight + 2.0f);
+}
+
+bool AArenaDuelZombieGameMode::PlaceCapsuleAtSpawn(FVector& InOutLocation, float Radius, float HalfHeight, const AActor* Ignore) const
+{
+	const FVector Centre = SpawnCentreForCapsule(InOutLocation, HalfHeight);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelSpawnRoom), false, Ignore);
+	if (!GetWorld() || GetWorld()->OverlapBlockingTestByChannel(Centre, FQuat::Identity, ECC_Pawn, FCollisionShape::MakeCapsule(Radius, HalfHeight), Params)) return false;
+	InOutLocation = Centre;
+	return true;
+}
+
 bool AArenaDuelZombieGameMode::PickSpawnLocation(FVector& OutLocation, FRotator& OutRotation, bool bRelaxed, bool bUnseenOnly)
 {
 	UWorld* World = GetWorld();
@@ -383,8 +399,10 @@ void AArenaDuelZombieGameMode::SpawnTick()
 	const FArenaDuelZombieTypeConfig& Config = TypeConfigs.IsValidIndex(static_cast<int32>(Type)) ? TypeConfigs[static_cast<int32>(Type)] : TypeConfigs[0];
 	FActorSpawnParameters Parameters;
 	Parameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
-	// A big enemy needs its own capsule clear of the floor.
-	Location.Z += 96.0f * (Config.Scale - 1.0f);
+	// A big enemy needs room for the capsule it will have once it is scaled: the spawn itself only tests the
+	// unscaled class. A point that is too tight is skipped like a blocked one.
+	const UCapsuleComponent* Template = GetDefault<AArenaDuelZombie>()->GetCapsuleComponent();
+	if (!PlaceCapsuleAtSpawn(Location, Template->GetUnscaledCapsuleRadius() * Config.Scale, Template->GetUnscaledCapsuleHalfHeight() * Config.Scale, nullptr)) { ++StatTightSpawns; return; }
 	AArenaDuelZombie* Zombie = GetWorld()->SpawnActor<AArenaDuelZombie>(AArenaDuelZombie::StaticClass(), Location, Rotation, Parameters);
 	// A blocked point costs nothing: the entry stays in the queue and the next tick tries another point.
 	if (!Zombie) return;
@@ -461,7 +479,9 @@ void AArenaDuelZombieGameMode::WatchTick()
 			// it waits and keeps trying to free itself.
 			FVector Location;
 			FRotator Rotation;
-			if (!IsSeenByAnyPlayer(It->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f)) && PickSpawnLocation(Location, Rotation, false, true))
+			// Only to a place its own capsule fits: a rescue into the floor or into cover would be no rescue.
+			if (!IsSeenByAnyPlayer(It->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f)) && PickSpawnLocation(Location, Rotation, false, true)
+				&& PlaceCapsuleAtSpawn(Location, It->GetCapsuleComponent()->GetScaledCapsuleRadius(), It->GetCapsuleComponent()->GetScaledCapsuleHalfHeight(), *It))
 			{
 				It->TeleportTo(Location, Rotation, false, true);
 				It->ResetProgress();

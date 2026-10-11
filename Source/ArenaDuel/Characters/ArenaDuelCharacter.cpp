@@ -157,26 +157,71 @@ FVector AArenaDuelCharacter::GetPawnViewLocation() const
 	// The camera sits at a fixed height above the capsule centre, standing or crouched. The engine's
 	// default switches to the crouched eye height instead, 32 cm below this camera, so crouched shots
 	// left from under the crosshair. A slide lowers the camera a little further.
+	// While the eye eases into a crouch, out of it, or into and out of a slide, the owner and the server use the
+	// eased height: the shot leaves from where the picture is taken, not from where it will settle. Both follow
+	// the same curve from the same events (GetEyeEaseOffset). Other machines only need where it settles.
+	if (IsLocallyControlled() || HasAuthority()) return GetActorLocation() + FVector(0.0f, 0.0f, CameraBaseRelativeLocation.Z + GetEyeEaseOffset());
 	const UArenaDuelCharacterMovementComponent* Movement = GetArenaDuelMovementComponent();
 	return GetActorLocation() + FVector(0.0f, 0.0f, CameraBaseRelativeLocation.Z - (Movement && Movement->IsSliding() ? SlideCameraExtraDrop : 0.0f));
+}
+
+float AArenaDuelCharacter::GetCrouchEyeOffsetNow() const
+{
+	// What is left of the last crouch or stand-up step: it decays towards zero, the same on any frame rate.
+	const double Age = GetWorld() ? FMath::Max(0.0, GetWorld()->GetTimeSeconds() - CrouchEyeTime) : 1000.0;
+	const float Left = CrouchEyeOffset * FMath::Exp(-CrouchCameraInterpSpeed * static_cast<float>(Age));
+	return FMath::Abs(Left) < 0.01f ? 0.0f : Left;
+}
+
+float AArenaDuelCharacter::GetSlideCameraBlend() const
+{
+	const double Age = GetWorld() ? FMath::Max(0.0, GetWorld()->GetTimeSeconds() - SlideBlendTime) : 1000.0;
+	const float Target = bSlideBlendTarget ? 1.0f : 0.0f;
+	return Target + (SlideCameraBlend - Target) * FMath::Exp(-SlideCameraInterpSpeed * static_cast<float>(Age));
+}
+
+float AArenaDuelCharacter::GetEyeEaseOffset() const
+{
+	return GetCrouchEyeOffsetNow() - SlideCameraExtraDrop * GetSlideCameraBlend();
+}
+
+void AArenaDuelCharacter::StepCrouchEye(float Step)
+{
+	CrouchEyeOffset = GetCrouchEyeOffsetNow() + Step;
+	CrouchEyeTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+}
+
+void AArenaDuelCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)
+{
+	Super::OnMovementModeChanged(PrevMovementMode, PreviousCustomMode);
+	// A slide starting or ending turns the eye's slide drop towards its new target from wherever it is now.
+	const UArenaDuelCharacterMovementComponent* Movement = GetArenaDuelMovementComponent();
+	const bool bSliding = Movement && Movement->IsSliding();
+	if (bSliding != bSlideBlendTarget)
+	{
+		SlideCameraBlend = GetSlideCameraBlend();
+		SlideBlendTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+		bSlideBlendTarget = bSliding;
+	}
 }
 
 void AArenaDuelCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
 	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
-	// The capsule shrinks instantly; keep the eye where it was and ease it down instead of snapping.
-	if (IsLocallyControlled())
+	// The capsule shrinks instantly; keep the eye where it was and ease it down instead of snapping. The server
+	// does the same for the shot origin.
+	if (IsLocallyControlled() || HasAuthority())
 	{
-		CrouchEyeOffset += ScaledHalfHeightAdjust;
+		StepCrouchEye(ScaledHalfHeightAdjust);
 	}
 }
 
 void AArenaDuelCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
 	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
-	if (IsLocallyControlled())
+	if (IsLocallyControlled() || HasAuthority())
 	{
-		CrouchEyeOffset -= ScaledHalfHeightAdjust;
+		StepCrouchEye(-ScaledHalfHeightAdjust);
 	}
 }
 
@@ -190,14 +235,10 @@ void AArenaDuelCharacter::UpdateLocalMovementCamera(float DeltaSeconds)
 	const UArenaDuelCharacterMovementComponent* Movement = GetArenaDuelMovementComponent();
 	const bool bSliding = Movement && Movement->IsSliding();
 
-	// Exponential smoothing is frame-rate independent and never overshoots.
-	CrouchEyeOffset *= FMath::Exp(-CrouchCameraInterpSpeed * Dt);
-	if (FMath::Abs(CrouchEyeOffset) < 0.01f)
-	{
-		CrouchEyeOffset = 0.0f;
-	}
-	const float SlideTarget = bSliding ? 1.0f : 0.0f;
-	SlideCameraBlend = SlideTarget + (SlideCameraBlend - SlideTarget) * FMath::Exp(-SlideCameraInterpSpeed * Dt);
+	// The eye's crouch offset and slide drop are functions of time since the last crouch or slide change
+	// (GetCrouchEyeOffsetNow, GetSlideCameraBlend): exponential, frame-rate independent, never overshooting,
+	// and the same on the server, which has no camera to update.
+	const float SlideBlendNow = GetSlideCameraBlend();
 
 	float SteerInput = 0.0f;
 	if (bSliding && Controller)
@@ -206,11 +247,11 @@ void AArenaDuelCharacter::UpdateLocalMovementCamera(float DeltaSeconds)
 		const FVector ViewRight = FRotationMatrix(FRotator(0.0f, Controller->GetControlRotation().Yaw, 0.0f)).GetUnitAxis(EAxis::Y);
 		SteerInput = FVector::DotProduct(InputDirection, ViewRight);
 	}
-	const float RollTarget = SlideCameraBlend * (-SlideCameraBaseRoll + SteerInput * SlideCameraSteerRoll);
+	const float RollTarget = SlideBlendNow * (-SlideCameraBaseRoll + SteerInput * SlideCameraSteerRoll);
 	SlideCameraRoll = RollTarget + (SlideCameraRoll - RollTarget) * FMath::Exp(-SlideCameraInterpSpeed * Dt);
 
 	FVector CameraLocation = CameraBaseRelativeLocation;
-	CameraLocation.Z += CrouchEyeOffset - SlideCameraExtraDrop * SlideCameraBlend;
+	CameraLocation.Z += GetEyeEaseOffset();
 	FirstPersonCamera->SetRelativeLocation(CameraLocation);
 }
 
@@ -221,7 +262,7 @@ void AArenaDuelCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResul
 	if (IsLocallyControlled() && !bDead)
 	{
 		OutResult.Rotation.Roll += SlideCameraRoll;
-		OutResult.FOV += SlideCameraFOVKick * SlideCameraBlend;
+		OutResult.FOV += SlideCameraFOVKick * GetSlideCameraBlend();
 		// A short, small flinch when hit. View only, the aim direction is untouched.
 		const float Flash = GetDamageFlash();
 		OutResult.Rotation.Roll += DamagePunchSign * 1.1f * LastDamageStrength * Flash * Flash;

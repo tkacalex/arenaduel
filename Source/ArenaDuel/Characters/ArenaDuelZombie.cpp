@@ -539,6 +539,7 @@ void AArenaDuelZombie::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME(AArenaDuelZombie, DeathHitDirection);
 	DOREPLIFETIME(AArenaDuelZombie, DeathImpulse);
 	DOREPLIFETIME(AArenaDuelZombie, bDeathHeadshot);
+	DOREPLIFETIME(AArenaDuelZombie, DeathVelocity);
 }
 
 void AArenaDuelZombie::BeginPlay()
@@ -696,6 +697,9 @@ void AArenaDuelZombie::Die(AController* Killer, bool bHeadshot)
 	if (bDead) return;
 	bDead = true;
 	Health = 0.0f;
+	// Taken before anything stops the body: which death is shown and what speed the ragdoll starts with are
+	// decided from this on every machine, not from whatever each of them reads after the stop.
+	DeathVelocity = GetVelocity();
 	if (AAIController* AI = Cast<AAIController>(GetController())) AI->StopMovement();
 	GetCharacterMovement()->DisableMovement();
 	GetCharacterMovement()->SetComponentTickEnabled(false);
@@ -719,7 +723,7 @@ void AArenaDuelZombie::OnRep_Dead()
 	UArenaDuelZombieAnimInstance* Clips = GetMesh() ? Cast<UArenaDuelZombieAnimInstance>(GetMesh()->GetAnimInstance()) : nullptr;
 	const FVector Shot(DeathHitDirection);
 	const bool bForward = Shot.IsNearlyZero() ? (GetUniqueID() & 1) != 0 : FVector::DotProduct(GetActorForwardVector(), Shot) > 0.0f;
-	if (GetNetMode() != NM_DedicatedServer && GetWorld() && Clips && !bDeathHeadshot && GetVelocity().Size2D() < 300.0f && Clips->PlayDeath(bForward))
+	if (GetNetMode() != NM_DedicatedServer && GetWorld() && Clips && !bDeathHeadshot && FVector(DeathVelocity).Size2D() < 300.0f && Clips->PlayDeath(bForward))
 	{
 		GetWorld()->GetTimerManager().SetTimer(RagdollTimerHandle, this, &AArenaDuelZombie::StartRagdoll, 0.3f, false);
 	}
@@ -731,7 +735,7 @@ void AArenaDuelZombie::StartRagdoll()
 	USkeletalMeshComponent* Body = GetMesh();
 	if (!Body || !Body->GetPhysicsAsset() || GetNetMode() == NM_DedicatedServer) return;
 	// The body keeps the speed it had, so a runner tumbles forward and a standing one drops where it stood.
-	const FVector Carried = GetVelocity();
+	const FVector Carried(DeathVelocity);
 	Body->SetCollisionProfileName(TEXT("Ragdoll"));
 	Body->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 	Body->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
