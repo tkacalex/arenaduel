@@ -266,6 +266,7 @@ void AArenaDuelGameMode::BeginRound(int32 RoundNumber, int32 LastWinnerSlot)
 	++RoundSerial;
 	GetWorldTimerManager().ClearTimer(RoundTimeLimitTimer);
 	State->SetRoundState(RoundNumber, true, LastWinnerSlot);
+	UE_LOG(LogArenaDuel, Log, TEXT("Match: round %d begins"), RoundNumber);
 	if (!UsesRoundTimer() || RoundDurationSeconds <= 0.0f) return;
 	State->SetRoundClock(static_cast<float>(State->GetServerWorldTimeSeconds()) + RoundDurationSeconds);
 	GetWorldTimerManager().SetTimer(RoundTimeLimitTimer, FTimerDelegate::CreateUObject(this, &AArenaDuelGameMode::HandleRoundTimeExpired, RoundSerial), RoundDurationSeconds, false);
@@ -420,6 +421,7 @@ void AArenaDuelGameMode::BeginUpgradeSelection()
 	}
 	// Nobody moves during the selection, the round winner included.
 	State->BeginUpgradeSelect(static_cast<float>(State->GetServerWorldTimeSeconds()) + UpgradeSelectSeconds);
+	UE_LOG(LogArenaDuel, Log, TEXT("Match: upgrade selection %d opens for %.0f s"), State->GetUpgradeSelectSerial(), UpgradeSelectSeconds);
 	GetWorldTimerManager().SetTimer(UpgradeSelectTimer, this, &AArenaDuelGameMode::FinishUpgradeSelection, UpgradeSelectSeconds, false);
 }
 
@@ -440,6 +442,7 @@ void AArenaDuelGameMode::RequestUpgradeChoice(APlayerController* Requester, uint
 	if (!Player || Player->GetOwner() != Requester || Player->GetDuelSlot() > 1 || Player->HasChosenUpgrade()) return;
 	if (!ArenaDuelUpgrades::IsValidId(UpgradeId) || !Player->AddUpgradeLevelAuthoritatively(static_cast<EArenaDuelUpgrade>(UpgradeId))) return;
 	Player->SetUpgradeChosenAuthoritatively(true);
+	UE_LOG(LogArenaDuel, Log, TEXT("Match: duel slot %d took upgrade %d in selection %d"), static_cast<int32>(Player->GetDuelSlot()), static_cast<int32>(UpgradeId), SelectionSerial);
 	const AArenaDuelPlayerState* Left = FindPlayerStateByDuelSlot(0);
 	const AArenaDuelPlayerState* Right = FindPlayerStateByDuelSlot(1);
 	if (Left && Right && Left->HasChosenUpgrade() && Right->HasChosenUpgrade()) FinishUpgradeSelection();
@@ -455,7 +458,11 @@ void AArenaDuelGameMode::FinishUpgradeSelection()
 		AArenaDuelPlayerState* Player = FindPlayerStateByDuelSlot(DuelSlot);
 		if (!Player || Player->HasChosenUpgrade()) continue;
 		// Too late: the player gets an available upgrade with the lowest own level, ties in the fixed order.
-		if (const int32 Automatic = Player->PickAutomaticUpgrade(); Automatic != INDEX_NONE) Player->AddUpgradeLevelAuthoritatively(static_cast<EArenaDuelUpgrade>(Automatic));
+		if (const int32 Automatic = Player->PickAutomaticUpgrade(); Automatic != INDEX_NONE)
+		{
+			Player->AddUpgradeLevelAuthoritatively(static_cast<EArenaDuelUpgrade>(Automatic));
+			UE_LOG(LogArenaDuel, Log, TEXT("Match: duel slot %d did not choose in time and got upgrade %d"), static_cast<int32>(DuelSlot), Automatic);
+		}
 		Player->SetUpgradeChosenAuthoritatively(true);
 	}
 	StartNextRound();

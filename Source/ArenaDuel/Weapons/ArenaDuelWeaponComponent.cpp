@@ -123,6 +123,12 @@ namespace
 			if (!Pawn || Args.Num() == 0) return;
 			if (FCString::Atoi(*Args[0]) != 0) Pawn->Crouch(); else Pawn->UnCrouch();
 		}));
+	// ArenaDuel.Dev.Upgrade <0|1|2>: the local player takes that upgrade in the open selection, as a click on its card does.
+	FAutoConsoleCommandWithWorldAndArgs CmdUpgrade(TEXT("ArenaDuel.Dev.Upgrade"), TEXT("Take upgrade 0 to 2 for the local player in the open selection"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			if (AArenaDuelPlayerController* Controller = World ? Cast<AArenaDuelPlayerController>(World->GetFirstPlayerController()) : nullptr; Controller && Args.Num() > 0) Controller->ChooseUpgrade(static_cast<uint8>(FCString::Atoi(*Args[0])));
+		}));
 	// ArenaDuel.Dev.Slide 1|0: the local player presses or lets go of the slide key (with ArenaDuel.Dev.Run 1 for the speed a slide needs).
 	FAutoConsoleCommandWithWorldAndArgs CmdSlide(TEXT("ArenaDuel.Dev.Slide"), TEXT("Press (1) or let go of (0) the slide key for the local player"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
@@ -894,7 +900,7 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 	const FVector Origin = Character->GetPawnViewLocation();
 	const FVector Direction = Controller->GetControlRotation().Vector();
 #if !UE_BUILD_SHIPPING
-	if (CVarShotLog.GetValueOnGameThread() != 0) UE_LOG(LogArenaDuel, Log, TEXT("ShotLog real %s t=%.3f magazine=%d eye=%.1f ease=%.1f crouched=%d since_switch=%.3f crouch_age=%.3f slide_age=%.3f wall=%.3f"), *GetNameSafe(GetOwner()), ServerTime, State->MagazineAmmo, Origin.Z - Character->GetActorLocation().Z, Character->GetEyeEaseOffset(), Character->bIsCrouched ? 1 : 0, ServerTime - (EquipmentReadyServerTime - SwitchSeconds), Character->GetCrouchEaseAge(), Character->GetSlideEaseAge(), FPlatformTime::Seconds());
+	if (CVarShotLog.GetValueOnGameThread() != 0) UE_LOG(LogArenaDuel, Log, TEXT("ShotLog real %s weapon=%d t=%.3f magazine=%d eye=%.1f ease=%.1f crouched=%d since_switch=%.3f crouch_age=%.3f slide_age=%.3f wall=%.3f"), *GetNameSafe(GetOwner()), DefinitionIndex, ServerTime, State->MagazineAmmo, Origin.Z - Character->GetActorLocation().Z, Character->GetEyeEaseOffset(), Character->bIsCrouched ? 1 : 0, ServerTime - (EquipmentReadyServerTime - SwitchSeconds), Character->GetCrouchEaseAge(), Character->GetSlideEaseAge(), FPlatformTime::Seconds());
 #endif
 	FRandomStream Random(++LastShotSequence);
 	int32 BodyPellets = 0, HeadPellets = 0, LimbPellets = 0, WorldPellets = 0;
@@ -1651,6 +1657,7 @@ void UArenaDuelWeaponComponent::ThrowFlashbangAuthoritative(bool bShort)
 	const float UpSpeed = bShort ? Flashbang.ShortThrowUpSpeed : Flashbang.ThrowUpSpeed;
 	Grenade->Launch(Direction * Speed + FVector(0.0f, 0.0f, UpSpeed) + Character->GetVelocity() * 0.5f, Flashbang.FuseSeconds, Flashbang.MaxBlindDistance, Flashbang.MaxBlindSeconds);
 	--FlashbangsRemaining;
+	UE_LOG(LogArenaDuel, Log, TEXT("Combat: %s flashbang throw by %s, %d left"), bShort ? TEXT("short") : TEXT("long"), *GetNameSafe(GetOwner()), static_cast<int32>(FlashbangsRemaining));
 	MulticastEquipmentThrown(bShort);
 	// The hand is empty now, so go straight back to the firearm.
 	SetActiveSlotAuthoritative(EArenaDuelLoadoutSlot::Primary);
@@ -1714,6 +1721,7 @@ void UArenaDuelWeaponComponent::KnifeAttackAuthoritative(bool bHeavy)
 		LastPelletsHit = 1;
 		ZombieVictim->TakeWeaponHit(bHeavy ? Knife.HeavyDamage : Knife.Damage, 1.0f, EArenaDuelShotResult::Body, Character->GetController(), ZombieHit.ImpactPoint, Forward);
 		SetLastShot(EArenaDuelShotResult::Body, ZombieHit.Distance, ZombieVictim);
+		UE_LOG(LogArenaDuel, Log, TEXT("Combat: %s knife attack by %s hit an enemy"), bHeavy ? TEXT("heavy") : TEXT("light"), *GetNameSafe(GetOwner()));
 		MulticastKnifeSwing(true, bHeavy);
 		return;
 	}
@@ -1727,6 +1735,7 @@ void UArenaDuelWeaponComponent::KnifeAttackAuthoritative(bool bHeavy)
 		SetLastShot(EArenaDuelShotResult::Body, BestHit.Distance, Victim);
 	}
 	else SetLastShot(bWorld ? EArenaDuelShotResult::World : EArenaDuelShotResult::Miss, Reach, nullptr);
+	UE_LOG(LogArenaDuel, Log, TEXT("Combat: %s knife attack by %s, %s"), bHeavy ? TEXT("heavy") : TEXT("light"), *GetNameSafe(GetOwner()), Victim ? TEXT("hit a player") : (bWorld ? TEXT("met the world") : TEXT("met nothing")));
 	MulticastKnifeSwing(Victim != nullptr, bHeavy);
 }
 
