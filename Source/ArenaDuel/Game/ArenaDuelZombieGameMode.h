@@ -28,6 +28,8 @@ public:
 	virtual void Logout(AController* Exiting) override;
 	virtual void RestartPlayer(AController* NewPlayer) override;
 	virtual void HandlePlayerDeath(AArenaDuelCharacter* DeadCharacter) override;
+	/** Ends the run when no living player is left. Asked after a death and when a player leaves. */
+	void EndRunIfNobodyStands(const AController* Leaving);
 	/** Survival has waves, not timed rounds: the duel's round clock neither runs nor shows here. */
 	virtual bool UsesRoundTimer() const override { return false; }
 	virtual bool UsesMatchUpgrades() const override { return false; }

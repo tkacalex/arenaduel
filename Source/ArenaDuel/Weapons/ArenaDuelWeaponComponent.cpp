@@ -627,6 +627,16 @@ void UArenaDuelWeaponComponent::RefillAllAmmoForDevelopment()
 	if (AActor* Owner = GetOwner()) Owner->ForceNetUpdate();
 }
 
+bool UArenaDuelWeaponComponent::IsAllAmmoFull() const
+{
+	if (RuntimeAmmo.Num() != WeaponDefinitions.Num()) return false;
+	for (int32 Index = 0; Index < WeaponDefinitions.Num(); ++Index)
+	{
+		if (RuntimeAmmo[Index].MagazineAmmo < WeaponDefinitions[Index].MagazineCapacity || RuntimeAmmo[Index].ReserveAmmo < GetReserveCapacity(Index)) return false;
+	}
+	return true;
+}
+
 void UArenaDuelWeaponComponent::AddReserveAmmoShare(float Share)
 {
 	if (GetOwnerRole() != ROLE_Authority || Share <= 0.0f) return;
@@ -673,7 +683,8 @@ bool UArenaDuelWeaponComponent::IsLocalAdminMenuOpen() const
 {
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	const AArenaDuelPlayerController* PlayerController = Character && Character->IsLocallyControlled() ? Cast<AArenaDuelPlayerController>(Character->GetController()) : nullptr;
-	return PlayerController && PlayerController->IsAdminMenuOpen();
+	// The pause and settings menu counts like the admin menu: nothing of the weapon starts behind either.
+	return PlayerController && (PlayerController->IsAdminMenuOpen() || PlayerController->IsPlayerMenuOpen());
 }
 bool UArenaDuelWeaponComponent::CanBeginAuthoritativeFire() const
 {

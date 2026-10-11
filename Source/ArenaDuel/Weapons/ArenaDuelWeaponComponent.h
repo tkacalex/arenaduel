@@ -304,6 +304,8 @@ public:
 	float GetAimAccuracyAlpha() const;
 	void CancelCombatActions();
 	void RefillAllAmmoForDevelopment();
+	/** Every magazine and every reserve is at its capacity: a refill would change nothing. */
+	bool IsAllAmmoFull() const;
 	/** Server only. Adds this share of each weapon's reserve capacity to its reserve, up to the capacity. */
 	void AddReserveAmmoShare(float Share);
 	void RefreshWeaponVisual();

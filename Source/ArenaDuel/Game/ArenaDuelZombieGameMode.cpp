@@ -206,6 +206,8 @@ void AArenaDuelZombieGameMode::Logout(AController* Exiting)
 	{
 		if (AArenaDuelPlayerState* Player = Controller->GetPlayerState<AArenaDuelPlayerState>()) Player->SetDuelSlot(255);
 	}
+	// The last living player leaving ends the run like their death would: whoever stays, dead, can start a new one.
+	if (GetWorld() && !GetWorld()->bIsTearingDown) EndRunIfNobodyStands(Exiting);
 	AGameMode::Logout(Exiting);
 }
 
@@ -483,9 +485,14 @@ void AArenaDuelZombieGameMode::WatchTick()
 
 void AArenaDuelZombieGameMode::HandlePlayerDeath(AArenaDuelCharacter* DeadCharacter)
 {
+	EndRunIfNobodyStands(nullptr);
+}
+
+void AArenaDuelZombieGameMode::EndRunIfNobodyStands(const AController* Leaving)
+{
 	if (!HasAuthority() || bRunOver || !GetWorld()) return;
-	// The run ends when nobody is left standing.
-	for (TActorIterator<AArenaDuelCharacter> It(GetWorld()); It; ++It) if (!It->IsDead() && It->GetController()) return;
+	// The run ends when nobody is left standing. A player who is leaving does not count, alive or not.
+	for (TActorIterator<AArenaDuelCharacter> It(GetWorld()); It; ++It) if (!It->IsDead() && It->GetController() && It->GetController() != Leaving) return;
 	bRunOver = true;
 	bWaveActive = false;
 	GetWorldTimerManager().ClearTimer(WaveTimer);
@@ -527,6 +534,7 @@ bool AArenaDuelZombieGameMode::TryPurchase(AController* Buyer, EArenaDuelSurviva
 	// Nothing is charged for a purchase that would do nothing.
 	if (Item == EArenaDuelSurvivalPurchase::Heal && Character->GetHealth() >= Character->GetMaxHealth()) return false;
 	if (Item == EArenaDuelSurvivalPurchase::Damage && Player->GetSurvivalDamageLevel() >= MaxDamageUpgradeLevel) return false;
+	if (Item == EArenaDuelSurvivalPurchase::Ammo && (!Character->GetWeaponComponent() || Character->GetWeaponComponent()->IsAllAmmoFull())) return false;
 	// The points go first and in one step, on the server, so one request can never be paid for twice or delivered unpaid.
 	Player->AddSurvivalPoints(-Cost);
 	switch (Item)

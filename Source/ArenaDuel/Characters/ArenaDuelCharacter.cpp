@@ -995,11 +995,13 @@ void AArenaDuelCharacter::SlideCompleted()
 	}
 }
 
-void AArenaDuelCharacter::WeaponFireStarted() { if (WeaponComponent) WeaponComponent->StartFire(); }
+// Starting something needs the same permission as every other gameplay input (no menu open, alive, allowed to
+// act); letting go always goes through, so nothing stays held behind a menu.
+void AArenaDuelCharacter::WeaponFireStarted() { if (WeaponComponent && CanProcessGameplayInput()) WeaponComponent->StartFire(); }
 void AArenaDuelCharacter::WeaponFireCompleted() { if (WeaponComponent) WeaponComponent->StopFire(); }
-void AArenaDuelCharacter::AimStarted() { if (WeaponComponent) WeaponComponent->StartAim(); }
+void AArenaDuelCharacter::AimStarted() { if (WeaponComponent && CanProcessGameplayInput()) WeaponComponent->StartAim(); }
 void AArenaDuelCharacter::AimCompleted() { if (WeaponComponent) WeaponComponent->ReleaseAim(); }
-void AArenaDuelCharacter::WeaponReloadStarted() { if (WeaponComponent) WeaponComponent->Reload(); }
+void AArenaDuelCharacter::WeaponReloadStarted() { if (WeaponComponent && CanProcessGameplayInput()) WeaponComponent->Reload(); }
 // 1 firearm, 2 flashbang, 3 knife. 4 and a second press of 1 swap the two firearms of the marksman loadout.
 void AArenaDuelCharacter::Weapon1Started() { if (WeaponComponent && CanProcessGameplayInput()) WeaponComponent->SelectSlot(EArenaDuelLoadoutSlot::Primary); }
 void AArenaDuelCharacter::Weapon2Started() { if (WeaponComponent && CanProcessGameplayInput()) WeaponComponent->SelectSlot(EArenaDuelLoadoutSlot::Flashbang); }

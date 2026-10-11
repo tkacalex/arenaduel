@@ -15,7 +15,7 @@ Character select, ready (or auto ready after 12 s), a 3.35 s countdown, then rou
 
 ## What happens at the limit (interim rule)
 
-If both players are alive when the 90 seconds are over, **overtime** begins: the header reads `OVERTIME`, a banner says `OVERTIME - NEXT KILL WINS` for four seconds, and the round simply goes on. Health, ammunition, positions, abilities and cooldowns are untouched. The next regular kill ends the round exactly as a kill inside the 90 seconds would. There is no extra damage, no shrinking zone, no upgrade. If both die in the same instant, the round ends without a point, as before.
+If both players are alive when the 90 seconds are over, **overtime** begins: the header reads `OVERTIME`, a banner says `OVERTIME - NEXT KILL WINS` for four seconds, and the round simply goes on. Health, ammunition, positions, abilities and cooldowns are untouched. The next regular kill ends the round exactly as a kill inside the 90 seconds would. There is no extra damage, no shrinking zone, no upgrade. Deaths are handled one after another on the server, also inside one frame: the first death ends the round and gives the other player the win, and damage that arrives after that, a lethal hit on the winner included, no longer counts. There is no simultaneous double death and no drawn round from two kills.
 
 This is deliberately a placeholder for the overtime objective named in `docs/GAME_DESIGN.md`. An overtime has no time limit of its own.
 

@@ -24,11 +24,17 @@ public:
 	void ShowPause();
 	void HandleEscape();
 	bool HasExpectedTree() const;
+	/** Tests: what Apply would take, and what the four display controls show (mode|resolution|vsync|fps). */
+	const FArenaDuelLocalSettings& GetPendingSettings() const { return PendingSettings; }
+	FString DescribeShownForTests() const;
+	void SetPendingForTests(const FArenaDuelLocalSettings& Settings) { PendingSettings = Settings; ShowPending(); }
+	void ResetDefaultsForTests() { OnResetClicked(); }
 	virtual FReply NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& Event) override;
 protected:
 	virtual void NativeConstruct() override;
 	void BuildTree();
 	void PullValues();
+	void ShowPending();
 	void Apply();
 	void Back();
 	void ResetDefaults();

@@ -108,9 +108,22 @@ void UArenaDuelPlayerMenuWidget::ShowPause(){if(SettingsPage)SettingsPage->SetVi
 void UArenaDuelPlayerMenuWidget::PullValues()
 {
 	const auto* PC=Cast<AArenaDuelPlayerController>(GetOwningPlayer()); if(!PC||!SensitivitySlider)return; PendingSettings=PC->GetLocalSettings();
-	SensitivitySlider->SetValue((PendingSettings.MouseSensitivity-0.1f)/4.9f); ADSSlider->SetValue((PendingSettings.ADSMultiplier-0.25f)/1.25f); FOVSlider->SetValue((PendingSettings.FOV-80)/30); VolumeSlider->SetValue(PendingSettings.MasterVolume); UpdateSliderLabels();
-	WindowModeBox->SetSelectedOption(PendingSettings.WindowMode==0?TEXT("Fullscreen"):PendingSettings.WindowMode==1?TEXT("Borderless"):TEXT("Windowed")); VSyncBox->SetSelectedOption(PendingSettings.bVSync?TEXT("On"):TEXT("Off")); FPSBox->SetSelectedOption(PendingSettings.FPSLimit<=0?TEXT("Unlimited"):FString::FromInt(PendingSettings.FPSLimit));
-	const FString Desired=FString::Printf(TEXT("%d x %d"),PendingSettings.ResolutionX,PendingSettings.ResolutionY); if(ResolutionBox->FindOptionIndex(Desired)==INDEX_NONE)ResolutionBox->AddOption(Desired); ResolutionBox->SetSelectedOption(Desired);
+	ShowPending();
+}
+void UArenaDuelPlayerMenuWidget::ShowPending()
+{
+	// Every control shows PendingSettings, which is what Apply takes. Selecting an option calls back into the
+	// handlers below, which write the same value again, so the settings are copied first and restored after.
+	if(!SensitivitySlider)return; const FArenaDuelLocalSettings Shown=PendingSettings;
+	SensitivitySlider->SetValue((Shown.MouseSensitivity-0.1f)/4.9f); ADSSlider->SetValue((Shown.ADSMultiplier-0.25f)/1.25f); FOVSlider->SetValue((Shown.FOV-80)/30); VolumeSlider->SetValue(Shown.MasterVolume);
+	WindowModeBox->SetSelectedOption(Shown.WindowMode==0?TEXT("Fullscreen"):Shown.WindowMode==1?TEXT("Borderless"):TEXT("Windowed")); VSyncBox->SetSelectedOption(Shown.bVSync?TEXT("On"):TEXT("Off"));
+	const FString Cap=Shown.FPSLimit<=0?FString(TEXT("Unlimited")):FString::FromInt(Shown.FPSLimit); if(FPSBox->FindOptionIndex(Cap)==INDEX_NONE)FPSBox->AddOption(Cap); FPSBox->SetSelectedOption(Cap);
+	const FString Desired=FString::Printf(TEXT("%d x %d"),Shown.ResolutionX,Shown.ResolutionY); if(ResolutionBox->FindOptionIndex(Desired)==INDEX_NONE)ResolutionBox->AddOption(Desired); ResolutionBox->SetSelectedOption(Desired);
+	PendingSettings=Shown; UpdateSliderLabels();
+}
+FString UArenaDuelPlayerMenuWidget::DescribeShownForTests() const
+{
+	return HasExpectedTree()?FString::Printf(TEXT("%s|%s|%s|%s"),*WindowModeBox->GetSelectedOption(),*ResolutionBox->GetSelectedOption(),*VSyncBox->GetSelectedOption(),*FPSBox->GetSelectedOption()):FString();
 }
 void UArenaDuelPlayerMenuWidget::UpdateSliderLabels(){if(SensitivityLabel)SensitivityLabel->SetText(FText::FromString(FString::Printf(TEXT("%.2f"),PendingSettings.MouseSensitivity)));if(ADSLabel)ADSLabel->SetText(FText::FromString(FString::Printf(TEXT("%.2f"),PendingSettings.ADSMultiplier)));if(FOVLabel)FOVLabel->SetText(FText::FromString(FString::Printf(TEXT("%.0f"),PendingSettings.FOV)));if(VolumeLabel)VolumeLabel->SetText(FText::AsPercent(PendingSettings.MasterVolume));}
 void UArenaDuelPlayerMenuWidget::OnSensitivityChanged(float V){PendingSettings.MouseSensitivity=0.1f+FMath::Clamp(V,0,1)*4.9f;UpdateSliderLabels();}
@@ -123,13 +136,13 @@ void UArenaDuelPlayerMenuWidget::OnVSyncChanged(FString V,ESelectInfo::Type){Pen
 void UArenaDuelPlayerMenuWidget::OnFPSChanged(FString V,ESelectInfo::Type){PendingSettings.FPSLimit=V==TEXT("Unlimited")?0:FCString::Atoi(*V);}
 void UArenaDuelPlayerMenuWidget::Apply(){if(AArenaDuelPlayerController* PC=Cast<AArenaDuelPlayerController>(GetOwningPlayer()))PC->ApplyLocalSettings(PendingSettings,true);}
 void UArenaDuelPlayerMenuWidget::Back(){if(bFromCharacterSelect){Close();return;}ShowPause();}
-void UArenaDuelPlayerMenuWidget::ResetDefaults(){PendingSettings=FArenaDuelLocalSettings();PullValues();}
+void UArenaDuelPlayerMenuWidget::ResetDefaults(){PendingSettings=FArenaDuelLocalSettings();ShowPending();}
 void UArenaDuelPlayerMenuWidget::Close(){if(AArenaDuelPlayerController* PC=Cast<AArenaDuelPlayerController>(GetOwningPlayer()))PC->ClosePlayerMenu();}
 void UArenaDuelPlayerMenuWidget::OnResumeClicked(){Close();}
 void UArenaDuelPlayerMenuWidget::OnMainMenuClicked(){ if (AArenaDuelPlayerController* Controller = Cast<AArenaDuelPlayerController>(GetOwningPlayer())) Controller->ReturnToMainMenu(); }
 void UArenaDuelPlayerMenuWidget::OnSettingsClicked(){ShowSettings();}
 void UArenaDuelPlayerMenuWidget::OnApplyClicked(){Apply();}
 void UArenaDuelPlayerMenuWidget::OnBackClicked(){Back();}
-void UArenaDuelPlayerMenuWidget::OnResetClicked(){PendingSettings=FArenaDuelLocalSettings();SensitivitySlider->SetValue((1.0f-0.1f)/4.9f);ADSSlider->SetValue((1.0f-0.25f)/1.25f);FOVSlider->SetValue((90.0f-80)/30);VolumeSlider->SetValue(1.0f);WindowModeBox->SetSelectedOption(TEXT("Borderless"));VSyncBox->SetSelectedOption(TEXT("Off"));FPSBox->SetSelectedOption(TEXT("144"));UpdateSliderLabels();}
+void UArenaDuelPlayerMenuWidget::OnResetClicked(){ResetDefaults();}
 void UArenaDuelPlayerMenuWidget::HandleEscape(){if(SettingsPage&&SettingsPage->GetVisibility()==ESlateVisibility::Visible)Back();else Close();}
 FReply UArenaDuelPlayerMenuWidget::NativeOnPreviewKeyDown(const FGeometry& G,const FKeyEvent& E){if(E.GetKey()==EKeys::Escape){HandleEscape();return FReply::Handled();}return Super::NativeOnPreviewKeyDown(G,E);}

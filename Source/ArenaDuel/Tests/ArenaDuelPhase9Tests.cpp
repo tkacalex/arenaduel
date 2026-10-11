@@ -14,6 +14,11 @@
 #include "ArenaDuel/Game/ArenaDuelGameMode.h"
 #include "ArenaDuel/Game/ArenaDuelGameState.h"
 #include "ArenaDuel/Game/ArenaDuelUpgrades.h"
+#include "ArenaDuel/Game/ArenaDuelZombieGameMode.h"
+#include "ArenaDuel/Game/ArenaDuelZombieGameState.h"
+#include "ArenaDuel/Player/ArenaDuelLocalSettings.h"
+#include "ArenaDuel/Player/ArenaDuelPlayerController.h"
+#include "ArenaDuel/UI/ArenaDuelPlayerMenuWidget.h"
 #include "ArenaDuel/Player/ArenaDuelPlayerState.h"
 #include "ArenaDuel/Weapons/ArenaDuelWeaponComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -23,6 +28,28 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/PlayerController.h"
+
+// E09: Reset Defaults shows and keeps the default of every control, the resolution included.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelPhase9ResetDefaultsTest, "ArenaDuel.Phase9.Menu.ResetDefaults", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FArenaDuelPhase9ResetDefaultsTest::RunTest(const FString& Parameters)
+{
+	UArenaDuelPlayerMenuWidget* Widget = NewObject<UArenaDuelPlayerMenuWidget>();
+	Widget->Initialize();
+	if (!TestTrue(TEXT("The settings menu builds"), Widget->HasExpectedTree())) return false;
+	FArenaDuelLocalSettings Changed;
+	Changed.MouseSensitivity = 2.5f; Changed.ADSMultiplier = 0.5f; Changed.FOV = 104.0f; Changed.MasterVolume = 0.4f;
+	Changed.WindowMode = 2; Changed.ResolutionX = 1600; Changed.ResolutionY = 900; Changed.bVSync = true; Changed.FPSLimit = 60;
+	Widget->SetPendingForTests(Changed);
+	TestEqual(TEXT("Changed settings are shown"), Widget->DescribeShownForTests(), FString(TEXT("Windowed|1600 x 900|On|60")));
+	TestTrue(TEXT("Showing the settings does not change them"), Widget->GetPendingSettings().ResolutionX == 1600 && Widget->GetPendingSettings().WindowMode == 2 && Widget->GetPendingSettings().FPSLimit == 60 && FMath::IsNearlyEqual(Widget->GetPendingSettings().MouseSensitivity, 2.5f));
+	Widget->ResetDefaultsForTests();
+	const FArenaDuelLocalSettings Defaults;
+	const FArenaDuelLocalSettings& Now = Widget->GetPendingSettings();
+	TestEqual(TEXT("Reset shows the defaults, the resolution included"), Widget->DescribeShownForTests(), FString(TEXT("Borderless|1920 x 1080|Off|144")));
+	TestTrue(TEXT("What Apply would take is the defaults"), Now.WindowMode == Defaults.WindowMode && Now.ResolutionX == Defaults.ResolutionX && Now.ResolutionY == Defaults.ResolutionY && Now.bVSync == Defaults.bVSync && Now.FPSLimit == Defaults.FPSLimit
+		&& FMath::IsNearlyEqual(Now.MouseSensitivity, Defaults.MouseSensitivity) && FMath::IsNearlyEqual(Now.ADSMultiplier, Defaults.ADSMultiplier) && FMath::IsNearlyEqual(Now.FOV, Defaults.FOV) && FMath::IsNearlyEqual(Now.MasterVolume, Defaults.MasterVolume));
+	return true;
+}
 
 namespace ArenaDuelPhase9Tests
 {
@@ -352,6 +379,78 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 			}, FTimespan::FromSeconds(5.0));
 	}
 
+	// E06: with the pause menu open nothing of the weapon starts. E10: a refill has something to add only when ammunition is missing.
+	TEST_METHOD(MenuLocksWeaponStartsAndRefillKnowsWhenItIsNeeded)
+	{
+		using namespace ArenaDuelPhase9Tests;
+		Network
+			.UntilServer(TEXT("Both duel players have pawns"), [](FArenaDuelPhase9State& State) { return PawnForSlot(State.World, 0) && PawnForSlot(State.World, 1); }, FTimespan::FromSeconds(10.0))
+			.ThenServer(TEXT("Start a round"), [](FArenaDuelPhase9State& State) { StartMatch(State.World); })
+			.UntilServer(TEXT("Round one runs"), [](FArenaDuelPhase9State& State) { return BothAliveInRound(State.World); }, FTimespan::FromSeconds(6.0))
+			.ThenServer(TEXT("Menu open: no shot, no aim, no reload, no switch; closed: all of it again"), [this](FArenaDuelPhase9State& State)
+			{
+				AArenaDuelPlayerController* Controller = Cast<AArenaDuelPlayerController>(ControllerForSlot(State.World, 0));
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 0)->GetWeaponComponent();
+				Weapon->ClearActionTimesForTests();
+				if (!Weapon->IsAllAmmoFull()) TestRunner->AddError(TEXT("A fresh pawn does not count as fully loaded"));
+				Weapon->StartFire();
+				Weapon->StopFire();
+				const int32 Ammo = Weapon->GetCurrentMagazineAmmo();
+				if (Ammo >= Weapon->GetCurrentDefinition().MagazineCapacity) { TestRunner->AddError(TEXT("No shot left before the menu check")); return; }
+				if (Weapon->IsAllAmmoFull()) TestRunner->AddError(TEXT("A magazine with a round missing counts as full"));
+				Controller->OpenPlayerMenu();
+				if (!Controller->IsPlayerMenuOpen()) { TestRunner->AddError(TEXT("The pause menu did not open")); return; }
+				Weapon->StartFire();
+				if (Weapon->GetCurrentMagazineAmmo() != Ammo || Weapon->IsLocalFireHeld() || Weapon->IsServerFiring() || Weapon->IsServerFirePending()) TestRunner->AddError(TEXT("A shot started behind the pause menu"));
+				Weapon->StartAim();
+				if (Weapon->IsAiming()) TestRunner->AddError(TEXT("Aiming started behind the pause menu"));
+				Weapon->Reload();
+				if (Weapon->IsReloading()) TestRunner->AddError(TEXT("A reload started behind the pause menu"));
+				Weapon->SelectSlot(EArenaDuelLoadoutSlot::Knife);
+				if (Weapon->GetActiveSlot() != EArenaDuelLoadoutSlot::Primary) TestRunner->AddError(TEXT("A weapon switch went through behind the pause menu"));
+				Controller->ClosePlayerMenu();
+				if (Controller->IsPlayerMenuOpen()) TestRunner->AddError(TEXT("The pause menu did not close"));
+				Weapon->Reload();
+				if (!Weapon->IsReloading()) TestRunner->AddError(TEXT("After closing the menu a reload does not start"));
+				// What a refill does is what the shop sells: afterwards there is nothing left to add.
+				Weapon->RefillAllAmmoForDevelopment();
+				if (!Weapon->IsAllAmmoFull()) TestRunner->AddError(TEXT("After a refill the pawn does not count as fully loaded"));
+			});
+	}
+
+	// E18: two lethal hits in one frame. The first death decides, in either order, and the round is decided once.
+	TEST_METHOD(TwoLethalHitsInOneFrameGiveTheRoundToWhoeverDiedSecond)
+	{
+		using namespace ArenaDuelPhase9Tests;
+		Network
+			.UntilServer(TEXT("Both duel players have pawns"), [](FArenaDuelPhase9State& State) { return PawnForSlot(State.World, 0) && PawnForSlot(State.World, 1); }, FTimespan::FromSeconds(10.0))
+			.ThenServer(TEXT("Start a round"), [](FArenaDuelPhase9State& State) { StartMatch(State.World); })
+			.UntilServer(TEXT("Round one runs"), [](FArenaDuelPhase9State& State) { return BothAliveInRound(State.World); }, FTimespan::FromSeconds(6.0))
+			.ThenServer(TEXT("Slot 1 first, then slot 0"), [this](FArenaDuelPhase9State& State)
+			{
+				AArenaDuelGameMode* GameMode = State.World->GetAuthGameMode<AArenaDuelGameMode>();
+				const int32 Evaluated = GameMode->GetRoundsEvaluated();
+				AArenaDuelCharacter* First = PawnForSlot(State.World, 0);
+				AArenaDuelCharacter* Second = PawnForSlot(State.World, 1);
+				Second->ApplyServerDamage(1000.0f);
+				First->ApplyServerDamage(1000.0f);
+				if (!Second->IsDead() || First->IsDead()) TestRunner->AddError(TEXT("The hit after the deciding death still counted"));
+				if (GameMode->FindPlayerStateByDuelSlot(0)->GetRoundWins() != 1 || GameMode->FindPlayerStateByDuelSlot(1)->GetRoundWins() != 0 || GameMode->GetRoundsEvaluated() != Evaluated + 1) TestRunner->AddError(TEXT("Slot 0 did not get exactly one round"));
+			})
+			.UntilServer(TEXT("Round two runs"), [](FArenaDuelPhase9State& State) { return BothAliveInRound(State.World) && State.World->GetGameState<AArenaDuelGameState>()->GetRoundNumber() == 2; }, FTimespan::FromSeconds(8.0))
+			.ThenServer(TEXT("Slot 0 first, then slot 1"), [this](FArenaDuelPhase9State& State)
+			{
+				AArenaDuelGameMode* GameMode = State.World->GetAuthGameMode<AArenaDuelGameMode>();
+				const int32 Evaluated = GameMode->GetRoundsEvaluated();
+				AArenaDuelCharacter* First = PawnForSlot(State.World, 0);
+				AArenaDuelCharacter* Second = PawnForSlot(State.World, 1);
+				First->ApplyServerDamage(1000.0f);
+				Second->ApplyServerDamage(1000.0f);
+				if (!First->IsDead() || Second->IsDead()) TestRunner->AddError(TEXT("The hit after the deciding death still counted (other order)"));
+				if (GameMode->FindPlayerStateByDuelSlot(0)->GetRoundWins() != 1 || GameMode->FindPlayerStateByDuelSlot(1)->GetRoundWins() != 1 || GameMode->GetRoundsEvaluated() != Evaluated + 1) TestRunner->AddError(TEXT("Slot 1 did not get exactly one round"));
+			});
+	}
+
 	// E07: a choice names its selection; one from an earlier selection is refused in a later one.
 	TEST_METHOD(UpgradeChoiceFromAnEarlierSelectionIsRefused)
 	{
@@ -463,6 +562,50 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9ThirdPlayerTest, "ArenaDuel.Phase9.ThirdPlaye
 				const AArenaDuelPlayerState* First = GameMode->FindPlayerStateByDuelSlot(0);
 				const AArenaDuelPlayerState* Second = GameMode->FindPlayerStateByDuelSlot(1);
 				if (!First || !Second || First->GetRoundWins() != 1 || Second->GetRoundWins() != 0 || GameMode->GetRoundsEvaluated() != Evaluated + 1) TestRunner->AddError(TEXT("The kill between the two duel players was not counted once for the survivor"));
+			});
+	}
+};
+
+// E17: survival ends when the last living player leaves, so a dead player who stays can start again.
+NETWORK_TEST_CLASS(FArenaDuelPhase9SurvivalLeaveTest, "ArenaDuel.Phase9.Survival")
+{
+	FPIENetworkComponent<FArenaDuelPhase9State> Network{TestRunner, TestCommandBuilder, bInitializing};
+
+	BEFORE_EACH()
+	{
+		FNetworkComponentBuilder<FArenaDuelPhase9State>()
+			.WithClients(1)
+			.AsListenServer()
+			.WithGameMode(AArenaDuelZombieGameMode::StaticClass())
+			.Build(Network);
+	}
+
+	TEST_METHOD(LastLivingPlayerLeavingEndsTheRun)
+	{
+		Network
+			.UntilServer(TEXT("Host and client have pawns in the run"), [](FArenaDuelPhase9State& State)
+			{
+				int32 Living = 0;
+				for (FConstPlayerControllerIterator It = State.World->GetPlayerControllerIterator(); It; ++It) if (const AArenaDuelCharacter* Pawn = It->Get() ? Cast<AArenaDuelCharacter>(It->Get()->GetPawn()) : nullptr; Pawn && !Pawn->IsDead()) ++Living;
+				return Living == 2;
+			}, FTimespan::FromSeconds(15.0))
+			.ThenServer(TEXT("The host dies, the client lives on, then leaves"), [this](FArenaDuelPhase9State& State)
+			{
+				AArenaDuelZombieGameMode* GameMode = State.World->GetAuthGameMode<AArenaDuelZombieGameMode>();
+				const AArenaDuelZombieGameState* GameState = State.World->GetGameState<AArenaDuelZombieGameState>();
+				if (!GameMode || !GameState) { TestRunner->AddError(TEXT("Not a survival world")); return; }
+				APlayerController* Host = State.World->GetFirstPlayerController();
+				APlayerController* Remote = nullptr;
+				for (FConstPlayerControllerIterator It = State.World->GetPlayerControllerIterator(); It; ++It) if (It->Get() != Host) Remote = It->Get();
+				AArenaDuelCharacter* HostPawn = Host ? Cast<AArenaDuelCharacter>(Host->GetPawn()) : nullptr;
+				if (!HostPawn || !Remote) { TestRunner->AddError(TEXT("Host pawn or remote player missing")); return; }
+				GameMode->EndRunIfNobodyStands(Remote);
+				if (GameState->IsGameOver()) TestRunner->AddError(TEXT("A player leaving ended the run although the host still stands"));
+				HostPawn->ApplyServerDamage(100000.0f);
+				if (!HostPawn->IsDead()) { TestRunner->AddError(TEXT("The host could not be killed for the check")); return; }
+				if (GameState->IsGameOver()) TestRunner->AddError(TEXT("The run ended although the remote player is alive"));
+				GameMode->Logout(Remote);
+				if (!GameState->IsGameOver()) TestRunner->AddError(TEXT("The last living player left and the run did not end"));
 			});
 	}
 };
