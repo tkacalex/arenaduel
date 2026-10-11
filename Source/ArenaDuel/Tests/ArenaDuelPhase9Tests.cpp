@@ -560,6 +560,14 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 					if (Age < 0.25) return false;
 					Pawn->SetActorLocation(State.Base, false, nullptr, ETeleportType::TeleportPhysics);
 					if (!Shoot() || Weapon->GetLastShotResult() != EArenaDuelShotResult::Miss) TestRunner->AddError(TEXT("A standing shot did not pass over the cover"));
+					State.Mark = State.World->GetTimeSeconds();
+					State.Sequence = 1;
+					return false;
+				}
+				if (State.Sequence == 1)
+				{
+					// The weapon's own interval has to pass between two shots.
+					if (Age < 0.2) return false;
 					Pawn->GetCharacterMovement()->bCrouchMaintainsBaseLocation = true;
 					Pawn->GetCharacterMovement()->bWantsToCrouch = true;
 					Pawn->GetCharacterMovement()->Crouch(false);
@@ -567,22 +575,19 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 					// In the first moment the eye, and the shot, are where they were.
 					if (!Shoot() || Weapon->GetLastShotResult() != EArenaDuelShotResult::Miss) TestRunner->AddError(TEXT("In the first moment of the crouch the shot did not pass over the cover the eye still looks over"));
 					State.Mark = State.World->GetTimeSeconds();
-					State.Sequence = 1;
+					State.Sequence = 2;
 					return false;
 				}
-				if (State.Sequence == 1)
+				if (State.Sequence == 2)
 				{
-					// Somewhere on the way down: whatever the eye does, the shot does.
-					if (Age < 0.05) return false;
-					State.Sequence = 2;
+					// On the way down: whatever the eye does, the shot does.
+					if (Age < 0.2) return false;
+					State.Sequence = 3;
 					const float Left = Pawn->GetEyeEaseOffset();
 					const bool bEyeAbove = Left > 36.0f;
-					if (FMath::Abs(Left - 36.0f) > 1.5f)
-					{
-						if (!Shoot()) { TestRunner->AddError(TEXT("No shot left during the ease")); return true; }
-						const bool bOver = Weapon->GetLastShotResult() == EArenaDuelShotResult::Miss;
-						if (bOver != bEyeAbove) TestRunner->AddError(FString::Printf(TEXT("With %.1f cm of the ease left the shot %s the cover although the eye is %s its top"), Left, bOver ? TEXT("passed over") : TEXT("hit"), bEyeAbove ? TEXT("above") : TEXT("below")));
-					}
+					if (!Shoot()) { TestRunner->AddError(TEXT("No shot left during the ease")); return true; }
+					const bool bOver = Weapon->GetLastShotResult() == EArenaDuelShotResult::Miss;
+					if (bOver != bEyeAbove) TestRunner->AddError(FString::Printf(TEXT("With %.1f cm of the ease left the shot %s the cover although the eye is %s its top"), Left, bOver ? TEXT("passed over") : TEXT("hit"), bEyeAbove ? TEXT("above") : TEXT("below")));
 					return false;
 				}
 				if (Age < 1.2) return false;
