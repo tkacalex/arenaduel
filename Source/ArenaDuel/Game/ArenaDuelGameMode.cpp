@@ -2,6 +2,8 @@
 
 #include "ArenaDuelGameMode.h"
 
+#include "../ArenaDuel.h"
+
 #include "../Characters/ArenaDuelCharacter.h"
 #include "ArenaDuelGameState.h"
 #include "../Abilities/ArenaDuelVeilWall.h"
@@ -63,6 +65,8 @@ void AArenaDuelGameMode::PostLogin(APlayerController* NewPlayer)
 	{
 		AssignDuelSlot(NewPlayer->GetPlayerState<AArenaDuelPlayerState>());
 		const AArenaDuelPlayerState* Joined = NewPlayer->GetPlayerState<AArenaDuelPlayerState>();
+		// One line per change of who is in the match, so a session between separate processes can be read from the host's log.
+		UE_LOG(LogArenaDuel, Log, TEXT("Match: %s joined, %s"), *GetNameSafe(NewPlayer), Joined && Joined->IsDuelSpectator() ? TEXT("watching (both duel places are taken)") : *FString::Printf(TEXT("duel slot %d"), Joined ? static_cast<int32>(Joined->GetDuelSlot()) : -1));
 		if (IsLimitedToDuelPlayers() && (!Joined || Joined->GetDuelSlot() > 1))
 		{
 			// Both places are taken: this player watches. The engine gave them a pawn before the slot was
@@ -155,6 +159,7 @@ void AArenaDuelGameMode::Logout(AController* Exiting)
 			Player->SetDuelSlot(255);
 			AArenaDuelPhaseGateVisual::DestroyOwnedByPlayerState(GetWorld(), Player);
 		}
+	UE_LOG(LogArenaDuel, Log, TEXT("Match: %s left, %s"), *GetNameSafe(Exiting), bWasDuelPlayer ? TEXT("a duel player: back to character selection") : TEXT("not a duel player: the match goes on"));
 	Super::Logout(Exiting);
 	// No ranked forfeit here. A missing opponent safely returns the duel to selection. Someone who was only
 	// watching leaves without touching the match.
@@ -181,6 +186,7 @@ void AArenaDuelGameMode::EnterCharacterSelect()
 	State->SetMatchComplete(false, INDEX_NONE);
 	State->SetRoundState(1, false, INDEX_NONE);
 	State->SetMatchPhase(EArenaDuelMatchPhase::CharacterSelect);
+	UE_LOG(LogArenaDuel, Log, TEXT("Match: character selection, score and upgrades cleared"));
 	RestartDuelPlayers();
 	StartCharacterAutoReadyTimer();
 }
@@ -364,6 +370,7 @@ void AArenaDuelGameMode::EndRoundForDevelopment(AArenaDuelPlayerState* WinningPl
 	if (WinningPlayerState) WinningPlayerState->AwardRoundWin();
 	const int32 WinnerSlot = WinningPlayerState ? static_cast<int32>(WinningPlayerState->GetDuelSlot()) : INDEX_NONE;
 	ArenaGameState->SetRoundState(ArenaGameState->GetRoundNumber(), false, WinnerSlot);
+	UE_LOG(LogArenaDuel, Log, TEXT("Match: round %d decided, winner slot %d"), ArenaGameState->GetRoundNumber(), WinnerSlot);
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		if (APlayerController* PlayerController = It->Get())
@@ -425,7 +432,11 @@ void AArenaDuelGameMode::RequestUpgradeChoice(APlayerController* Requester, uint
 	if (!HasAuthority() || !State || !State->IsUpgradeSelect() || !IsUpgradeSelectionPending()) return;
 	// The request names the selection it was made in. One from an earlier selection, however late it
 	// arrives, is not a choice in this one.
-	if (SelectionSerial != State->GetUpgradeSelectSerial()) return;
+	if (SelectionSerial != State->GetUpgradeSelectSerial())
+	{
+		UE_LOG(LogArenaDuel, Log, TEXT("Match: upgrade choice for selection %d refused, selection %d is open"), SelectionSerial, State->GetUpgradeSelectSerial());
+		return;
+	}
 	if (!Player || Player->GetOwner() != Requester || Player->GetDuelSlot() > 1 || Player->HasChosenUpgrade()) return;
 	if (!ArenaDuelUpgrades::IsValidId(UpgradeId) || !Player->AddUpgradeLevelAuthoritatively(static_cast<EArenaDuelUpgrade>(UpgradeId))) return;
 	Player->SetUpgradeChosenAuthoritatively(true);
