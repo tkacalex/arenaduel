@@ -141,12 +141,75 @@ Not done with the packaged game: nobody looked at it or played it, the shipping 
 **Host and separately running client under latency** (editor binaries as two game processes without windows, the client with 100 ms simulated latency, playing a fixed sequence by itself through `ArenaDuel.Dev.After`; both sides log every real and every shown shot with `ArenaDuel.Dev.ShotLog 1`):
 
 - *Found under latency:* a trigger pressed right after asking for the firearm did nothing at all, on either side. The client still showed the knife when the press came, so it asked for a knife stroke, which the server, already switched, threw away. The owner now goes by the item it asked for while the server's answer is on its way (`GetExpectedSlot`), and counts the switch time from its own request. After the fix: first shown shot 0.273 s after the request, first real shot 0.303 s after the switch on the server, none before the 0.25 s switch time on either side.
-- *Shot origin through a crouch and a stand-up:* both sides ease along the same curve, but not at the same moment. First shots of a burst fired into a crouch: shown from 31.9 cm above the settled height, real from 19.2 cm; into a stand-up: 32.3 cm below against 19.1 cm below. Within three shots both are within 2 cm. Before the fix of E08 the real shot would have started from the settled height, 32 to 48 cm away from the shown one. What remains is the difference in when the crouch and the trigger reach the server; it is not corrected.
-- *Open, not changed: fewer real shots than shown ones.* In four held bursts the owner showed 31 shots and the server fired 22. The server's log shows gaps of two intervals where a shot was left out. Its repeating timer is phase locked, and a shot is refused when it comes earlier than one interval after the previous one was actually fired, which a frame-quantised timer does again and again. So the real rate of fire of automatic weapons is below the defined one, by an amount that depends on the server's frame rate. This was measured, not fixed: correcting it raises the real rate of fire of every automatic weapon, which is a change of balance and needs a decision.
+- *Shot origin through a crouch and a stand-up:* both sides ease along the same curve, but not at the same moment. First shots of a burst fired into a crouch: shown from 31.9 cm above the settled height, real from 19.2 cm; into a stand-up: 32.3 cm below against 19.1 cm below. Within three shots both are within 2 cm. Before the fix of E08 the real shot would have started from the settled height, 32 to 48 cm away from the shown one. What remained was the difference in when the crouch and the trigger reach the server; the third session reduced it ("Shot origin, second step" below).
+- *Fixed in the third session, see "Rate of fire" below; this is how it was found: fewer real shots than shown ones.* In four held bursts the owner showed 31 shots and the server fired 22. The server's log shows gaps of two intervals where a shot was left out. Its repeating timer is phase locked, and a shot is refused when it comes earlier than one interval after the previous one was actually fired, which a frame-quantised timer does again and again. So the real rate of fire of automatic weapons is below the defined one, by an amount that depends on the server's frame rate. At the time this was measured and left for a decision; the decision was to restore the configured rate.
 
-Slides were not covered between separate processes (there is no scripted way to slide yet); the eased eye is the same function for crouch and slide.
+Slides were not covered between separate processes in this session; they are in the third.
 
 Whole regression run at the end, filter `ArenaDuel`: 115 of 115 passed. Working tree clean afterwards.
+
+### Rate of fire, shot origin and packaged function checks (2026-10-11, third session)
+
+No mouse, keyboard or window was used: automation tests, scripts, game processes without windows or consoles.
+
+**Rate of fire of automatic weapons.** No tuning value was changed: rounds per minute, damage, magazines, spread and recoil are what they were. What changed is that the server now reaches the configured rate.
+
+*Cause.* The server fired from a repeating timer with the weapon's interval, and each call was let through only if a full interval had passed since the previous shot *actually left*. A timer runs with the frame that follows its time, so every shot leaves a part of a frame late, and the next call, one interval after the previous call's *time*, came a moment too early as often as not and was thrown away as a whole. The loss depended on how frames happened to fall.
+
+*Now.* An automatic weapon has a schedule of due times one interval apart (`NextAllowedFireServerTimes`). A shot is fired when its due time has come, and the next is due one interval after that due time, not after the frame it left in, so lateness does not add up and no call is thrown away. A press starts a new schedule at once, unless the last shot's interval is still running: then the first shot is due when that is over, so pressing again can never beat holding. A frame longer than `AutomaticFireCatchUpSeconds` (0.1 s) loses the shots that fell into the rest of it; a hitch can add two shots to one frame at most. Single shot weapons are unchanged (one interval after the shot left).
+
+*Measured*, a held burst of 1.5 s on the server (`ArenaDuel.Phase9.FireRate.HeldFireKeepsTheConfiguredRateAtAnyFrameRate`; the old numbers are the same test run against the old scheduling with `-FireRateMeasureOnly`):
+
+| Weapon | Server frames | Shots due | Before | Now |
+| --- | --- | --- | --- | --- |
+| Arc Rifle, 650 rounds per minute | 30 per second | 17 | 14 | 17 |
+| | 60 per second | 17 | 10 | 17 |
+| | 144 per second | 17 | 13 | 17 |
+| | jumping between 25 and 200 | 17 | 15 | 17 |
+| | 60 with one hitch of 0.25 s | 17 | 10 | 16 |
+| Shade SMG, 900 rounds per minute | 30 per second | 23 | 23 | 23 |
+| | 60 per second | 23 | 23 | 23 |
+| | 144 per second | 23 | 17 | 23 |
+| | jumping between 25 and 200 | 23 | 15 | 23 |
+| | 60 with one hitch of 0.25 s | 23 | 20 | 22 |
+
+So the Arc Rifle fired at 59 to 88 % of its rate before and the SMG at 65 to 100 %, depending on the server's frames; both now fire at their rate. In a real fight this is more shots per second than the game had so far, up to two thirds more for the rifle in the worst case measured. Time to kill with automatic weapons is shorter by that much. That is the configured value taking effect, and it is worth a play test.
+
+The same test checks that the rounds used equal the shots fired and that no case fires more than is due. `...NothingFiresAfterTheFireIsCutOffAndNothingExtraFromPressingAgain` checks: nothing after letting go; pressing and letting go on every frame for a second fires no more than holding; a switch, a reload and the end of the round stop the fire and nothing follows; three rounds in the magazine give exactly three shots and then the reload; a dead player's weapon does not fire.
+
+Between separate processes under 100 ms latency, in six bursts: 48 real shots to 52 shown without loss, 49 to 52 with 2 % loss (before the fix: 22 to 31 in four bursts). What is left: at the end of a magazine the owner shows up to two shots more than leave, because it hears of the empty magazine late (3 real to 5 shown), and one shot at the edge of a burst when the press or the release arrives late. Not corrected.
+
+**Shot origin, second step (E08).** Laid side by side with the machine's clock, the logs show why about 13 cm were left: a crouch reached the server 115 to 190 ms after the owner did it, the trigger a similar but not the same time after, so the first shot after a crouch left 30 to 80 ms into the ease on the server and 30 to 65 ms into it for the owner. At the steep start of the curve 25 ms are 14 cm.
+
+Now the press carries how far along the owner's eye is (the seconds since its crouch or stand-up and since its slide start or end). The server does not take that as the origin. It moves its own clock for the running ease towards it, by at most `EyeEaseHintMaxSeconds` (0.1 s) either way, only while both sides are within the first second of an ease, and drops it when the next ease starts. A value that is negative, not a number or from outside an ease is ignored. The most a made-up value can gain is a height the eye really passes through, held a tenth of a second longer. The host's own pawn takes no hint.
+
+Measured under 100 ms latency and 2 % packet loss, eye above where it settles, server | owner, first four shots of a burst:
+
+| Burst | 1st | 2nd | 3rd | 4th |
+| --- | --- | --- | --- | --- |
+| into a crouch | 48.0 \| 48.0 | 13.6 \| 19.3 | 8.8 \| 7.2 | 3.6 \| 3.4 |
+| into a stand-up | -48.0 \| -48.0 | -11.1 \| -19.9 | -7.5 \| -8.0 | -3.2 \| -2.9 |
+| into a slide | 26.6 \| 26.6 | 0.6 \| 5.7 | -2.8 \| -3.3 | -6.9 \| -6.9 |
+
+The first shot now leaves from exactly where the owner's eye is. The second can still differ, by up to 8.8 cm here: each side fires it with the frame that follows its due time, and at the steepest part of the curve one frame is that much. From the third shot on the two are within 2 cm. A crouch in the middle of a held burst gets no hint (there is no new press) and stays on the server's own clock. Knife and flashbang carry no hint.
+
+`ArenaDuel.Phase9.Combat.OwnerEyeHintIsTakenWithinLimitsAndTheEasedEyeDecidesAShotOverCover` checks the limits (a small hint is taken as said, a large one is cut to the limit, nonsense is ignored, a new ease drops it, the host takes none) and a shot just over cover: with the top of a wall 12 cm below the standing eye, a standing shot passes over it, a shot in the first moment of a crouch still does, a shot later in the ease does what the eye does, and a settled crouched shot hits the wall. Beside cover nothing changes: the ease is vertical only.
+
+**Packaged Development game, function check.** A duel between two packaged processes, the host acting by script; from the host's log:
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Every firearm fires | real shots per weapon: 5, 7, 1 and 1 for the four | passed |
+| Both knife attacks | `light knife attack ... met nothing`, `heavy knife attack ... met nothing` | passed |
+| Long and short flashbang throw | `long flashbang throw`, and in round two `short flashbang throw` | passed |
+| A round with the upgrade selection | `round 1 begins`, `round 1 decided, winner slot 0`, `upgrade selection 1 opens for 10 s`, `duel slot 0 took upgrade 1 in selection 1`, `duel slot 1 did not choose in time and got upgrade 0`, `round 2 begins` | passed |
+| No missing content | no load problem in either log | passed |
+
+The knife met nobody and the flashbang blinded nobody that is on record; hits, damage and blinding are covered by the automation tests, not by this run.
+
+**Shipping package, started.** A shipping build writes no log and has no console, so little can be read from it. Started without a window three ways, into the menu, with the survival map, and as host with a second process connecting to it: each time the processes were still running after 45 to 60 seconds and no crash report was written. Whether the menu, the maps or the connection were reached could not be confirmed: a check for the host's listening port found none, and that check was not validated against a build that is known to listen. So: starts and does not crash, passed; menu, map change and both modes in the shipping build, not checked.
+
+Whole regression run, filter `ArenaDuel`: 118 of 118 passed. Working tree clean afterwards.
 
 ## Areas to check
 
@@ -193,11 +256,12 @@ Limits: nobody played in these processes. No shot, knife attack, switch or upgra
 
 Nothing in this list has been done; none of it should be read as checked. Phase 9 is not finished.
 
-- A decision on the real rate of fire of automatic weapons (measured above: the server fires fewer shots than the owner shows).
+- A play test of the automatic weapons at their restored rate of fire.
 - Looking at a running game: a knife fight around a corner (E02), a held trigger after a switch seen by both players (E04), the pause menu during a fight (E06), a boss spawn and a rescue in a real wave (E12), a zombie killed while running and while standing (E11), the packaged game on screen.
-- Starting the shipping package; choosing each character by hand; knife and flashbang in the packaged duel.
+- The shipping build beyond "starts and does not crash": menu, map change and both modes need eyes or a build with logging.
+- The owner showing up to two shots more than leave at the end of a magazine under latency; the second shot of a burst during an ease, up to 9 cm off.
 - A dedicated server with two clients (R01), movement under latency and packet loss with forced corrections (R02), skins, scale and late join (R03).
 - Sound (R05): nothing has been listened to. The sessions that did this work cannot hear.
 - Hands, fingers and every weapon action from both views (R06), zombie hit zones, boss clips and the hand-over to the ragdoll on screen (R07), a full match on the reworked arena (R08), load outside the editor (R09).
-- Between separate processes (R10): a played round to its end, an upgrade choice, a wrong address or version, the host quitting, a rejoin, slides under latency.
+- Between separate processes (R10): a wrong address or version, the host quitting, a rejoin; choosing each character by hand.
 - E16, bullet marks from end points only: open (9D).
