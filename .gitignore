@@ -37,3 +37,4 @@ Tools/claude_desktop_config.json
 # Baked weapon textures: 45 MB of PNG that Tools/Art/build_weapons.py writes again; the imported assets are in Content.
 Tools/Art/Weapons/T_*.png
 *.blend1
+Tools/Art/Equipment/T_*.png

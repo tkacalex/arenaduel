@@ -1,7 +1,8 @@
 """Knife and flashbang: import the models, make their materials and synthesise their sounds.
 
 Two editor runs with the editor closed. As it is: sounds, materials and the import of
-Tools/Art/Equipment/SM_Knife.fbx and SM_Flashbang.fbx to /Game/ArenaDuel/Weapons/Equipment.
+Tools/Art/Equipment/SM_Knife.fbx and SM_Flashbang.fbx to /Game/ArenaDuel/Weapons/Equipment, with the
+baked textures of each as M_Knife and M_Flashbang when the PNGs are there.
 With ARENADUEL_EQUIPMENT_FINISH=1: the materials onto the mesh slots, then the save (the importer
 finishes a mesh after the script, so both cannot happen in one run).
 
@@ -38,6 +39,48 @@ def material(name, color, roughness, metallic):
         node = EDIT.create_material_expression(mat, unreal.MaterialExpressionConstant, -500, y)
         node.set_editor_property('r', value)
         EDIT.connect_material_property(node, '', target)
+    EDIT.recompile_material(mat)
+    LIB.save_loaded_asset(mat)
+    return mat
+
+
+def textured(name):
+    """M_<Name> from the three baked maps of Tools/Art/build_equipment.py, or None when they are not there."""
+    maps = {}
+    for key, srgb, normal in (('BaseColor', True, False), ('Normal', False, True), ('RM', False, False)):
+        asset_name = 'T_%s_%s' % (name, key)
+        source = os.path.join(ART, asset_name + '.png')
+        if not os.path.isfile(source):
+            return None
+        import_file(source, DEST, asset_name)
+        asset = unreal.load_asset(DEST + '/' + asset_name)
+        if not asset:
+            return None
+        asset.set_editor_property('srgb', srgb)
+        if normal:
+            # Blender bakes normals with green up, Unreal expects green down.
+            asset.set_editor_property('compression_settings', unreal.TextureCompressionSettings.TC_NORMALMAP)
+            asset.set_editor_property('flip_green_channel', True)
+        elif not srgb:
+            asset.set_editor_property('compression_settings', unreal.TextureCompressionSettings.TC_MASKS)
+        LIB.save_loaded_asset(asset)
+        maps[key] = asset
+    path = '%s/M_%s' % (DEST, name)
+    if LIB.does_asset_exist(path):
+        LIB.delete_asset(path)
+    mat = unreal.AssetToolsHelpers.get_asset_tools().create_asset('M_' + name, DEST, unreal.Material, unreal.MaterialFactoryNew())
+    color = EDIT.create_material_expression(mat, unreal.MaterialExpressionTextureSample, -700, 0)
+    color.set_editor_property('texture', maps['BaseColor'])
+    EDIT.connect_material_property(color, 'RGB', unreal.MaterialProperty.MP_BASE_COLOR)
+    normal = EDIT.create_material_expression(mat, unreal.MaterialExpressionTextureSample, -700, 300)
+    normal.set_editor_property('texture', maps['Normal'])
+    normal.set_editor_property('sampler_type', unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL)
+    EDIT.connect_material_property(normal, 'RGB', unreal.MaterialProperty.MP_NORMAL)
+    rm = EDIT.create_material_expression(mat, unreal.MaterialExpressionTextureSample, -700, 600)
+    rm.set_editor_property('texture', maps['RM'])
+    rm.set_editor_property('sampler_type', unreal.MaterialSamplerType.SAMPLERTYPE_MASKS)
+    EDIT.connect_material_property(rm, 'R', unreal.MaterialProperty.MP_ROUGHNESS)
+    EDIT.connect_material_property(rm, 'G', unreal.MaterialProperty.MP_METALLIC)
     EDIT.recompile_material(mat)
     LIB.save_loaded_asset(mat)
     return mat
@@ -181,14 +224,16 @@ if not FINISH:
         data.set_editor_property('generate_lightmap_u_vs', False)
         data.set_editor_property('normal_import_method', unreal.FBXNormalImportMethod.FBXNIM_IMPORT_NORMALS)
         import_file(source, DEST, 'SM_' + name, ui)
-        report.append('%s imported=%s' % (name, LIB.does_asset_exist(DEST + '/SM_' + name)))
+        report.append('%s imported=%s textured=%s' % (name, LIB.does_asset_exist(DEST + '/SM_' + name), bool(textured(name))))
 else:
     for name, slots in MESHES:
         mesh = unreal.load_asset(DEST + '/SM_' + name)
         if not mesh:
             continue
+        baked = unreal.load_asset('%s/M_%s' % (DEST, name))
         for index, slot in enumerate(slots):
-            asset = unreal.load_asset(DEST + '/' + slot)
+            # The baked material covers all three slots; the plain ones are for a checkout without the bake.
+            asset = baked or unreal.load_asset(DEST + '/' + slot)
             if asset and index < len(mesh.get_editor_property('static_materials')):
                 mesh.set_material(index, asset)
         saved = LIB.save_loaded_asset(mesh, only_if_is_dirty=False)
