@@ -80,7 +80,8 @@ bool UArenaDuelHUDWidget::Initialize()
 	BuildWidgetTree();
 	const bool bHasExpectedTree = WidgetTree->RootWidget == RootCanvas
 		&& RootCanvas
-		&& RootCanvas->GetChildrenCount() == 7
+		&& RootCanvas->GetChildrenCount() == 8
+		&& RootCanvas->HasChild(OvertimeLabel)
 		&& RootCanvas->HasChild(HealthPanelRoot)
 		&& RootCanvas->HasChild(WeaponPanelRoot)
 		&& RootCanvas->HasChild(AbilityRoots.IsValidIndex(0) ? AbilityRoots[0] : nullptr)

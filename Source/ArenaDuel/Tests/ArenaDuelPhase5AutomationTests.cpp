@@ -34,7 +34,7 @@ bool FArenaDuelNativeHUDWidgetTreeTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestEqual(TEXT("Root canvas contains seven expected top-level widgets"), RootCanvas->GetChildrenCount(), 7);
+	TestEqual(TEXT("Root canvas contains eight expected top-level widgets, the overtime announcement among them"), RootCanvas->GetChildrenCount(), 8);
 	TestTrue(TEXT("Health panel is present"), Cast<UOverlay>(RootCanvas->GetChildAt(0)) != nullptr);
 	TestTrue(TEXT("Weapon panel is present"), Cast<UOverlay>(RootCanvas->GetChildAt(1)) != nullptr);
 	TestTrue(TEXT("Both ability slots are present"), Cast<UOverlay>(RootCanvas->GetChildAt(2)) && Cast<UOverlay>(RootCanvas->GetChildAt(3)));
@@ -43,7 +43,7 @@ bool FArenaDuelNativeHUDWidgetTreeTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Match result layer is present"), RootCanvas->GetChildAt(6) != nullptr);
 
 	TestFalse(TEXT("Repeated initialization does not rebuild the widget tree"), HUD->Initialize());
-	TestEqual(TEXT("Root child count remains stable after repeated initialization"), RootCanvas->GetChildrenCount(), 7);
+	TestEqual(TEXT("Root child count remains stable after repeated initialization"), RootCanvas->GetChildrenCount(), 8);
 	return true;
 }
 
