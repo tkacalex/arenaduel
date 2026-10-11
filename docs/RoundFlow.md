@@ -4,7 +4,7 @@ Phase 8A. Server-authoritative; the relevant code is `AArenaDuelGameMode`, `AAre
 
 ## Phases
 
-Character select, ready (or auto ready after 12 s), a 3.35 s countdown, then rounds until one player has five round wins. Between rounds there is a 3 s break in which only the winner may move; after the match the result stays for 5 s and both players return to character selection with everything reset.
+Character select, ready (or auto ready after 12 s), a 3.35 s countdown, then rounds until one player has five round wins. After a decided round both players take a match upgrade (at most 10 s, nobody moves; see `docs/MatchUpgrades.md`). A round without a winner is followed by a 3 s break in which nobody has won and nobody moves; after the match the result stays for 5 s and both players return to character selection with everything reset.
 
 ## The round clock
 

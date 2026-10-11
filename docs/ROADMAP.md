@@ -55,7 +55,13 @@ The 1v1 mode has a complete round flow on the existing selection, ready, countdo
 - First to five round wins, the pauses and the return to character selection are unchanged. Every round is decided exactly once, whatever asks for it; a time limit only counts for the round it was started for; leaving, a match end and a restart clear the clock.
 - Zombie Survival inherits the duel classes and has no round clock.
 
-Not part of 8A and still open in Phase 8: match upgrades (RPG choices), weapon selection, the real overtime objective, the nine round cap of the game design, ranked rules for a disconnect.
+Not part of 8A: weapon selection, the real overtime objective, the nine round cap of the game design, ranked rules for a disconnect.
+
+### Phase 8B: match upgrades (done 2026-10-11; Phase 8 stays open)
+
+After every decided round both players take one level of one of three upgrades in a selection of at most ten seconds that replaces the round break: Supply (+10 % reserve ammunition per level), Reload (5 % shorter reload per level), Abilities (5 % shorter regular cooldowns per level), three levels each, additive against the base value. The server owns offers, time, choices and effects; levels live on the player state and end with the match. See `docs/MatchUpgrades.md`.
+
+Still open in Phase 8: more and more varied upgrades (the three are a deliberately small start), balance from play tests, weapon selection, the real overtime objective, the nine round cap, ranked rules for a disconnect.
 
 ## Phase 9: Arena, UI, audiovisual polish, and optimization
 
