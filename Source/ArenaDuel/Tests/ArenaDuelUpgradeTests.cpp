@@ -163,6 +163,7 @@ NETWORK_TEST_CLASS(FArenaDuelUpgradeNetworkTest, "ArenaDuel.Phase8.Upgrades")
 			{
 				const AArenaDuelGameState* GameState = State.World->GetGameState<AArenaDuelGameState>();
 				const AArenaDuelPlayerController* Controller = Cast<AArenaDuelPlayerController>(State.World->GetFirstPlayerController());
+				UE_LOG(LogTemp, Display, TEXT("UPGDBG state=%d select=%d phase=%d ctrl=%d open=%d cursor=%d widget=%d tree=%d slot=%d"), GameState != nullptr, GameState && GameState->IsUpgradeSelect(), GameState ? static_cast<int32>(GameState->GetMatchPhase()) : -1, Controller != nullptr, Controller && Controller->IsUpgradeSelectOpen(), Controller && Controller->bShowMouseCursor, Controller && Controller->GetUpgradeWidget(), Controller && Controller->GetUpgradeWidget() && Controller->GetUpgradeWidget()->HasExpectedTree(), Controller && Controller->GetPlayerState<AArenaDuelPlayerState>() ? Controller->GetPlayerState<AArenaDuelPlayerState>()->GetDuelSlot() : -1);
 				return GameState && GameState->IsUpgradeSelect() && Controller && Controller->IsUpgradeSelectOpen() && Controller->bShowMouseCursor && Controller->GetUpgradeWidget() && Controller->GetUpgradeWidget()->HasExpectedTree();
 			}, FTimespan::FromSeconds(6.0))
 			.ThenClient(TEXT("The client takes Reload through the real request, twice"), 0, [](FArenaDuelUpgradeState& State)
