@@ -62,6 +62,62 @@ bool FArenaDuelNativeHUDWidgetTreeTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("A body hit shows the marker without the head shot word"), HUD->IsHitMarkerShown() && !HUD->IsHeadshotShown());
 	HUD->ShowHitMarker(true, false);
 	TestTrue(TEXT("A head shot shows the marker as a head shot"), HUD->IsHitMarkerShown() && HUD->IsHeadshotShown());
+	// The marker sits on the crosshair: the screen's middle, which is the middle of its centred root.
+	TestTrue(TEXT("The ticks stand around the middle of the marker's root"), HUD->GetHitMarkerTickCentre().Equals(HUD->GetHitMarkerRootSize() * 0.5, 0.01));
+	TestTrue(TEXT("The marker scales about that same middle"), HUD->GetHitMarkerPivotPoint().Equals(HUD->GetHitMarkerRootSize() * 0.5, 0.01));
+	TestTrue(TEXT("The head shot word is below the middle and inside the root"), HUD->GetHeadshotLabelCentreY() > HUD->GetHitMarkerRootSize().Y * 0.5 + 30.0 && HUD->GetHeadshotLabelCentreY() + 15.0 <= HUD->GetHitMarkerRootSize().Y);
+
+	// Confirmed hits arrive as events on the shooter's weapon and are shown from there.
+	UArenaDuelWeaponComponent* Weapon = NewObject<UArenaDuelWeaponComponent>();
+	UArenaDuelHUDWidget* Feedback = NewObject<UArenaDuelHUDWidget>();
+	Feedback->Initialize();
+	Feedback->SetHitFeedbackSource(Weapon);
+	// A head shot and then a miss, both confirmed before the HUD draws: the head shot is not lost.
+	Weapon->ConfirmShotForTests(1, EArenaDuelShotResult::Head);
+	Weapon->ConfirmShotForTests(2, EArenaDuelShotResult::Miss);
+	Weapon->ConfirmShotForTests(3, EArenaDuelShotResult::World);
+	TestEqual(TEXT("A miss and a hit on the world are not feedback"), Weapon->GetPendingHitFeedbackCount(), 1);
+	Feedback->ShowConfirmedHits(Weapon, false);
+	TestTrue(TEXT("Head shot then miss before one frame: the head shot is shown"), Feedback->IsHeadshotShown() && Feedback->GetHitSoundsAsked(true) == 1 && Feedback->GetHitSoundsAsked(false) == 0);
+	Feedback->ShowConfirmedHits(Weapon, false);
+	TestTrue(TEXT("Nothing is shown or played twice"), Weapon->GetPendingHitFeedbackCount() == 0 && Feedback->GetHitSoundsAsked(true) == 1);
+	// A head shot and then a body hit before one frame: the head shot's marker stays, the body hit has its sound.
+	Feedback->SetHitMarkerAgeForTests(10.0f);
+	Weapon->ConfirmShotForTests(4, EArenaDuelShotResult::Head);
+	Weapon->ConfirmShotForTests(5, EArenaDuelShotResult::Body);
+	Feedback->ShowConfirmedHits(Weapon, false);
+	TestTrue(TEXT("Head shot then body hit before one frame: still a head shot on screen"), Feedback->IsHeadshotShown());
+	TestTrue(TEXT("Each of the two had its sound"), Feedback->GetHitSoundsAsked(true) == 2 && Feedback->GetHitSoundsAsked(false) == 1);
+	// A body hit a frame later, while the head shot is still up, does not take it down either.
+	Feedback->SetHitMarkerAgeForTests(0.2f);
+	Weapon->ConfirmShotForTests(6, EArenaDuelShotResult::Limb);
+	Feedback->ShowConfirmedHits(Weapon, false);
+	TestTrue(TEXT("A later body hit does not take a running head shot down"), Feedback->IsHeadshotShown() && Feedback->GetHitSoundsAsked(false) == 2);
+	// After the head shot's time a body hit is a body hit.
+	Feedback->SetHitMarkerAgeForTests(UArenaDuelHUDWidget::GetHitMarkerSeconds(true) + 0.05f);
+	Weapon->ConfirmShotForTests(7, EArenaDuelShotResult::Body);
+	Feedback->ShowConfirmedHits(Weapon, false);
+	TestTrue(TEXT("Once the head shot's time is over a body hit shows as one"), Feedback->IsHitMarkerShown() && !Feedback->IsHeadshotShown());
+	// The same confirmation again, and an older one: nothing.
+	Weapon->ConfirmShotForTests(7, EArenaDuelShotResult::Head);
+	Weapon->ConfirmShotForTests(3, EArenaDuelShotResult::Head);
+	TestEqual(TEXT("A repeated or older confirmation is not taken again"), Weapon->GetPendingHitFeedbackCount(), 0);
+	TestTrue(TEXT("The weapon counted four head and three body hits"), Weapon->GetConfirmedHeadHits() == 2 && Weapon->GetConfirmedBodyHits() == 3);
+	// Many hits confirmed for one frame: one sound of each kind, and the buffer stays bounded.
+	const int32 HeadBefore = Feedback->GetHitSoundsAsked(true), BodyBefore = Feedback->GetHitSoundsAsked(false);
+	for (int32 Sequence = 8; Sequence < 48; ++Sequence) Weapon->ConfirmShotForTests(Sequence, Sequence % 2 == 0 ? EArenaDuelShotResult::Body : EArenaDuelShotResult::Head);
+	TestTrue(TEXT("The buffer of waiting hits is bounded"), Weapon->GetPendingHitFeedbackCount() <= 16);
+	Feedback->ShowConfirmedHits(Weapon, false);
+	TestTrue(TEXT("Many hits in one frame: one sound of each kind"), Feedback->GetHitSoundsAsked(true) == HeadBefore + 1 && Feedback->GetHitSoundsAsked(false) == BodyBefore + 1 && Feedback->IsHeadshotShown());
+	// A respawn: a new pawn's weapon. What the old one left is hidden, and what the new one already counted is not news.
+	UArenaDuelWeaponComponent* Respawned = NewObject<UArenaDuelWeaponComponent>();
+	Respawned->ConfirmShotForTests(1, EArenaDuelShotResult::Head);
+	const int32 HeadAsked = Feedback->GetHitSoundsAsked(true);
+	Feedback->ShowConfirmedHits(Respawned, false);
+	TestTrue(TEXT("A new pawn starts with no marker and no old news"), !Feedback->IsHitMarkerShown() && Feedback->GetHitSoundsAsked(true) == HeadAsked && Respawned->GetPendingHitFeedbackCount() == 0);
+	Respawned->ConfirmShotForTests(2, EArenaDuelShotResult::Head);
+	Feedback->ShowConfirmedHits(Respawned, false);
+	TestTrue(TEXT("Its next confirmed head shot is shown"), Feedback->IsHeadshotShown() && Feedback->GetHitSoundsAsked(true) == HeadAsked + 1);
 	return true;
 }
 

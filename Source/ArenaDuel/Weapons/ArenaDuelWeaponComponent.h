@@ -369,6 +369,24 @@ public:
 	int32 GetLastShotSequence() const { return LastShotSequence; }
 	int32 GetLastPelletsHit() const { return LastPelletsHit; }
 	int32 GetLastHeadPellets() const { return LastHeadPellets; }
+
+	/** One confirmed hit of the owner, waiting to be shown and heard. */
+	struct FHitFeedback
+	{
+		int32 Sequence = 0;
+		bool bHead = false;
+	};
+	/** Owner: the hits the server has confirmed since this was last asked, oldest first, and none of them again. Only what met a body is here; a miss and a hit on the world are never feedback. */
+	void TakeHitFeedback(TArray<FHitFeedback>& OutHits) { OutHits = MoveTemp(PendingHitFeedback); PendingHitFeedback.Reset(); }
+	int32 GetPendingHitFeedbackCount() const { return PendingHitFeedback.Num(); }
+	/** Owner: confirmed hits on a head, and on a body or limb, since this weapon exists. */
+	int32 GetConfirmedHeadHits() const { return ConfirmedHeadHits; }
+	int32 GetConfirmedBodyHits() const { return ConfirmedBodyHits; }
+	/** Tests: a confirmation as it arrives from the server. */
+	void ConfirmShotForTests(int32 Sequence, EArenaDuelShotResult Result) { ClientShotConfirmation_Implementation(Sequence, Result, 0.0f, 1, Result == EArenaDuelShotResult::Head ? 1 : 0); }
+	/** Tests: the item and the use of it as the server receives them from a remote owner. */
+	void SelectSlotForTests(EArenaDuelLoadoutSlot Slot);
+	void UseEquipmentForTests(bool bAlternate);
 	float GetCurrentSpreadDegrees() const;
 	// Maps a physics asset bone to the zone it scores as: head, torso or limb.
 	static EArenaDuelShotResult ClassifyHitBone(FName BoneName);
@@ -557,6 +575,11 @@ protected:
 	float LastShotDistance = 0.0f;
 	TWeakObjectPtr<AActor> LastShotTarget;
 	int32 LastShotSequence = 0;
+	// Owner: confirmed hits not yet taken by the HUD. Bounded: a HUD that is not drawn loses the oldest ones.
+	TArray<FHitFeedback> PendingHitFeedback;
+	int32 LastQueuedHitSequence = 0;
+	int32 ConfirmedHeadHits = 0;
+	int32 ConfirmedBodyHits = 0;
 	int32 LastPelletsHit = 0;
 	int32 LastHeadPellets = 0;
 	float LastShotWorldTime = -1.0f;

@@ -861,6 +861,8 @@ void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 }
 void UArenaDuelWeaponComponent::RequestReloadForTests() { ServerRequestReload_Implementation(); }
 void UArenaDuelWeaponComponent::FireAuthoritativeForTests() { FireAuthoritative(); }
+void UArenaDuelWeaponComponent::SelectSlotForTests(EArenaDuelLoadoutSlot Slot) { ServerSelectSlot_Implementation(static_cast<uint8>(Slot)); }
+void UArenaDuelWeaponComponent::UseEquipmentForTests(bool bAlternate) { ServerUseEquipment_Implementation(bAlternate); }
 void UArenaDuelWeaponComponent::SetFireHeldForTests(bool bHeld, float OwnerCrouchEaseAge, float OwnerSlideEaseAge) { ServerSetFireHeld_Implementation(bHeld, OwnerCrouchEaseAge, OwnerSlideEaseAge); }
 void UArenaDuelWeaponComponent::ConsumeAmmoForTests(int32 Rounds)
 {
@@ -1493,6 +1495,21 @@ void UArenaDuelWeaponComponent::SetLastShot(EArenaDuelShotResult Result, float D
 void UArenaDuelWeaponComponent::ClientShotConfirmation_Implementation(int32 Sequence, EArenaDuelShotResult Result, float Distance, int32 PelletsHit, int32 HeadPellets)
 {
 	LastShotSequence = Sequence; LastShotResult = Result; LastShotDistance = Distance; LastPelletsHit = PelletsHit; LastHeadPellets = HeadPellets; LastShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
+	// Every confirmation that met a body becomes one event for the HUD. Reading only the last result would lose
+	// a head shot that is followed by a miss, or by a body hit, before the HUD draws again. This message runs on
+	// the shooter's machine only (also for the host's own pawn), so nobody else gets a mark or a sound, and each
+	// sequence number is taken once.
+	const bool bBody = Result == EArenaDuelShotResult::Head || Result == EArenaDuelShotResult::Body || Result == EArenaDuelShotResult::Limb;
+	if (bBody && Sequence > LastQueuedHitSequence)
+	{
+		LastQueuedHitSequence = Sequence;
+		FHitFeedback& Hit = PendingHitFeedback.AddDefaulted_GetRef();
+		Hit.Sequence = Sequence;
+		Hit.bHead = Result == EArenaDuelShotResult::Head;
+		++(Hit.bHead ? ConfirmedHeadHits : ConfirmedBodyHits);
+		constexpr int32 MaxPendingHits = 16;
+		if (PendingHitFeedback.Num() > MaxPendingHits) PendingHitFeedback.RemoveAt(0, PendingHitFeedback.Num() - MaxPendingHits);
+	}
 }
 // ---------------------------------------------------------------------------------------------------
 // Loadout: three slots, one firearm per player except the marksman loadout

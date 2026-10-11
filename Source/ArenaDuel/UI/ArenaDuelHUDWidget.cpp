@@ -113,6 +113,12 @@ bool UArenaDuelHUDWidget::IsHitMarkerShown() const { return HitMarkerRoot && Hit
 void UArenaDuelHUDWidget::ShowHitMarker(bool bHead, bool bWithSound)
 {
 	if (!HitMarkerRoot) return;
+	// Heard only by the shooter and not placed in the world: a bright ring for the head, a dull tick otherwise.
+	++(bHead ? HeadSoundsAsked : BodySoundsAsked);
+	if (bWithSound) if (USoundBase* Sound = ArenaDuelItemMeshes::Sound(bHead ? TEXT("S_HitHead") : TEXT("S_HitBody"))) UGameplayStatics::PlaySound2D(this, Sound, bHead ? 0.9f : 0.5f);
+	// A body hit does not take a head shot's marker away: that one stays as it is until its own time is over.
+	const bool bHeadStillShown = IsHitMarkerShown() && bHitMarkerHead && FPlatformTime::Seconds() - HitMarkerStartSeconds < GetHitMarkerSeconds(true);
+	if (!bHead && bHeadStillShown) return;
 	bHitMarkerHead = bHead;
 	HitMarkerStartSeconds = FPlatformTime::Seconds();
 	const FLinearColor Colour = bHead ? FLinearColor(1.0f, 0.30f, 0.12f, 1.0f) : Primary;
@@ -120,8 +126,63 @@ void UArenaDuelHUDWidget::ShowHitMarker(bool bHead, bool bWithSound)
 	if (HeadshotLabel) HeadshotLabel->SetVisibility(bHead ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	HitMarkerRoot->SetRenderOpacity(1.0f);
 	HitMarkerRoot->SetVisibility(ESlateVisibility::HitTestInvisible);
-	// Heard only by the shooter and not placed in the world: a bright ring for the head, a dull tick otherwise.
-	if (bWithSound) if (USoundBase* Sound = ArenaDuelItemMeshes::Sound(bHead ? TEXT("S_HitHead") : TEXT("S_HitBody"))) UGameplayStatics::PlaySound2D(this, Sound, bHead ? 0.9f : 0.5f);
+}
+
+void UArenaDuelHUDWidget::SetHitFeedbackSource(UArenaDuelWeaponComponent* Weapon)
+{
+	if (Weapon == HitMarkerWeapon.Get()) return;
+	// A new pawn: whatever the old one's hits left on the screen ends with it, and what was confirmed for the
+	// new one before this HUD saw it is not news.
+	HitMarkerWeapon = Weapon;
+	if (Weapon) { TArray<UArenaDuelWeaponComponent::FHitFeedback> Stale; Weapon->TakeHitFeedback(Stale); }
+	if (HitMarkerRoot) HitMarkerRoot->SetVisibility(ESlateVisibility::Collapsed);
+	bHitMarkerHead = false;
+	HitMarkerStartSeconds = -100.0;
+}
+
+void UArenaDuelHUDWidget::ShowConfirmedHits(UArenaDuelWeaponComponent* Weapon, bool bWithSound)
+{
+	SetHitFeedbackSource(Weapon);
+	if (!Weapon) return;
+	TArray<UArenaDuelWeaponComponent::FHitFeedback> Hits;
+	Weapon->TakeHitFeedback(Hits);
+	// Every confirmed hit counts for the marker. Sounds: one of a kind at most for the hits of one frame, so a
+	// shotgun's worth of confirmations does not stack into one loud bang.
+	bool bHeadHeard = false, bBodyHeard = false;
+	for (const UArenaDuelWeaponComponent::FHitFeedback& Hit : Hits)
+	{
+		bool& bHeard = Hit.bHead ? bHeadHeard : bBodyHeard;
+		if (bHeard)
+		{
+			// Seen already through the first of its kind in this frame; a head shot still wins the marker.
+			if (Hit.bHead && !(IsHitMarkerShown() && bHitMarkerHead)) ShowHitMarker(true, false);
+			continue;
+		}
+		bHeard = true;
+		ShowHitMarker(Hit.bHead, bWithSound);
+	}
+}
+
+FVector2D UArenaDuelHUDWidget::GetHitMarkerRootSize() const
+{
+	const UCanvasPanelSlot* Slot = HitMarkerRoot ? Cast<UCanvasPanelSlot>(HitMarkerRoot->Slot) : nullptr;
+	return Slot ? Slot->GetSize() : FVector2D::ZeroVector;
+}
+
+FVector2D UArenaDuelHUDWidget::GetHitMarkerTickCentre() const
+{
+	FVector2D Sum = FVector2D::ZeroVector;
+	int32 Count = 0;
+	for (const UBorder* Tick : HitMarkerTicks) if (const UCanvasPanelSlot* Slot = Tick ? Cast<UCanvasPanelSlot>(Tick->Slot) : nullptr) { Sum += Slot->GetPosition(); ++Count; }
+	return Count > 0 ? Sum / Count : FVector2D::ZeroVector;
+}
+
+FVector2D UArenaDuelHUDWidget::GetHitMarkerPivotPoint() const { return HitMarkerRoot ? HitMarkerRoot->GetRenderTransformPivot() * GetHitMarkerRootSize() : FVector2D::ZeroVector; }
+
+float UArenaDuelHUDWidget::GetHeadshotLabelCentreY() const
+{
+	const UCanvasPanelSlot* Slot = HeadshotLabel ? Cast<UCanvasPanelSlot>(HeadshotLabel->Slot) : nullptr;
+	return Slot ? Slot->GetPosition().Y : 0.0f;
 }
 
 void UArenaDuelHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -129,21 +190,7 @@ void UArenaDuelHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 	Super::NativeTick(MyGeometry, InDeltaTime);
 	if (!HitMarkerRoot) return;
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwningPlayerPawn());
-	const UArenaDuelWeaponComponent* Weapon = Character ? Character->GetWeaponComponent() : nullptr;
-	if (Weapon != HitMarkerWeapon.Get())
-	{
-		// A new pawn: what its weapon has counted so far is not news.
-		HitMarkerWeapon = Weapon;
-		LastHitSequence = Weapon ? Weapon->GetLastShotSequence() : INDEX_NONE;
-	}
-	else if (Weapon && Weapon->GetLastShotSequence() != LastHitSequence)
-	{
-		// The server has confirmed another shot or knife stroke of this player (on a client the confirmation
-		// arrives as a message). Only what met a body is shown.
-		LastHitSequence = Weapon->GetLastShotSequence();
-		const EArenaDuelShotResult Result = Weapon->GetLastShotResult();
-		if (Result == EArenaDuelShotResult::Head || Result == EArenaDuelShotResult::Body || Result == EArenaDuelShotResult::Limb) ShowHitMarker(Result == EArenaDuelShotResult::Head, true);
-	}
+	ShowConfirmedHits(Character ? Character->GetWeaponComponent() : nullptr, true);
 	if (HitMarkerRoot->GetVisibility() == ESlateVisibility::Collapsed) return;
 	float Opacity = 0.0f, Scale = 1.0f;
 	ComputeHitMarker(bHitMarkerHead, static_cast<float>(FPlatformTime::Seconds() - HitMarkerStartSeconds), Opacity, Scale);
@@ -245,7 +292,9 @@ void UArenaDuelHUDWidget::BuildWidgetTree()
 	HitMarkerRoot->SetVisibility(ESlateVisibility::Collapsed);
 	RootCanvas->AddChild(HitMarkerRoot);
 	PlaceFixed(HitMarkerRoot, FVector2D(0.5f,0.5f), FVector2D::ZeroVector, FVector2D(220,140), FVector2D(0.5f,0.5f));
-	HitMarkerRoot->SetRenderTransformPivot(FVector2D(0.5f, 50.0f / 140.0f));
+	// The root is centred on the screen, where the crosshair and the scope are drawn; the ticks stand around its
+	// own middle and it scales about that middle, so the marker sits on the crosshair at any size and resolution.
+	HitMarkerRoot->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
 	for (int32 Index = 0; Index < 4; ++Index)
 	{
 		// One tick in each diagonal, pointing at the middle, with a gap so the crosshair stays free.
@@ -253,7 +302,7 @@ void UArenaDuelHUDWidget::BuildWidgetTree()
 		UBorder* Tick = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 		Tick->SetBrushColor(Primary);
 		HitMarkerRoot->AddChild(Tick);
-		PlaceFixed(Tick, FVector2D(0,0), FVector2D(110.0f + SignX * 15.0f, 50.0f + SignY * 15.0f), FVector2D(4,16), FVector2D(0.5f,0.5f));
+		PlaceFixed(Tick, FVector2D(0,0), FVector2D(110.0f + SignX * 15.0f, 70.0f + SignY * 15.0f), FVector2D(4,16), FVector2D(0.5f,0.5f));
 		Tick->SetRenderTransformAngle(SignX * SignY > 0.0f ? -45.0f : 45.0f);
 		HitMarkerTicks.Add(Tick);
 	}
@@ -262,7 +311,7 @@ void UArenaDuelHUDWidget::BuildWidgetTree()
 	HeadshotLabel->SetShadowOffset(FVector2D(1.5f, 1.5f));
 	HeadshotLabel->SetShadowColorAndOpacity(FLinearColor(0.0f, 0.0f, 0.0f, 0.8f));
 	HitMarkerRoot->AddChild(HeadshotLabel);
-	PlaceFixed(HeadshotLabel, FVector2D(0,0), FVector2D(110,104), FVector2D(220,30), FVector2D(0.5f,0.5f));
+	PlaceFixed(HeadshotLabel, FVector2D(0,0), FVector2D(110,122), FVector2D(220,30), FVector2D(0.5f,0.5f));
 
 	UOverlay* MatchResult = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass(), TEXT("MatchResultRoot"));
 	MatchResultRoot = MatchResult;

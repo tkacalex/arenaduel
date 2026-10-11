@@ -31,8 +31,19 @@ public:
 	static float GetHitMarkerSeconds(bool bHead) { return bHead ? 0.55f : 0.22f; }
 	bool IsHitMarkerShown() const;
 	bool IsHeadshotShown() const { return IsHitMarkerShown() && bHitMarkerHead; }
-	/** Shows the marker as a confirmed hit would. Called from the tick when the weapon reports a new hit; public for tests. */
+	/** Shows the marker as one confirmed hit does. A body hit while a head shot is still shown keeps the head shot's marker and word until its own time is over; its sound is its own. */
 	void ShowHitMarker(bool bHead, bool bWithSound);
+	/** Takes the confirmed hits waiting on this weapon and shows and plays them: each once, no more than one sound of a kind per call. */
+	void ShowConfirmedHits(class UArenaDuelWeaponComponent* Weapon, bool bWithSound);
+	/** The weapon whose hits are shown. A change of it (a new pawn after a respawn) hides what the old one left. */
+	void SetHitFeedbackSource(class UArenaDuelWeaponComponent* Weapon);
+	/** Tests: where the marker's ticks have their middle and where it turns and scales about, in the root's own units from its top left, and the root's size. */
+	FVector2D GetHitMarkerTickCentre() const;
+	FVector2D GetHitMarkerPivotPoint() const;
+	FVector2D GetHitMarkerRootSize() const;
+	float GetHeadshotLabelCentreY() const;
+	int32 GetHitSoundsAsked(bool bHead) const { return bHead ? HeadSoundsAsked : BodySoundsAsked; }
+	void SetHitMarkerAgeForTests(float Seconds) { HitMarkerStartSeconds = FPlatformTime::Seconds() - Seconds; }
 
 	UFUNCTION(BlueprintCallable) void SetMatchHeaderVisible(bool bVisible);
 	UFUNCTION(BlueprintCallable) void SetPlayerNames(const FText& LeftName, const FText& RightName);
@@ -96,8 +107,9 @@ protected:
 	UPROPERTY() TObjectPtr<class UCanvasPanel> HitMarkerRoot;
 	UPROPERTY() TArray<TObjectPtr<UBorder>> HitMarkerTicks;
 	UPROPERTY() TObjectPtr<UTextBlock> HeadshotLabel;
-	TWeakObjectPtr<const class UArenaDuelWeaponComponent> HitMarkerWeapon;
-	int32 LastHitSequence = INDEX_NONE;
+	TWeakObjectPtr<class UArenaDuelWeaponComponent> HitMarkerWeapon;
+	int32 HeadSoundsAsked = 0;
+	int32 BodySoundsAsked = 0;
 	double HitMarkerStartSeconds = -100.0;
 	bool bHitMarkerHead = false;
 	FString LastRoundTimerText;
