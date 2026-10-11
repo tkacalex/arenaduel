@@ -4,16 +4,32 @@ The layout is mirrored across X = 0, so both players get the same geometry. Size
 component: 80 cm cover can be vaulted and crouched behind, steps of at most 140 cm can be mantled,
 gaps of 350 cm are a sprint jump. Walls, decks and pillars are engine cubes, like L_ArenaCore; the
 crates are the modelled crate from Tools/Editor/SetupProps.py, scaled to the size of the block they stand for.
+
+Look: the surfaces use the textured materials of Tools/Editor/SetupDistrictMaterials.py (run that first):
+cast concrete, sealed floor, painted render on the house, tread plate on decks and bridge, a steel deck
+ceiling. Everything that is only there to be looked at (light panels, wall caps, painted lines, edge trims,
+the team bands) is placed by decor() and has no collision, so cover, routes and traces are what the
+layout says and nothing else.
 """
 import unreal
 
 MAP = '/Game/ArenaDuel/Maps/L_ArenaDistrict'
 ASSETS = '/Game/ArenaDuel/Characters/Common'
 CRATE = '/Game/ArenaDuel/Props/SM_Crate'
+DISTRICT = '/Game/ArenaDuel/Maps/District'
+PROPS = DISTRICT + '/Props'
+LOOK = {}
 LIB = unreal.EditorAssetLibrary
 PREFIX = 'District_'
 T = 40.0  # wall thickness
-count = {'pieces': 0, 'windows': 0}
+# Brightness of the hall: the fill light of each panel and the shadow-casting spots, in the engine's light
+# units, and the fixed exposure the picture is developed with.
+FILL_INTENSITY = 420.0
+KEY_INTENSITY = 4600.0
+SCONCE_INTENSITY = 30.0
+WASH_INTENSITY = 95.0
+EXPOSURE = 1.0
+count = {'pieces': 0, 'windows': 0, 'decor': 0, 'lights': 0}
 
 
 def make_material(name, color, metallic, roughness, emissive=None):
@@ -55,6 +71,11 @@ def cube(label, x0, x1, y0, y1, z0, z1, material, yaw=0.0):
             actor.set_actor_label('%s%s_%03d' % (PREFIX, label, count['pieces']))
             component = actor.static_mesh_component
             component.set_static_mesh(unreal.load_asset(CRATE))
+            # Timber panels in a dark steel frame.
+            if LOOK.get('wood'):
+                component.set_material(0, LOOK['wood'])
+            if LOOK.get('cap'):
+                component.set_material(1, LOOK['cap'])
             component.set_mobility(unreal.ComponentMobility.STATIC)
             component.set_collision_profile_name('BlockAll')
             actor.set_actor_scale3d(unreal.Vector((x1 - x0) / 140.0, (y1 - y0) / 140.0, height / 140.0))
@@ -70,6 +91,73 @@ def cube(label, x0, x1, y0, y1, z0, z1, material, yaw=0.0):
     component.set_collision_profile_name('BlockAll')
     actor.set_actor_scale3d(unreal.Vector((x1 - x0) / 100.0, (y1 - y0) / 100.0, (z1 - z0) / 100.0))
     count['pieces'] += 1
+
+
+def decor(label, x0, x1, y0, y1, z0, z1, material, shadow=True, mirror=False, roll=0.0, pitch=0.0):
+    """A box that is only looked at: no collision, so it changes no cover, no route and no trace."""
+    if not material or x1 - x0 <= 0.05 or y1 - y0 <= 0.05 or z1 - z0 <= 0.05:
+        return
+    centre = unreal.Vector((x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5)
+    actor = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.StaticMeshActor, centre, unreal.Rotator(roll=roll, pitch=pitch, yaw=0.0))
+    actor.set_actor_label('%sDecor_%s_%03d' % (PREFIX, label, count['decor']))
+    component = actor.static_mesh_component
+    component.set_static_mesh(unreal.load_object(None, '/Engine/BasicShapes/Cube.Cube'))
+    component.set_material(0, material)
+    component.set_mobility(unreal.ComponentMobility.STATIC)
+    component.set_collision_profile_name('NoCollision')
+    component.set_cast_shadow(shadow)
+    actor.set_actor_scale3d(unreal.Vector((x1 - x0) / 100.0, (y1 - y0) / 100.0, (z1 - z0) / 100.0))
+    count['decor'] += 1
+    if mirror and not abs(x0 + x1) < 0.5:
+        decor(label, -x1, -x0, y0, y1, z0, z1, material, shadow, False, -roll, -pitch)
+
+
+def prop(name, x, y, z, yaw=0.0, scale=1.0, collide=False, mirror=False, shadow=True):
+    """A modelled piece from Tools/Art/build_district_props.py. Without it (a checkout that has not imported
+    the props) nothing is placed and the caller falls back to boxes. Mirrored pieces turn to face the other way."""
+    path = PROPS + '/' + name
+    if not LIB.does_asset_exist(path):
+        return False
+    actor = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.StaticMeshActor, unreal.Vector(x, y, z), unreal.Rotator(roll=0.0, pitch=0.0, yaw=yaw))
+    actor.set_actor_label('%sProp_%s_%03d' % (PREFIX, name, count['decor']))
+    component = actor.static_mesh_component
+    component.set_static_mesh(unreal.load_asset(path))
+    component.set_mobility(unreal.ComponentMobility.STATIC)
+    component.set_collision_profile_name('BlockAll' if collide else 'NoCollision')
+    component.set_cast_shadow(shadow)
+    actor.set_actor_scale3d(unreal.Vector(scale, scale, scale))
+    count['decor'] += 1
+    if mirror and abs(x) > 0.5:
+        prop(name, -x, y, z, 180.0 - yaw, scale, collide, False, shadow)
+    return True
+
+
+def glow_light(label, x, y, z, color, intensity, radius, mirror=False):
+    """A small shadowless light: the pool of a wall lamp, the wash on a wall, the tint of a neon strip."""
+    light = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.PointLight, unreal.Vector(x, y, z), unreal.Rotator())
+    light.set_actor_label('%s%s_%03d' % (PREFIX, label, count['lights']))
+    component = light.get_component_by_class(unreal.PointLightComponent)
+    component.set_mobility(unreal.ComponentMobility.MOVABLE)
+    component.set_cast_shadows(False)
+    component.set_editor_property('intensity', intensity)
+    component.set_editor_property('attenuation_radius', radius)
+    component.set_editor_property('source_radius', 12.0)
+    component.set_editor_property('light_color', unreal.Color(r=color[0], g=color[1], b=color[2], a=255))
+    component.set_editor_property('use_inverse_squared_falloff', True)
+    count['lights'] += 1
+    if mirror and abs(x) > 0.5:
+        glow_light(label, -x, y, z, color, intensity, radius, False)
+
+
+def sconce(x, y, nx, ny, z=255.0, mirror=True):
+    """A wall lamp on a wall face at (x, y) looking along (nx, ny): a small glowing box and its warm pool."""
+    import math
+    if not prop('SM_WallLamp', x, y, z, math.degrees(math.atan2(ny, nx)), mirror=mirror, shadow=False):
+        half_x, half_y = (4.0, 16.0) if abs(nx) > 0.5 else (16.0, 4.0)
+        cx, cy = x + nx * 5.0, y + ny * 5.0
+        decor('Sconce', cx - half_x, cx + half_x, cy - half_y, cy + half_y, z - 9.0, z + 9.0, LOOK.get('sconce'), shadow=False, mirror=mirror)
+        decor('SconceHood', cx - half_x - 2.0, cx + half_x + 2.0, cy - half_y - 2.0, cy + half_y + 2.0, z + 9.0, z + 13.0, LOOK.get('cap'), shadow=False, mirror=mirror)
+    glow_light('SconceLight', x + nx * 45.0, y + ny * 45.0, z - 25.0, (255, 176, 96), SCONCE_INTENSITY, 620.0, mirror)
 
 
 def both(label, x0, x1, y0, y1, z0, z1, material, yaw=0.0):
@@ -101,6 +189,12 @@ def wall(label, axis, at, a0, a1, height, material, openings, mirror=True):
             count['windows'] += 2 if mirror and not (axis == 'x' and abs(o0 + o1) < 0.5) else 1
         cursor = o1
     part(cursor, a1, 0.0, height)
+    # A dark steel cap along the top edge, a little wider than the wall.
+    cap = LOOK.get('cap')
+    if axis == 'y':
+        decor(label + 'Cap', at - T * 0.5 - 5, at + T * 0.5 + 5, a0 - 5, a1 + 5, height, height + 10, cap, mirror=mirror)
+    else:
+        decor(label + 'Cap', a0 - 5, a1 + 5, at - T * 0.5 - 5, at + T * 0.5 + 5, height, height + 10, cap, mirror=mirror)
 
 
 def window(a, width=220.0):
@@ -112,21 +206,69 @@ def door(a, width=200.0):
 
 
 def spawn_lights():
+    """Rows of light panels under the ceiling. Each panel is a glowing box with a shadowless fill light, which
+    keeps the hall evenly readable; a few shadow-casting spots over the main areas give objects a footing."""
     index = 0
     for x in (-2800, -1400, 0, 1400, 2800):
         for y in (-1700, 0, 1700):
-            light = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.PointLight, unreal.Vector(x, y, 1050), unreal.Rotator())
+            if not prop('SM_CeilingLamp', x, y, 1500.0, shadow=False):
+                decor('LightPanel', x - 170, x + 170, y - 38, y + 38, 1488, 1499, LOOK.get('panel'), shadow=False)
+                decor('LightFrame', x - 180, x + 180, y - 48, y + 48, 1494, 1500, LOOK.get('cap'), shadow=False)
+            light = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.PointLight, unreal.Vector(x, y, 1380), unreal.Rotator())
             light.set_actor_label('%sFillLight_%02d' % (PREFIX, index))
             component = light.get_component_by_class(unreal.PointLightComponent)
-            # Shadowless movable fills, as in L_ArenaCore: cheap, and the arena stays readable everywhere.
             component.set_mobility(unreal.ComponentMobility.MOVABLE)
             component.set_cast_shadows(False)
-            component.set_editor_property('intensity', 110.0)
-            component.set_editor_property('attenuation_radius', 2200.0)
-            # unreal.Color takes b, g, r, a by position, so name the channels. Nearly neutral, a touch cold.
-            component.set_editor_property('light_color', unreal.Color(r=205, g=212, b=230, a=255))
+            component.set_editor_property('intensity', FILL_INTENSITY)
+            component.set_editor_property('attenuation_radius', 2300.0)
+            component.set_editor_property('source_radius', 60.0)
+            # unreal.Color takes b, g, r, a by position, so name the channels. Cool, like daylight from high windows;
+            # the warmth comes from the wall lamps.
+            component.set_editor_property('light_color', unreal.Color(r=214, g=228, b=255, a=255))
             component.set_editor_property('use_inverse_squared_falloff', True)
             index += 1
+    # Shadow casters: straight down over both halves of the field and the house. Three, not more: every one of
+    # them is rendered into shadow maps each frame.
+    for number, (x, y) in enumerate(((-2000, 0), (2000, 0), (0, 0))):
+        spot = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.SpotLight, unreal.Vector(x, y, 1470), unreal.Rotator(roll=0.0, pitch=-90.0, yaw=0.0))
+        spot.set_actor_label('%sKeyLight_%02d' % (PREFIX, number))
+        component = spot.get_component_by_class(unreal.SpotLightComponent)
+        component.set_mobility(unreal.ComponentMobility.MOVABLE)
+        component.set_cast_shadows(True)
+        component.set_editor_property('intensity', KEY_INTENSITY)
+        component.set_editor_property('attenuation_radius', 3400.0)
+        component.set_editor_property('outer_cone_angle', 72.0)
+        component.set_editor_property('inner_cone_angle', 38.0)
+        component.set_editor_property('source_radius', 40.0)
+        component.set_editor_property('light_color', unreal.Color(r=255, g=250, b=240, a=255))
+        component.set_editor_property('use_inverse_squared_falloff', True)
+
+
+def spawn_post_process():
+    """One unbound volume: a fixed exposure so the picture does not pump when looking from dark to light, a
+    little bloom on the light panels, contact shading, and nothing that hides a player."""
+    volume = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.PostProcessVolume, unreal.Vector(0, 0, 400), unreal.Rotator())
+    volume.set_actor_label(PREFIX + 'PostProcess')
+    volume.set_editor_property('unbound', True)
+    settings = volume.get_editor_property('settings')
+    for key, value in (('auto_exposure_min_brightness', EXPOSURE), ('auto_exposure_max_brightness', EXPOSURE), ('auto_exposure_bias', 0.0),
+                       ('bloom_intensity', 0.7), ('vignette_intensity', 0.25), ('ambient_occlusion_intensity', 0.6), ('ambient_occlusion_radius', 120.0),
+                       ('motion_blur_amount', 0.0), ('lens_flare_intensity', 0.0), ('film_grain_intensity', 0.0),
+                       # Reflections on the wet floor at reduced quality.
+                       ('lumen_reflection_quality', 0.5)):
+        try:
+            settings.set_editor_property('override_' + key, True)
+            settings.set_editor_property(key, value)
+        except Exception as error:
+            unreal.log_warning('Post process setting %s not applied: %s' % (key, error))
+    # Bounced light is switched off for this map. Measured in a two player editor session it was a quarter of
+    # the whole picture's cost, and a hall lit by this many lamps and fills holds up without it.
+    try:
+        settings.set_editor_property('override_dynamic_global_illumination_method', True)
+        settings.set_editor_property('dynamic_global_illumination_method', unreal.DynamicGlobalIlluminationMethod.NONE)
+    except Exception as error:
+        unreal.log_warning('Post process setting dynamic_global_illumination_method not applied: %s' % error)
+    volume.set_editor_property('settings', settings)
 
 
 def build():
@@ -138,16 +280,31 @@ def build():
     else:
         unreal.EditorLevelLibrary.new_level(MAP)
 
-    floor = make_material('M_ArenaCoreFloor', (0.055, 0.075, 0.105, 1), 0.35, 0.78)
-    shell = make_material('M_ArenaCoreWall', (0.018, 0.026, 0.046, 1), 0.42, 0.68)
-    ceiling = make_material('M_ArenaCoreCeiling', (0.009, 0.014, 0.026, 1), 0.28, 0.8)
-    # A dark palette: near-black surfaces that differ only slightly in tone, and two dim team colours.
-    concrete = make_material('M_DistrictDarkConcrete', (0.030, 0.034, 0.042, 1), 0.10, 0.80)
-    house = make_material('M_DistrictDarkHouse', (0.040, 0.030, 0.028, 1), 0.10, 0.75)
+    def look(name, fallback):
+        """A textured material of SetupDistrictMaterials.py; the plain one only in a checkout without them."""
+        asset = unreal.load_asset(DISTRICT + '/' + name) if LIB.does_asset_exist(DISTRICT + '/' + name) else None
+        return asset or fallback()
+
+    # Light, neutral surfaces: concrete walls, a mid grey sealed floor, warm render on the house. A dark figure
+    # stands out against all of them, and the two team colours are the only saturated things in the hall.
+    floor = look('MI_District_Floor', lambda: make_material('M_ArenaCoreFloor', (0.055, 0.075, 0.105, 1), 0.35, 0.78))
+    shell = look('MI_District_Shell', lambda: make_material('M_ArenaCoreWall', (0.018, 0.026, 0.046, 1), 0.42, 0.68))
+    ceiling = look('MI_District_Ceiling', lambda: make_material('M_ArenaCoreCeiling', (0.009, 0.014, 0.026, 1), 0.28, 0.8))
+    concrete = look('MI_District_Concrete', lambda: make_material('M_DistrictDarkConcrete', (0.030, 0.034, 0.042, 1), 0.10, 0.80))
+    house = look('MI_District_House', lambda: make_material('M_DistrictDarkHouse', (0.040, 0.030, 0.028, 1), 0.10, 0.75))
+    # The crate material is only the marker cube() replaces with the modelled crate.
     crate = make_material('M_DistrictDarkCrate', (0.055, 0.034, 0.020, 1), 0.15, 0.65)
-    metal = make_material('M_DistrictDarkMetal', (0.016, 0.019, 0.026, 1), 0.85, 0.35)
-    cyan = make_material('M_DistrictDimCyan', (0.004, 0.03, 0.045, 1), 0.3, 0.5, (0.002, 0.02, 0.032, 1))
-    violet = make_material('M_DistrictDimViolet', (0.028, 0.006, 0.045, 1), 0.3, 0.5, (0.016, 0.003, 0.032, 1))
+    metal = look('MI_District_Tread', lambda: make_material('M_DistrictDarkMetal', (0.016, 0.019, 0.026, 1), 0.85, 0.35))
+    cyan = look('M_DistrictTeamCyan', lambda: make_material('M_DistrictDimCyan', (0.004, 0.03, 0.045, 1), 0.3, 0.5, (0.002, 0.02, 0.032, 1)))
+    violet = look('M_DistrictTeamViolet', lambda: make_material('M_DistrictDimViolet', (0.028, 0.006, 0.045, 1), 0.3, 0.5, (0.016, 0.003, 0.032, 1)))
+    LOOK['cap'] = look('MI_District_SteelDark', lambda: None)
+    LOOK['panel'] = look('M_DistrictLightPanel', lambda: None)
+    yellow = look('MI_District_SteelYellow', lambda: None)
+    paint = look('MI_District_PaintWhite', lambda: None)
+    orange = look('MI_District_PaintOrange', lambda: None)
+    LOOK['sconce'] = look('M_DistrictSconce', lambda: None)
+    LOOK['wood'] = look('MI_District_Wood', lambda: None)
+    wood = LOOK['wood'] or concrete
 
     # Shell: 7000 x 5000 interior, floor at z = 0, ceiling at z = 1500.
     cube('Floor', -3500, 3500, -2500, 2500, -100, 0, floor)
@@ -171,8 +328,8 @@ def build():
     wall('HouseNorth', 'x', 450, -600, 600, 330, house, [window(-380), door(0), window(380)], mirror=False)
     wall('HouseSouth', 'x', -450, -600, 600, 330, house, [window(-380), door(0), window(380)], mirror=False)
     cube('HouseRoof', -620, 620, -470, 470, 330, 350, metal)
-    both('RoofParapet', -620, -590, -470, -120, 350, 435, house)
-    both('RoofParapet', -620, -590, 120, 470, 350, 435, house)
+    both('RoofParapet', -620, -590, -470, -120, 350, 435, wood)
+    both('RoofParapet', -620, -590, 120, 470, 350, 435, wood)
     cube('RoofBlock', -90, 90, -90, 90, 350, 500, crate)
     # Inside: a pillar to dance around and a crate under each west and east window.
     cube('HousePillar', -60, 60, -60, 60, 0, 330, concrete)
@@ -186,8 +343,8 @@ def build():
         both('Pillar', x - 55, x + 55, y - 55, y + 55, 0, 330, concrete)
     both('HeadBox', -1850, -1650, -620, -500, 0, 140, crate)
     both('HeadBox', -1850, -1650, 500, 620, 0, 140, crate)
-    both('LowWall', -1020, -980, -330, -80, 0, 80, concrete)
-    both('LowWall', -1020, -980, 80, 330, 0, 80, concrete)
+    both('LowWall', -1020, -980, -330, -80, 0, 80, wood)
+    both('LowWall', -1020, -980, 80, 330, 0, 80, wood)
     both('AngleWall', -1750, -1350, 930, 970, 0, 300, concrete, yaw=40.0)
     both('AngleWall', -1750, -1350, -970, -930, 0, 300, concrete, yaw=-40.0)
     # A free-standing wall with a window on each flank of the house.
@@ -209,14 +366,14 @@ def build():
     cube('BridgeRail', -200, 200, 1860, 1880, 300, 385, metal)
     # Ground cover under the decks so the lane also works on foot.
     both('LaneBox', -1750, -1600, 2250, 2400, 0, 140, crate)
-    both('LaneLow', -980, -940, 2180, 2460, 0, 80, concrete)
+    both('LaneLow', -980, -940, 2180, 2460, 0, 80, wood)
 
     # --- South lane: tight cover. A divider with two windows and a door, staggered boxes and pillars inside.
     wall('SouthDivider', 'x', -1280, -2350, -480, 330, concrete, [window(-1950, 200), door(-1420), window(-880, 200)])
     both('Crate', -2080, -1930, -1780, -1630, 0, 150, crate)
     both('CrateStack', -1580, -1430, -2200, -2050, 0, 300, crate)
     both('Crate', -1580, -1430, -2050, -1900, 0, 150, crate)
-    both('LaneLow', -1020, -980, -2000, -1620, 0, 80, concrete)
+    both('LaneLow', -1020, -980, -2000, -1620, 0, 80, wood)
     both('HeadBox', -520, -320, -1700, -1580, 0, 140, crate)
     both('Pillar', -755, -645, -2255, -2145, 0, 330, concrete)
     # Centre block of the south lane with a window slot through it.
@@ -239,14 +396,95 @@ def build():
         start = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.PlayerStart, unreal.Vector(x, 0, 100), unreal.Rotator(roll=0.0, pitch=0.0, yaw=yaw))
         start.set_actor_label(PREFIX + 'PlayerStart_' + name)
         start.set_editor_property('player_start_tag', 'ArenaCore_' + name)
+    # --- Only to look at; none of this has collision.
+    # Neon along the hall behind each spawn, in the team colour, with its glow on the wall and floor.
+    decor('Neon', -3500, -3494, -2500, 2500, 430, 446, cyan, shadow=False)
+    decor('Neon', 3494, 3500, -2500, 2500, 430, 446, violet, shadow=False)
+    decor('Band', -3500, 3500, 2496, 2500, 330, 352, LOOK['cap'], shadow=False)
+    decor('Band', -3500, 3500, -2500, -2496, 330, 352, LOOK['cap'], shadow=False)
+    for y in (-1100, 1100):
+        glow_light('NeonGlow', -3380, y, 420, (40, 200, 255), 130.0, 1400.0)
+        glow_light('NeonGlow', 3380, y, 420, (178, 70, 255), 130.0, 1400.0)
+    # Orange diagonals on the long walls, two pairs each, leaning towards the middle.
+    for y, face in ((2497.0, -1.0), (-2497.0, 1.0)):
+        for x, lean in ((-2300, 34.0), (-1500, -34.0)):
+            decor('Stripe', x - 430, x + 430, y - 1.5, y + 1.5, 700, 760, orange, shadow=False, mirror=True, pitch=lean)
+    # Warm washes down the hall walls, as from lamps under the roof.
+    # Lamps are cheap to look at and lights are not: every second lamp carries a light, and that light is wider.
+    for x in (-3000, -2000, -1000, 0, 1000, 2000, 3000):
+        for y in (2380, -2380):
+            if x in (-2000, 0, 2000):
+                glow_light('WallWash', x, y, 820, (255, 170, 90), WASH_INTENSITY * 1.8, 1500.0)
+            decor('WashLamp', x - 14, x + 14, (2486 if y > 0 else -2496), (2496 if y > 0 else -2486), 1030, 1046, LOOK['sconce'], shadow=False)
+    for y in (-1400, 1400):
+        for x in (3380, -3380):
+            glow_light('WallWash', x, y, 820, (255, 170, 90), WASH_INTENSITY * 1.8, 1500.0)
+    # Wall lamps on the cover walls and the house.
+    for y in (-330, 330):
+        sconce(-2500 - T * 0.5, y, -1.0, 0.0)
+        sconce(-2500 + T * 0.5, y, 1.0, 0.0)
+    sconce(-600 - T * 0.5, 0.0, -1.0, 0.0)
+    for x in (-150, 150):
+        sconce(x, 450 + T * 0.5, 0.0, 1.0, mirror=False)
+        sconce(x, -450 - T * 0.5, 0.0, -1.0, mirror=False)
+    for y in (1090, -1090):
+        sconce(-900 - T * 0.5, y, -1.0, 0.0, z=235.0)
+    for x in (-2300, -1700, -1100, -700):
+        sconce(x, -1280 + T * 0.5, 0.0, 1.0)
+    sconce(-2380, 1280 - T * 0.5, 0.0, -1.0)
+    sconce(-2020, 1280 - T * 0.5, 0.0, -1.0)
+    # The parkour lane: lamps on both faces of the wall run wall and under the decks, so nobody jumps into the dark.
+    for x in (-1800, -1150):
+        sconce(x, 1700.0, 0.0, -1.0, z=300.0)
+        sconce(x, 1740.0, 0.0, 1.0, z=420.0)
+    for x in (-2300, -1000):
+        glow_light('LaneFill', x, 2300, 260, (255, 196, 130), 130.0, 1300.0, True)
+        glow_light('LaneFill', x, -1750, 260, (255, 196, 130), 130.0, 1300.0, True)
+    glow_light('LaneFill', 0, 2300, 200, (255, 196, 130), 90.0, 1000.0)
+    glow_light('LaneFill', 0, -2250, 260, (255, 196, 130), 90.0, 1000.0)
+    # Green: ivy over the tops of the cover walls, away from windows and doors, and a planted tub in each
+    # corner of the hall and between the lanes and the hall wall, where nobody fights.
+    for y in (-820, 820):
+        prop('SM_Ivy', -2500 + T * 0.5 + 5, y, 338.0, 0.0, mirror=True)
+        prop('SM_Ivy', -2500 - T * 0.5 - 5, y, 338.0, 180.0, mirror=True)
+    prop('SM_Ivy', -900 - T * 0.5 - 5, 700.0, 308.0, 180.0, mirror=True)
+    prop('SM_Ivy', -900 - T * 0.5 - 5, -700.0, 308.0, 180.0, mirror=True)
+    prop('SM_Ivy', -1500.0, -1280 + T * 0.5 + 5, 338.0, 90.0, mirror=True)
+    prop('SM_Ivy', -620.0, -1280 + T * 0.5 + 5, 338.0, 90.0, mirror=True)
+    prop('SM_Ivy', -600 - T * 0.5 - 5, 0.0, 338.0, 180.0, mirror=True, scale=0.9)
+    for (x, y) in ((-3410, -2410), (-3410, 2410)):
+        prop('SM_Planter', x, y, 0.0, 0.0, collide=True, mirror=True)
+    for y in (-2420, 2420):
+        prop('SM_Planter', 0.0, y, 0.0, 0.0, scale=0.9, collide=True)
+    # Orange floor markings: the edges of the two lanes, a box around each spawn, the approaches to the house doors.
+    for y in (-1500, 1500):
+        decor('Line', -3400, 3400, y - 6, y + 6, 0.0, 0.6, orange, shadow=False)
+    for (x0, x1) in ((-3260, -2840), (2840, 3260)):
+        decor('SpawnBox', x0, x1, -226, -214, 0.0, 0.6, paint, shadow=False)
+        decor('SpawnBox', x0, x1, 214, 226, 0.0, 0.6, paint, shadow=False)
+        decor('SpawnBox', x0, x0 + 12, -226, 226, 0.0, 0.6, paint, shadow=False)
+        decor('SpawnBox', x1 - 12, x1, -226, 226, 0.0, 0.6, paint, shadow=False)
+    for y0, y1 in ((480, 760), (-760, -480)):
+        decor('DoorMark', -130, -118, y0, y1, 0.0, 0.6, orange, shadow=False)
+        decor('DoorMark', 118, 130, y0, y1, 0.0, 0.6, orange, shadow=False)
+    # Yellow edges on everything that can be stood on above the floor: the three decks, the bridge and the roof.
+    for (x0, x1, y0, y1, top) in ((-2350, -1850, 1760, 2160, 280), (-1500, -1100, 1760, 2160, 280), (-750, -350, 1820, 2160, 300)):
+        decor('DeckEdge', x0 - 2, x1 + 2, y0 - 2, y0 + 6, top - 6, top + 1, yellow, mirror=True)
+        decor('DeckEdge', x0 - 2, x0 + 6, y0, y1, top - 6, top + 1, yellow, mirror=True)
+        decor('DeckEdge', x1 - 6, x1 + 2, y0, y1, top - 6, top + 1, yellow, mirror=True)
+    decor('BridgeEdge', -350, 350, 2114, 2122, 294, 301, yellow)
+    decor('RoofEdge', -626, 626, -476, -464, 340, 352, LOOK['cap'])
+    decor('RoofEdge', -626, 626, 464, 476, 340, 352, LOOK['cap'])
+    decor('RoofEdge', -626, -614, -476, 476, 340, 352, LOOK['cap'], mirror=True)
     spawn_lights()
+    spawn_post_process()
 
     world = unreal.EditorLevelLibrary.get_editor_world()
     if not unreal.EditorLoadingAndSavingUtils.save_map(world, MAP):
         raise RuntimeError('Failed to save ' + MAP)
     starts = [a for a in unreal.EditorLevelLibrary.get_all_level_actors() if isinstance(a, unreal.PlayerStart)]
     assert len(starts) == 2, 'Expected exactly two PlayerStarts'
-    unreal.log('ARENA DISTRICT PASS pieces=%d windows=%d' % (count['pieces'], count['windows']))
+    unreal.log('ARENA DISTRICT PASS pieces=%d windows=%d decor=%d lights=%d' % (count['pieces'], count['windows'], count['decor'], count['lights']))
 
 
 build()

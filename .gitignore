@@ -38,3 +38,5 @@ Tools/claude_desktop_config.json
 Tools/Art/Weapons/T_*.png
 *.blend1
 Tools/Art/Equipment/T_*.png
+# Generated map textures: Tools/Art/build_district_textures.py writes them again; the imported assets are in Content.
+Tools/Art/District/T_*.png
