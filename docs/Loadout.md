@@ -157,3 +157,20 @@ Checked in a play session: all four weapons textured in the hand, hip and aimed;
 Checked in a two player session in the editor (host in the viewport, client in its own window): from the host's side the client holds the SMG in both hands across the chest pointing forward and down, the knife in the fist, the grenade at the chest; the magazine of the client's weapon moves at a held reload point. In the client's own view: the fist on the knife, the hand around the grenade, a throw, a knife attack, a reload, without errors in the log. The whole suite ran headless: 88 of 88 tests, 20 of them with warnings, including the network tests.
 
 Not checked: the swing and the throw of the world body (they are over in a third of a second and no capture caught them), the bolt (still too small to make out), the aimed pose of the world firearm from the side, and all of it in motion rather than in stills.
+
+## Held item presentation: throw, knife, reload on the other player (2026-10-11)
+
+Three faults, all in presentation only; damage, ranges, ammunition and timings are untouched.
+
+- **The throw played on with the firearm in hand.** The server puts the firearm back the moment a grenade leaves (`ThrowFlashbangAuthoritative`), and the follow-through was applied to whatever was held. Now the hands have a *presented* slot (`GetPresentedSlot`): for the length of the switch (`SwitchSeconds`) after a throw they are shown empty and finishing the throw, on the owner's screen and on the world body, and only then does the firearm come up (`FinishThrowPresentation`). No rule reads the presented slot.
+- **A knife swing outlived a quick change of item.** The swing is now tied to the knife (`IsShowingKnifeSwing`); changing the item ends it and the kick it left, and a swing that arrives after the change is not shown.
+- **The other player's magazine and bolt could stand still in a reload.** The weapon component's tick drives the parts and switches itself off on someone else's idle weapon; only a shot switched it on again. `bReloading` now has a rep notify (`OnRep_Reloading`) that does, so "fire, wait a few seconds, reload" moves the parts too.
+- **Hand and magazine**: in a reload the support hand now goes to the magazine, takes it down, brings the new one up and returns to the handguard; on the shotgun it rides the pump. An empty hand after a throw is open.
+
+Regression test: `ArenaDuel.Loadout.HeldItemPresentation` (throw in both orders of arrival, knife swing across a change, reload waking an idle weapon). The faults were established from the code and are pinned by this test; they were not reproduced in a play session before the fix.
+
+Checked in a two player session with real input, recorded from both views as short GIFs (`Saved/Recordings` in the working copy, not in the repository): fire, wait, reload with the SMG at full speed and at 0.3 speed; a long throw (hands empty, firearm comes up, both players blinded, the screen of the one who did not throw goes white and fades); a short throw at 0.3 speed; light and heavy knife attack and a change to the firearm 60 ms after a swing, with no swing left on the firearm; the host firing and reloading all four firearms as the client sees it; walking, strafing, looking far up and down while firing and walking into a wall. The whole suite ran headless: 89 of 89, 20 with warnings.
+
+Not checked: the sounds (they cannot be listened to from here; the calls are in the same multicasts as before), fingers in the recordings (too small at this size), the slow motion and movement recordings frame by frame, the quick change during a throw, and the wall case beyond that it ran without errors.
+
+Running the whole suite also runs the `ArenaDuel.VisualAssetSetup.*` commands, which re-save `BP_ArenaDuelCharacter`; restore that file afterwards or leave those two out.
