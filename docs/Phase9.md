@@ -257,6 +257,34 @@ Limits: the message is unreliable, so a lost one leaves that shot on the server'
 
 Tests: `ArenaDuel.Phase9.Combat.OwnerShowsNoShotBeyondTheMagazineAndStopsWithTheServersReload` (a client with 100 ms simulated latency holds the trigger on five rounds: five shown shots, the shown fire ends with the server's reload, nothing more is shown after it although the trigger was never let go, the owner's assumed magazine equals the real one again, and the server fired five; then the hint for the next shot of a burst is kept until that shot leaves and used by it, and hints for a past shot, a far one, or without a held trigger are not kept). Whole run, filter `ArenaDuel`: 120 of 120 passed, working tree clean. No packaging was needed for this.
 
+### Phase 9C.3, addendum: which shot a message is about (2026-10-11)
+
+The shot confirmation and the eye hint are unreliable messages: either can be lost, arrive late, or arrive after a later one. Three places took such a message for whatever happened to be current when it arrived. Each was reproduced first on the code as it was, with tests that deliver the message by hand at the wrong moment (`DeliverShotConfirmationForTests`, `EyeEaseHintOfBurstForTests`, `ShowShotForTests`).
+
+| Gap | Reproduced on the old code | Now |
+| --- | --- | --- |
+| The rounds left after a shot were booked to the weapon in the hands at arrival | A confirmation of the other weapon's shot after a switch: 0 rounds assumed of 30. One from before a reload, arriving after it: 0 assumed of 32, and the trigger did nothing on a full magazine, because the press is not even sent while the owner assumes an empty one | The confirmation names the weapon it was fired from and the filling of the magazine it was fired under (`MagazineRefillSerial`, counted by the server at every reload that ends and every refill, replicated to the owner). It counts only for that weapon and only while that filling is current; one of an earlier shot than the last one heard of changes nothing |
+| An eye hint carried only the shot's number in the burst, which starts again with every press | A hint of the burst before was kept for the shot with the same number in the running burst | Every press is a burst with its own number, said with the press. A hint names burst and shot; one of another burst is dropped |
+| A confirmation was paired with the oldest waiting shown shot | After one shown shot that never left, the first confirmation of the next burst was paired with that leftover (shown shot 3 instead of 4), and one round too few was assumed; after one lost confirmation every later pair was off by one and two shown shots waited for good | The confirmation names weapon, burst and shot in the burst and is paired with exactly that shown shot. Shown shots before it are given up (never left, or their confirmation was lost). Shown shots of another weapon do not count against the magazine in the hands |
+
+Not a gameplay change: the server decides every shot as before, weapon values are untouched, and what the owner sends is a number for the press, never a position or a round count.
+
+**Was the earlier measurement comparing the same shots?** Checked on the logs of that run: yes, all 86 pairs were the same shot on both sides. It was not safe by construction: packets were only dropped on the way to the server in that run, so no confirmation was lost, and the one shown shot too many came last.
+
+**Measured again**, host and client as separate processes, 100 ms latency on the client and 2 % loss in both directions, shots joined by burst and shot number (both sides log them now):
+
+- 83 real shots, 87 shown. The magazine of 32: 32 and 32, nothing after the server's reload.
+- 81 confirmations arrived, each paired with the shown shot of the same burst and number; 2 were lost, and the 2 shown shots they belonged to were passed over without shifting a pair.
+- The four shown shots without a real one are one burst of 0.3 s: its press arrived 340 ms after the owner's first shown shot (a lost packet, sent again), the release right behind it, so the server fired one shot where the owner showed five. That is what a lost press costs; nothing in the bookkeeping is wrong after it.
+- Shot origin, as height above the feet, for the 26 shots fired while the eye eased or while the two sides disagreed about the crouch: 24 identical, two off by 3.4 cm and 1.2 cm. All other shots: within 0.1 cm.
+
+Two things this run showed about the measurement and the hint, both left as they are:
+
+- The earlier tables compare the eye's offset from where it will settle. Right after a stand-up the server may still be crouched and settled (offset 0) while the owner stands with the eye still down (offset -48): 48 cm by that number, the same height above the feet in fact. Height above the feet is the right comparison and is what the numbers above are.
+- The hint for a shot is sent when the owner shows it and needs the same time to arrive as the press did, so it reaches the server at about the moment the server fires that shot. On a server frame of 36 ms (this host, off screen) the shot can leave a frame before its hint arrives; the hint is then dropped as one for a shot that has left. That is the 3.4 cm and the 1.2 cm, two shots in a row at the start of a slide. Not corrected in this addendum. A way to do it: say with each shown shot where the eye will be at the next one, one interval ahead.
+
+Tests (`ArenaDuel.Phase9.Combat`, 15 of 15): `LateConfirmationOfAnotherWeaponIsNotTakenForTheOneInTheHands`, `LateConfirmationFromBeforeAReloadIsNotTakenForTheFilledMagazine` (also: the trigger works, a current confirmation is taken, an older one after it is not), `EyeHintOfAnEarlierBurstIsDroppedAndALostHintLeavesItsShotToTheServer` (four shots, hints for two, the third one's never sent: two hints used, the shot without one fired), `ConfirmationIsPairedWithItsOwnShownShot` (a shown shot too many, a lost confirmation, a shot never shown, a confirmation after a later one). All four failed on the old code and pass now.
+
 ## Areas to check
 
 | ID | P | Area | State |
@@ -306,6 +334,8 @@ Nothing in this list has been done; none of it should be read as checked. Phase 
 - Looking at a running game: a knife fight around a corner (E02), a held trigger after a switch seen by both players (E04), the pause menu during a fight (E06), a boss spawn and a rescue in a real wave (E12), a zombie killed while running and while standing (E11), the packaged game on screen.
 - The shipping build beyond "starts and does not crash": menu, map change and both modes need eyes or a build with logging.
 - One shown shot without a real one at the edge of a very short burst under latency (9C.3, measured, not corrected).
+- An eye hint that arrives a frame after its shot left: two of 26 easing shots off by 3.4 and 1.2 cm with a 36 ms server frame (9C.3 addendum, measured, not corrected).
+- A short burst whose press was lost and sent again: the owner shows all of it, the server fires what is left of it (9C.3 addendum, measured, a property of the connection).
 - A dedicated server with two clients (R01), movement under latency and packet loss with forced corrections (R02), skins, scale and late join (R03).
 - Sound (R05): nothing has been listened to. The sessions that did this work cannot hear.
 - Hands, fingers and every weapon action from both views (R06), zombie hit zones, boss clips and the hand-over to the ragdoll on screen (R07), a full match on the reworked arena (R08), load outside the editor (R09).
