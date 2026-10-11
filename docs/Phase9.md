@@ -21,19 +21,19 @@ Rules for all of Phase 9: damage, ranges, ammunition, attack times, movement bal
 | E03 | 1 | Switching weapons shortens the knife's attack time | confirmed | not reproduced before the fix | **fixed (9A)** |
 | E04 | 1 | Fire after a quick switch stays a local motion only | confirmed | not reproduced before the fix | **fixed (9A)** |
 | E05 | 1 | The reload request does not check the held slot | confirmed | not reproduced before the fix | **fixed (9A)** |
-| E06 | 1 | The pause and settings menu does not lock all weapon actions | from the review | - | open (9B) |
+| E06 | 1 | The pause and settings menu does not lock all weapon actions | confirmed | not reproduced before the fix | **fixed (9B)** |
 | E07 | 1 | Upgrade requests do not name their selection | confirmed | not reproduced before the fix | **fixed (9A)** |
-| E08 | 1 | Shot origin and smoothed camera differ during crouch and slide transitions | from the review | - | open (9B) |
-| E09 | 2 | Reset Defaults works along two different, faulty paths | from the review | - | open (9B) |
-| E10 | 2 | The survival shop charges for ammunition that is already full | from the review | - | open (9B) |
-| E11 | 2 | A zombie's movement at death is read after it was stopped | from the review | - | open (9B) |
-| E12 | 1 | Boss spawns and rescue teleports do not account for the large capsule | from the review | - | open (9B) |
-| E13 | 2 | A developer health command is registered in shipping builds too | from the review | - | open (9C) |
-| E14 | 2 | The full test suite re-saves productive assets | confirmed (known: `ArenaDuel.VisualAssetSetup.*` re-saves `BP_ArenaDuelCharacter`) | reproduced earlier in this project | open (9C); until then the setup tests are left out of every run by name |
-| E15 | 2 | Asset setup can skip missing required meshes silently | from the review | - | open (9C) |
+| E08 | 1 | Shot origin and smoothed camera differ during crouch and slide transitions | confirmed | not reproduced before the fix | **fixed (9B)** |
+| E09 | 2 | Reset Defaults works along two different, faulty paths | confirmed | not reproduced before the fix | **fixed (9B)** |
+| E10 | 2 | The survival shop charges for ammunition that is already full | confirmed | not reproduced before the fix | **fixed (9B)**, the purchase itself not run |
+| E11 | 2 | A zombie's movement at death is read after it was stopped | confirmed | not reproduced before the fix | **fixed (9B)**, no test, not looked at |
+| E12 | 1 | Boss spawns and rescue teleports do not account for the large capsule | confirmed | not reproduced before the fix | **fixed (9B)**, not run with a boss |
+| E13 | 2 | A developer health command is registered in shipping builds too | confirmed, and five more commands in the weapon component | no shipping build made | **fixed (9C)**, not checked in a shipping build |
+| E14 | 2 | The full test suite re-saves productive assets | confirmed | reproduced earlier in this project (`BP_ArenaDuelCharacter` re-saved by a full run) | **fixed (9C)** |
+| E15 | 2 | Asset setup can skip missing required meshes silently | confirmed | not reproduced | **fixed (9C)**, the setup itself not run (it writes assets) |
 | E16 | 2 | Bullet marks derive the kind of hit from end points only | confirmed by reading `SpawnImpactMark` | not reproduced | open (9D) |
-| E17 | 1 | Survival can hang when the last living player disconnects | from the review | - | open (9B) |
-| E18 | 2 | The documented double death rule does not match the immediate evaluation | from the review | - | open (9B) |
+| E17 | 1 | Survival can hang when the last living player disconnects | confirmed | not reproduced before the fix | **fixed (9B)** |
+| E18 | 2 | The documented double death rule does not match the immediate evaluation | confirmed | - | **fixed (9B)**: the document now says what the code does |
 
 ### Phase 9A (2026-10-11): E01 to E05 and E07
 
@@ -63,7 +63,47 @@ Tests (`Source/ArenaDuel/Tests/ArenaDuelPhase9Tests.cpp`, listen server and one 
 | `...UpgradeChoiceFromAnEarlierSelectionIsRefused` | Wrong serials (previous, next, zero) change nothing; in the second selection a choice naming the first is refused and does not use up the choice; the current one is taken once. (E07) |
 | `ArenaDuel.Phase9.ThirdPlayer.WatchesWithoutAPawnAndLeavesWithoutEndingTheMatch` | With three connected players the third has no slot and no pawn, a restart gives them none, the death of a character outside the duel decides nothing, their leaving neither ends nor resets the round, and the kill between the two duel players is counted once. (E01) |
 
-The existing upgrade tests name the open selection in every request and pass unchanged otherwise. Whole regression run after 9A (everything except the asset setup commands): 99 of 99 passed, and the working tree was clean afterwards.
+The existing upgrade tests name the open selection in every request and pass unchanged otherwise. Whole regression run after 9A (everything except the asset setup commands): 99 of 99 passed, and the working tree was clean afterwards. After 9B: 106 of 106. After the first part of 9C, by the plain filter `ArenaDuel`: 110 of 110.
+
+### Phase 9B (2026-10-11): E06, E08 to E12, E17, E18
+
+**E06, the menu.** The character's handlers for fire, aim and reload called the weapon without asking `CanProcessGameplayInput`, which every other input does and which knows about the pause menu; the weapon itself only knew the admin menu. Both now refuse a start while either menu is open. Letting go is never refused.
+
+**E08, shot origin and eye.** The shot origin was the settled camera height (and the full slide drop from the first moment), while the picture eased there over about a quarter of a second. Now the eye's crouch offset and slide drop are functions of the time since the last crouch, stand-up or slide change, and the owner's camera and the shot origin on the owner and on the server read the same functions. Other machines keep the settled height. One more thing came out of this: the eye was also stepped when crouching in the air, where the capsule shrinks around its centre and nothing has to be made up for; it is now stepped only when the capsule centre really moved.
+Limits: the server starts its curve when the crouch reaches it, the owner when the key is pressed; the request to shoot travels the same way, so the two stay close, but they are not locked together. During the ease the eye can be above the already shrunk capsule, as the camera always was.
+
+**E09, Reset Defaults.** Two implementations: one reloaded the controller's values right after setting the defaults, the other left the resolution box as it was. One function now shows the pending settings in every control (`ShowPending`), and both reset paths set the defaults and call it.
+
+**E10, the shop.** Ammunition was charged without checking that anything was missing. `TryPurchase` now refuses the purchase when every magazine and reserve is full or the buyer has no weapon component.
+
+**E11, death of a zombie.** `Die` stopped the AI and the movement before the death clip was chosen from the speed and the ragdoll took it over, so the server read zero and each client whatever it had. The velocity is now taken first and replicated with the other death data; the choice of clip and the ragdoll's start speed use it on every machine.
+
+**E12, big enemies.** A spawn tested the unscaled class; a rescue teleport put any zombie 96 cm above the floor without a test. Both now place the real, scaled capsule on the floor under the picked point and require it to be free there; a tight point is skipped (a spawn tries the next point on the next tick, a rescue waits).
+
+**E17, leaving survival.** The end of a run was only looked for after a death. It is now also looked for when a player leaves, without counting the one who is leaving.
+
+**E18, two deaths.** The document promised a round without a point for two deaths in the same instant. The code handles deaths one after another: the first ends the round for the other player, and later damage does not count. No rule was changed; `docs/RoundFlow.md` now says this.
+
+Tests added to `ArenaDuelPhase9Tests.cpp`:
+
+| Test | Shows |
+| --- | --- |
+| `ArenaDuel.Phase9.Menu.ResetDefaults` | Changed settings are shown without being changed; reset shows `Borderless, 1920 x 1080, Off, 144` and that is what Apply would take. (E09) |
+| `ArenaDuel.Phase9.Combat.MenuLocksWeaponStartsAndRefillKnowsWhenItIsNeeded` | With the pause menu open: no shot, no aim, no reload, no switch; after closing, a reload starts. A fresh pawn counts as fully loaded, one with a round missing does not, one after a refill does again. (E06, the check behind E10) |
+| `...ShotOriginFollowsTheEasedEyeThroughACrouch` | On the server, for the remote player's pawn: at the moment of the crouch the shot origin has not moved, the offset then shrinks and ends at the settled camera height. (E08) |
+| `...TwoLethalHitsInOneFrameGiveTheRoundToWhoeverDiedSecond` | Both orders: the second hit does not count, one round for the survivor, one evaluation. (E18) |
+| `ArenaDuel.Phase9.Survival.LastLivingPlayerLeavingEndsTheRun` | A player leaving while the host stands ends nothing; with the host dead, the remote player leaving ends the run. (E17) |
+| `ArenaDuel.Phase9.Survival.SpawnCentre` | The centre of a capsule of any height over a picked point: feet on the floor. (E12, the arithmetic only) |
+
+Not covered by a test: the shop purchase as a whole (E10), the zombie's death clip and ragdoll speed (E11), a real boss spawn and rescue (E12).
+
+### Phase 9C, first part (2026-10-11): E13 to E15
+
+**E13.** `ArenaDuel.Health` and the five commands `ArenaDuel.Slot`, `.Aim`, `.Weapon`, `.Fire`, `.Pitch` were registered in every build. They are now compiled out of shipping builds, like the round and survival commands already were. No shipping build was made to confirm it.
+
+**E14.** The two commands that create and re-save assets were registered as tests named `ArenaDuel.VisualAssetSetup.*`, so a run of the project's tests ran them. They are now named `ProjectAssetSetup.Arms` and `ProjectAssetSetup.CharacterMaterials` and run only when asked for by that name (`Tools/Editor/SetupPhase7DVisuals.ps1` does). Checked: `Automation RunTests ArenaDuel` ran 110 tests, none of them a setup command, and left the working tree clean.
+
+**E15.** A missing mesh was passed over and a missing material was a warning. Both, and a missing hit zone physics asset, are now errors, and the command fails when there was one. Not run: the command writes assets.
 
 ## Areas to check
 
@@ -101,7 +141,19 @@ Limits: nobody played in these processes. No shot, knife attack, switch or upgra
 ## Order of work
 
 1. 9A, combat and participants: E01 to E05, E07. Done, see above.
-2. 9B, input, camera and survival: E06, E08 to E12, E17, E18.
-3. 9C, build, assets and tests: E13 to E15, R01 to R04.
+2. 9B, input, camera and survival: E06, E08 to E12, E17, E18. Code and tests done; what has to be looked at in a running game is listed at the end.
+3. 9C, build, assets and tests: E13 to E15 done; R01 to R04 open, among them the packaged build.
 4. 9D, presentation and sound: E16, R05 to R08.
 5. 9E, load and overall acceptance: R09, R10, D01.
+
+## Open after 2026-10-11
+
+Nothing in this list has been done; none of it should be read as checked.
+
+- Looking at a running game for the changes above: a knife fight around a corner (E02), a held trigger after a switch seen by both players (E04), the pause menu during a fight (E06), a boss spawn and a rescue (E12), a zombie killed while running and while standing, on host and client (E11).
+- A shipping build (E13) and a packaged build outside the editor with every mode, weapon and zombie type (R04).
+- A dedicated server with two clients (R01), movement under 50 to 150 ms latency and packet loss with forced corrections (R02), late join and replication order (R03).
+- Sound (R05): nothing has been listened to. The sessions that did this work cannot hear.
+- Hands, fingers and every weapon action from both views (R06), zombie hit zones, boss clips and the hand-over to the ragdoll (R07), a full match on the reworked arena (R08), load outside the editor (R09).
+- Between separate processes (R10): a played round, an upgrade choice, a wrong address or version, the host quitting, a rejoin.
+- E16, bullet marks from end points only: open.

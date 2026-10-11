@@ -72,7 +72,9 @@ Shattered Sanctum, competitive UI, audio, VFX, presentation, settings, and perfo
 A review of commit `64de43e` listed 18 code findings and 10 areas to check. `docs/Phase9.md` tracks every one with its state and evidence.
 
 - 9A, combat and participants (done 2026-10-11): every ray of a knife swing stops at cover; the knife's attack time is separate from the switch time; a trigger held inside the switch time fires when it ends, on both sides; the reload request needs the firearm in the hands; a third player only watches and their leaving does not touch the match; upgrade choices name their selection.
-- Open: 9B input, camera and survival; 9C build, assets and tests; 9D presentation and sound; 9E load and overall acceptance.
+- 9B, input, camera and survival (code and tests done 2026-10-11): no weapon action starts behind the pause menu; the shot origin eases with the eye through crouch and slide; one Reset Defaults; no charge for full ammunition; a zombie's speed at death is kept for clip and ragdoll; big enemies spawn and are rescued where their capsule fits; survival ends when the last living player leaves; the round flow document says how two deaths in one frame are handled.
+- 9C, first part (done 2026-10-11): developer commands are compiled out of shipping builds; the asset setup commands are no longer part of the test suite and fail on missing assets.
+- Open: the rest of 9C (dedicated server pose, prediction under latency, replication order, a packaged build), 9D presentation and sound, 9E load and overall acceptance, and every check that needs a person at the screen or ears. See the end of `docs/Phase9.md`.
 
 ## Phase 10: Online private duel, server, ranked, network hardening, and V1 release
 
