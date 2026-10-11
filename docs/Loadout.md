@@ -174,3 +174,9 @@ Checked in a two player session with real input, recorded from both views as sho
 Not checked: the sounds (they cannot be listened to from here; the calls are in the same multicasts as before), fingers in the recordings (too small at this size), the slow motion and movement recordings frame by frame, the quick change during a throw, and the wall case beyond that it ran without errors.
 
 Running the whole suite also runs the `ArenaDuel.VisualAssetSetup.*` commands, which re-save `BP_ArenaDuelCharacter`; restore that file afterwards or leave those two out.
+
+## Less weapon kick under sustained fire (2026-10-11)
+
+Holding the trigger used to let the viewmodel kick build up to three single-shot kicks: the weapon ended up 15 cm back in the screen and 4.5 degrees up. The build-up now stops at `MaxSustainedKick` 1.35, and a unit of kick moves the weapon `KickPushback` 3.4 cm and `KickPitch` 1.1 degrees (before: 5 cm and 1.5 degrees), so sustained fire holds the weapon about 4.6 cm back and 1.5 degrees up. A single shot kicks about a third less than before. This is the weapon on screen only: where the shots go, the camera recoil (`RecoilVertical`, `RecoilHorizontal`), spread and the recovery are unchanged.
+
+Not checked in a play session.

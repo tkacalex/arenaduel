@@ -42,6 +42,11 @@ struct FArenaDuelViewmodelFeel
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float AimResponse = 14.0f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float MotionResponse = 12.0f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float RecoilResponse = 19.0f;
+	/** The most the viewmodel kick may build up to under sustained fire, in single-shot kicks. It used to reach three, which drove the weapon far back into the screen. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0.5", ClampMax = "3")) float MaxSustainedKick = 1.35f;
+	/** How far one unit of kick pushes the weapon back, in centimetres, and how far it tips the muzzle up, in degrees. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0")) float KickPushback = 3.4f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "0")) float KickPitch = 1.1f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float SwayDegreesPerDegreePerSecond = 0.004f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float MaxSwayDegrees = 2.0f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float MovementBob = 0.65f;

@@ -939,7 +939,7 @@ void UArenaDuelWeaponComponent::LocalCosmeticShot()
 		ScopeSuppressedUntilWorldTime = GetWorld()->GetTimeSeconds() + Fired.ScopeRezoomSeconds;
 	}
 	const float Kick = WeaponVisualDefinitions.IsValidIndex(EquippedWeaponIndex) ? WeaponVisualDefinitions[EquippedWeaponIndex].VisualRecoilKick : 1.0f;
-	LocalWeaponKick = FMath::Min(LocalWeaponKick + Kick, 3.0f);
+	LocalWeaponKick = FMath::Min(LocalWeaponKick + Kick, FMath::Max(ViewmodelFeel.MaxSustainedKick, Kick));
 	VisualYawKick = FMath::Clamp(VisualYawKick + ((LastShotSequence & 1) ? 0.35f : -0.35f) * Kick, -1.5f, 1.5f);
 	ApplyLocalRecoil();
 	LocalRecoilRecoveryTimeRemaining = 0.0f;
@@ -1293,7 +1293,7 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 	const float Breath = ViewmodelFeel.IdleBreathing * (1.0f - BobBlend) * MotionWeight;
 	const FVector Bob(0.0f, FMath::Sin(BobPhase) * BobAmount * 0.5f,
 		FMath::Abs(FMath::Cos(BobPhase)) * BobAmount + FMath::Sin(IdlePhase) * Breath);
-	const FVector MotionLocation(-5.0f * LocalWeaponKick - ViewmodelFeel.WallPushback * WallBlend,
+	const FVector MotionLocation(-ViewmodelFeel.KickPushback * LocalWeaponKick - ViewmodelFeel.WallPushback * WallBlend,
 		-SwayYaw * 0.3f + FMath::Clamp(LocalVelocity.Y / 900.0f, -1.0f, 1.0f) * MotionWeight,
 		Bob.Z + LandingOffset - ViewmodelFeel.SprintLowering * SprintBlend - 10.0f * EquipDrop - 8.0f * WallBlend);
 	// The hip pose is lowered so the screen edge cuts the forearms off; aiming brings them into view.
@@ -1311,7 +1311,7 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 	const float Carry = (PreviewCarry >= 0.0f ? FMath::Min(PreviewCarry, 1.0f) : SprintBlend) * (GetPresentedSlot() == EArenaDuelLoadoutSlot::Primary ? 1.0f : 0.35f);
 	const float Stride = FMath::Sin(BobPhase) * BobBlend * Carry;
 	const float Rise = PreviewRise >= 0.0f ? FMath::Square(FMath::Min(PreviewRise, 1.0f)) : EquipDrop * EquipDrop;
-	const FRotator MotionRotation(SwayPitch - 1.5f * LocalWeaponKick + 9.0f * Carry - 30.0f * Rise,
+	const FRotator MotionRotation(SwayPitch - ViewmodelFeel.KickPitch * LocalWeaponKick + 9.0f * Carry - 30.0f * Rise,
 		SwayYaw + VisualYawKick - 30.0f * Carry + 3.0f * Stride + 8.0f * Rise,
 		-SwayYaw * 0.35f + FMath::Sin(BobPhase) * BobAmount * 0.3f - 14.0f * Carry + 2.5f * Stride + 20.0f * Rise);
 	// Knife and throw: the arm's own motion, on top of everything else. Camera space: X forward, Y right, Z up.
