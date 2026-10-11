@@ -382,6 +382,8 @@ void UArenaDuelCharacterMovementComponent::UpdateCharacterStateBeforeMovement(fl
 		}
 	}
 	WallReattachTimeRemaining = FMath::Max(0.0f, WallReattachTimeRemaining - DeltaSeconds);
+	WallKickTimeRemaining = FMath::Max(0.0f, WallKickTimeRemaining - DeltaSeconds);
+	if (IsMovingOnGround()) { WallKicksUsed = 0; WallChain = 0; LastKickNormal = FVector::ZeroVector; }
 	if (!IsSliding())
 	{
 		TimeSinceSlideEnded = FMath::Min(TimeSinceSlideEnded + DeltaSeconds, 1000.0f);
@@ -579,11 +581,20 @@ void UArenaDuelCharacterMovementComponent::PhysWallRun(float DeltaSeconds, int32
 	WallNormal = CandidateNormal;
 	WallRunElapsed += DeltaSeconds;
 	ConsumeStamina(WallRunDrain * DeltaSeconds);
-	const FVector AlongWall = FVector::VectorPlaneProject(Velocity, WallNormal).GetSafeNormal();
-	const FVector DesiredVelocity = AlongWall.IsNearlyZero() ? FVector::VectorPlaneProject(CharacterOwner->GetActorForwardVector(), WallNormal).GetSafeNormal() * WallRunSpeed : AlongWall * WallRunSpeed;
-	Velocity = FVector(DesiredVelocity.X, DesiredVelocity.Y, FMath::Max(Velocity.Z, -120.0f));
-	Velocity.Z += GetGravityZ() * WallRunGravityScale * DeltaSeconds;
-	Velocity = Velocity.GetClampedToMaxSize2D(GlobalMomentumCap);
+	// The run keeps the speed it was entered with and only slowly settles to the base wall run speed, so a
+	// fast approach pays off. A slow entry is pulled up to the base speed as before.
+	WallRunEntrySpeed = FMath::Max(WallRunSpeed, WallRunEntrySpeed - WallRunSpeedDecay * DeltaSeconds);
+	const float RunSpeed = FMath::Min(WallRunEntrySpeed, FMath::Max(GlobalMomentumCap, SpeedAllowance));
+	FVector AlongWall = FVector::VectorPlaneProject(FVector(Velocity.X, Velocity.Y, 0.0f), WallNormal);
+	AlongWall.Z = 0.0f;
+	AlongWall = AlongWall.GetSafeNormal();
+	if (AlongWall.IsNearlyZero()) AlongWall = FVector::VectorPlaneProject(CharacterOwner->GetActorForwardVector(), WallNormal).GetSafeNormal2D();
+	const FVector DesiredVelocity = AlongWall * RunSpeed;
+	// Caught on the way up, the run arcs: upward speed is kept, within a limit. Gravity starts close to nothing
+	// and grows over the run, so the first part is flat and the end sinks.
+	const float GravityShare = FMath::Lerp(WallRunStartGravityScale, WallRunGravityScale, FMath::Clamp(WallRunElapsed / FMath::Max(WallRunMaxDuration, 0.1f), 0.0f, 1.0f));
+	Velocity = FVector(DesiredVelocity.X, DesiredVelocity.Y, FMath::Clamp(Velocity.Z, -120.0f, WallRunMaxRiseSpeed));
+	Velocity.Z += GetGravityZ() * GravityShare * DeltaSeconds;
 	SafeMoveUpdatedComponent(Velocity * DeltaSeconds, UpdatedComponent->GetComponentQuat(), true, WallHit);
 }
 
@@ -645,6 +656,9 @@ void UArenaDuelCharacterMovementComponent::ProcessLanded(const FHitResult& Hit, 
 #endif
 	TimeSinceLanded = 0.0f;
 	SpeedAllowance = 0.0f;
+	WallKicksUsed = 0;
+	WallChain = 0;
+	LastKickNormal = FVector::ZeroVector;
 	Super::ProcessLanded(Hit, RemainingTime, Iterations);
 	// Jump again at once when the owner holds jump (auto hop) or pressed it just before touching down.
 	// Only the owning machine knows the key; the jump then travels to the server in the next move as usual.
@@ -756,16 +770,84 @@ bool UArenaDuelCharacterMovementComponent::TrySlideJump()
 
 bool UArenaDuelCharacterMovementComponent::TryWallJump()
 {
-	if (!IsWallRunning())
+	if (IsWallRunning())
 	{
-		return false;
+		const FVector Normal = WallNormal;
+		ExitWallRun();
+		LaunchFromWall(Normal, WallJumpAwayForce);
+		return true;
 	}
-	const FVector Forward = FVector::VectorPlaneProject(Velocity, FVector::UpVector).GetSafeNormal();
-	Velocity = Forward * WallJumpForwardRetention * WallRunSpeed + WallNormal * WallJumpAwayForce;
-	Velocity.Z = WallJumpUpForce;
-	ExitWallRun();
-	SetMovementMode(MOVE_Falling);
+	// Not running along a wall: a kick off whatever wall is in reach.
+	FVector Normal;
+	if (!CanWallKick() || !TryFindKickWall(Normal)) return false;
+	ConsumeStamina(WallKickStaminaCost);
+	++WallKicksUsed;
+	LaunchFromWall(Normal, WallKickAwayForce);
 	return true;
+}
+
+bool UArenaDuelCharacterMovementComponent::CanWallKick() const
+{
+	FVector Normal;
+	if (MovementMode != MOVE_Falling || WallKicksUsed >= MaxWallKicks || WallKickTimeRemaining > 0.0f || Stamina < WallKickStaminaCost) return false;
+	// The same wall cannot be kicked twice in a row: climbing takes two walls, or a wall run in between.
+	return TryFindKickWall(Normal) && (LastKickNormal.IsNearlyZero() || FVector::DotProduct(Normal, LastKickNormal) < 0.9f);
+}
+
+void UArenaDuelCharacterMovementComponent::LaunchFromWall(const FVector& Normal, float AwayForce)
+{
+	const FVector Flat = FVector(Normal.X, Normal.Y, 0.0f).GetSafeNormal();
+	// What the player carries along the wall is kept in full; the wall adds its push, and every jump in a
+	// chain adds a little more. The chain may exceed the ordinary cap until the next landing.
+	FVector Along = FVector::VectorPlaneProject(FVector(Velocity.X, Velocity.Y, 0.0f), Flat);
+	Along.Z = 0.0f;
+	const float Carried = Along.Size() * WallJumpForwardRetention;
+	FVector Launch = Along.GetSafeNormal() * Carried + Flat * AwayForce;
+	// The look direction steers the jump, but only as far as it points away from the wall.
+	if (CharacterOwner && WallJumpAimInfluence > 0.0f)
+	{
+		FVector Look = CharacterOwner->GetControlRotation().Vector();
+		Look.Z = 0.0f;
+		Look = Look.GetSafeNormal();
+		if (!Look.IsNearlyZero() && FVector::DotProduct(Look, Flat) > 0.1f)
+		{
+			const float Speed = Launch.Size();
+			Launch = FMath::Lerp(Launch.GetSafeNormal(), Look, WallJumpAimInfluence).GetSafeNormal() * Speed;
+		}
+	}
+	++WallChain;
+	const float Target = FMath::Min(Launch.Size() + WallChainSpeedBonus * static_cast<float>(FMath::Max(WallChain - 1, 0)), WallChainSpeedCap);
+	Launch = Launch.GetSafeNormal() * Target;
+	if (Target > GlobalMomentumCap) AllowSpeedUntilLanding(Target);
+	Velocity = FVector(Launch.X, Launch.Y, FMath::Max(Velocity.Z * 0.25f, 0.0f) + WallJumpUpForce);
+	LastKickNormal = Flat;
+	WallKickTimeRemaining = WallKickCooldown;
+	if (MovementMode != MOVE_Falling) SetMovementMode(MOVE_Falling);
+}
+
+bool UArenaDuelCharacterMovementComponent::TryFindKickWall(FVector& OutNormal) const
+{
+	if (!CharacterOwner || !GetWorld()) return false;
+	const FVector Start = CharacterOwner->GetActorLocation();
+	const float Radius = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	const float Distance = Radius + WallKickReach;
+	const FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelWallKick), false, CharacterOwner);
+	const FRotator Facing(0.0f, CharacterOwner->GetActorRotation().Yaw, 0.0f);
+	float BestDistance = TNumericLimits<float>::Max();
+	bool bFound = false;
+	// Eight directions around the body, so a wall in front, behind or at an angle counts as well as one beside.
+	for (int32 Step = 0; Step < 8; ++Step)
+	{
+		const FVector Direction = (Facing + FRotator(0.0f, 45.0f * static_cast<float>(Step), 0.0f)).Vector();
+		FHitResult Hit;
+		if (GetWorld()->LineTraceSingleByChannel(Hit, Start, Start + Direction * Distance, ECC_Visibility, Params) && FMath::Abs(Hit.ImpactNormal.Z) < 0.25f && Hit.Distance < BestDistance)
+		{
+			BestDistance = Hit.Distance;
+			OutNormal = Hit.ImpactNormal;
+			bFound = true;
+		}
+	}
+	return bFound;
 }
 
 bool UArenaDuelCharacterMovementComponent::TryFindWall(FHitResult& OutHit, FVector& OutNormal) const
@@ -920,6 +1002,10 @@ void UArenaDuelCharacterMovementComponent::EnterWallRun(const FVector& InWallNor
 	}
 	WallNormal = InWallNormal;
 	WallRunElapsed = 0.0f;
+	WallRunEntrySpeed = FMath::Max(WallRunSpeed, static_cast<float>(Velocity.Size2D()));
+	// A wall run gives the kicks back and lets the same wall be kicked again afterwards.
+	WallKicksUsed = 0;
+	LastKickNormal = FVector::ZeroVector;
 	SetMovementMode(MOVE_Custom, ArenaDuelMovement::WallRunMode);
 }
 

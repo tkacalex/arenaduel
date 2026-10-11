@@ -494,6 +494,58 @@ ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4WallJumpBehaviorTest, "ArenaDuel.Pha
 	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World(); AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(800.0f, 390.0f, 100.0f), FVector(900.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character); Move->StartSprint(); Move->UpdateCharacterStateBeforeMovement(0.016f); const bool bJumped = Move->TryWallJump(); TestTrue(TEXT("Wall jump accepted"), bJumped); TestFalse(TEXT("Wall jump exits wall run"), Move->IsWallRunning()); TestEqual(TEXT("Wall jump falls"), Move->MovementMode, MOVE_Falling); TestTrue(TEXT("Wall jump rises"), Move->Velocity.Z > 0.0f); TestTrue(TEXT("Wall jump moves away from wall"), Move->Velocity.Y < 0.0f); TestTrue(TEXT("Wall jump velocity is finite"), ArenaDuelPhase4HardeningTests::IsFinite(Move->Velocity)); return true;
 })
 
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4WallKickTest, "ArenaDuel.Phase4.WallKick", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World();
+	// Next to the wall, in the air, too slow for a wall run and without sprint: a kick works anyway.
+	AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(800.0f, 390.0f, 100.0f), FVector(300.0f, 0.0f, -200.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character);
+	Move->UpdateCharacterStateBeforeMovement(0.016f);
+	TestFalse(TEXT("Below wall run speed there is no wall run"), Move->IsWallRunning());
+	TestTrue(TEXT("A wall in reach can be kicked"), Move->CanWallKick());
+	const float StaminaBefore = Move->GetStamina();
+	TestTrue(TEXT("Kick accepted"), Move->TryWallJump());
+	TestTrue(TEXT("Kick pushes off the wall"), Move->Velocity.Y < -300.0f);
+	TestTrue(TEXT("Kick keeps the speed along the wall"), Move->Velocity.X > 250.0f);
+	TestTrue(TEXT("Kick rises"), Move->Velocity.Z > 0.0f);
+	TestEqual(TEXT("One kick used"), Move->GetWallKicksUsed(), 1);
+	TestTrue(TEXT("A kick costs stamina"), Move->GetStamina() < StaminaBefore);
+	TestFalse(TEXT("No second kick in the same instant"), Move->TryWallJump());
+	// Back at the same wall after the cooldown: refused, the same wall cannot be kicked twice in a row.
+	Move->Velocity = FVector(300.0f, 0.0f, -100.0f); Move->UpdateCharacterStateBeforeMovement(Move->WallKickCooldown + 0.05f);
+	TestFalse(TEXT("The same wall twice in a row is refused"), Move->CanWallKick());
+	TestFalse(TEXT("And the jump with it"), Move->TryWallJump());
+	// Away from any wall, and on the ground, nothing kicks.
+	AArenaDuelCharacter* Open = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(0.0f, 0.0f, 300.0f), FVector(300.0f, 0.0f, 0.0f));
+	TestFalse(TEXT("No wall, no kick"), ArenaDuelPhase4HardeningTests::Movement(Open)->CanWallKick());
+	Move->SetMovementMode(MOVE_Walking);
+	TestFalse(TEXT("No kick from the ground"), Move->CanWallKick());
+	Move->UpdateCharacterStateBeforeMovement(0.016f);
+	TestEqual(TEXT("The ground gives the kicks back"), Move->GetWallKicksUsed(), 0);
+	return true;
+})
+
+ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4WallMomentumTest, "ArenaDuel.Phase4.WallMomentum", {
+	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World();
+	AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(800.0f, 390.0f, 100.0f), FVector(1200.0f, 0.0f, 150.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character);
+	Move->StartSprint(); Move->UpdateCharacterStateBeforeMovement(0.016f);
+	TestTrue(TEXT("Fast entry catches the wall"), Move->IsWallRunning());
+	Move->PhysCustom(0.016f, 0);
+	if (Move->IsWallRunning())
+	{
+		// The run keeps what it was entered with instead of dropping to the base wall run speed.
+		TestTrue(TEXT("A wall run keeps its entry speed"), Move->Velocity.Size2D() > Move->WallRunSpeed + 200.0f);
+		TestTrue(TEXT("A wall run entered on the way up keeps rising for a moment"), Move->Velocity.Z > 0.0f);
+	}
+	else Move->EnterWallRunForTests(FVector(0.0f, -1.0f, 0.0f));
+	Move->Velocity = FVector(1200.0f, 0.0f, 0.0f);
+	TestTrue(TEXT("Wall jump accepted"), Move->TryWallJump());
+	TestTrue(TEXT("A wall jump keeps the speed along the wall"), Move->Velocity.X >= 1190.0f);
+	TestTrue(TEXT("And adds the push off the wall"), Move->Velocity.Y < -400.0f);
+	TestTrue(TEXT("The chain stays inside its own cap"), Move->Velocity.Size2D() <= Move->WallChainSpeedCap + 1.0f);
+	TestEqual(TEXT("First jump of a chain"), Move->GetWallChain(), 1);
+	TestTrue(TEXT("Settings are sane"), Move->WallChainSpeedCap >= Move->GlobalMomentumCap && Move->MaxWallKicks >= 1 && Move->WallRunStartGravityScale <= Move->WallRunGravityScale);
+	return true;
+})
+
 ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4VaultProgressionTest, "ArenaDuel.Phase4.VaultProgression", {
 	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World(); AArenaDuelCharacter* Character = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(930.0f, 0.0f, 88.0f), FVector(800.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* Move = ArenaDuelPhase4HardeningTests::Movement(Character); const FVector Start = Character->GetActorLocation(); Move->UpdateCharacterStateBeforeMovement(0.016f); TestEqual(TEXT("Vault starts custom traversal"), Move->CustomMovementMode, static_cast<uint8>(EArenaDuelCustomMovementMode::Vault)); bool bMoved = false; for (int32 Index = 0; Index < 20 && Move->MovementMode == MOVE_Custom; ++Index) { const FVector Before = Character->GetActorLocation(); Move->PhysCustom(0.016f, Index); bMoved |= !Character->GetActorLocation().Equals(Before, 0.1f); } AddInfo(FString::Printf(TEXT("Vault final location: %s"), *Character->GetActorLocation().ToString())); TestTrue(TEXT("Vault progresses over multiple frames"), bMoved); TestTrue(TEXT("Vault crosses obstacle"), Character->GetActorLocation().X > 1050.0f); TestTrue(TEXT("Vault ends in valid mode"), Move->MovementMode == MOVE_Walking || Move->MovementMode == MOVE_Falling); TestFalse(TEXT("Vault destination is clear"), ArenaDuelPhase4HardeningTests::IsCapsuleOverlapping(Character)); TestTrue(TEXT("Vault transform is finite"), ArenaDuelPhase4HardeningTests::IsFinite(Character->GetActorLocation()) && ArenaDuelPhase4HardeningTests::IsFinite(Move->Velocity)); return true;
 })

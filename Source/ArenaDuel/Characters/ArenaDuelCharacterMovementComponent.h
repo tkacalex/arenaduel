@@ -74,6 +74,12 @@ public:
 	/** Lets one launch, such as a dash, exceed the momentum cap in the air until the next landing. */
 	void AllowSpeedUntilLanding(float Speed) { SpeedAllowance = FMath::Max(SpeedAllowance, Speed); }
 	bool TryWallJump();
+	/** True when a jump press right now would kick off a wall: in the air, a wall in reach, a kick left, stamina for it. */
+	bool CanWallKick() const;
+	int32 GetWallKicksUsed() const { return WallKicksUsed; }
+	int32 GetWallChain() const { return WallChain; }
+	/** Tests only: puts the component into a wall run on a wall with this normal. */
+	void EnterWallRunForTests(const FVector& Normal) { EnterWallRun(Normal); }
 	void QueueAdvancedJump(bool bWallJump);
 	void ClearAdvancedJumpIntent();
 	bool HasAdvancedJumpIntent() const { return bAdvancedJumpRequested; }
@@ -244,29 +250,74 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Momentum")
 	float GlobalMomentumCap = 1350.0f;
 
+	/** Slowest horizontal speed that still catches a wall. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallRun")
-	float WallRunMinSpeed = 650.0f;
+	float WallRunMinSpeed = 520.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallRun")
 	float WallRunSpeed = 900.0f;
 
+	/** Share of gravity at the end of a wall run. It ramps up to this from WallRunStartGravityScale, so a run starts flat and sinks late. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallRun")
-	float WallRunGravityScale = 0.2f;
+	float WallRunGravityScale = 0.3f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallRun")
+	float WallRunStartGravityScale = 0.02f;
+
+	/** A wall run keeps the speed it was entered with; what is above WallRunSpeed bleeds off at this rate per second. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallRun")
+	float WallRunSpeedDecay = 160.0f;
+
+	/** Upward speed kept when a wall is caught on the way up, so a jump into a wall arcs instead of stopping dead. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallRun")
+	float WallRunMaxRiseSpeed = 320.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallRun")
 	float WallRunMaxDuration = 3.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallRun")
-	float WallRunDrain = 20.0f;
+	float WallRunDrain = 16.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallRun")
-	float WallJumpAwayForce = 500.0f;
+	float WallJumpAwayForce = 520.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallRun")
-	float WallJumpUpForce = 420.0f;
+	float WallJumpUpForce = 460.0f;
 
+	/** Share of the speed along the wall a wall jump keeps. 1 keeps all of it: speed is earned, not taxed. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallRun")
-	float WallJumpForwardRetention = 0.75f;
+	float WallJumpForwardRetention = 1.0f;
+
+	/** Speed added for every wall jump or kick in a row without touching the ground. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallRun")
+	float WallChainSpeedBonus = 70.0f;
+
+	/** The most a wall chain may carry until the next landing; above the ordinary momentum cap. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallRun")
+	float WallChainSpeedCap = 1550.0f;
+
+	/** How much the look direction steers a wall jump, 0 to 1. Only the part of the look that points away from the wall counts. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallRun", meta = (ClampMin = "0", ClampMax = "1"))
+	float WallJumpAimInfluence = 0.35f;
+
+	// Wall kick: a jump off a wall the player is next to in the air, without running along it first.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallKick")
+	float WallKickReach = 48.0f;
+
+	/** Kicks per time in the air. A landing or a wall run gives them back. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallKick")
+	int32 MaxWallKicks = 3;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallKick")
+	float WallKickStaminaCost = 12.0f;
+
+	/** Shortest time between two kicks. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallKick")
+	float WallKickCooldown = 0.18f;
+
+	/** Speed off the wall for a kick with no speed along it. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|WallKick")
+	float WallKickAwayForce = 620.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Stamina")
 	float MaxStamina = 100.0f;
@@ -291,6 +342,10 @@ public:
 
 protected:
 	bool TryFindWall(FHitResult& OutHit, FVector& OutNormal) const;
+	/** The nearest wall in reach in any horizontal direction, for a kick. */
+	bool TryFindKickWall(FVector& OutNormal) const;
+	/** The jump itself, shared by wall jump and wall kick. */
+	void LaunchFromWall(const FVector& Normal, float AwayForce);
 	bool TryStartTraversal();
 	void PhysSlide(float DeltaSeconds, int32 Iterations);
 	FVector ComputeSlideSlopeAcceleration() const;
@@ -327,6 +382,12 @@ protected:
 	bool bAdvancedWallJump = false;
 	float WallReattachTimeRemaining = 0.0f;
 	FVector LastWallNormal = FVector::ZeroVector;
+	// Wall chain: kicks used and wall jumps made since the feet last touched the ground, and the wall last jumped from.
+	int32 WallKicksUsed = 0;
+	int32 WallChain = 0;
+	float WallKickTimeRemaining = 0.0f;
+	FVector LastKickNormal = FVector::ZeroVector;
+	float WallRunEntrySpeed = 0.0f;
 	FVector TraversalStart = FVector::ZeroVector;
 	FVector TraversalTarget = FVector::ZeroVector;
 	float TraversalElapsed = 0.0f;

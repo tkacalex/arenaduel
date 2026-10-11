@@ -899,8 +899,9 @@ void AArenaDuelCharacter::JumpStarted()
 				return;
 			}
 		}
-		else if (MovementComponent->IsWallRunning())
+		else if (MovementComponent->IsWallRunning() || MovementComponent->CanWallKick())
 		{
+			// Off a wall run, or a kick off a wall in reach while in the air.
 			MovementComponent->QueueAdvancedJump(true);
 			if (MovementComponent->TryWallJump())
 			{
