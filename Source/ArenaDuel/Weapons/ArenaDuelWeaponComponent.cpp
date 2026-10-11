@@ -861,6 +861,7 @@ void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 }
 void UArenaDuelWeaponComponent::RequestReloadForTests() { ServerRequestReload_Implementation(); }
 void UArenaDuelWeaponComponent::FireAuthoritativeForTests() { FireAuthoritative(); }
+void UArenaDuelWeaponComponent::ConfirmShotForTests(int32 Sequence, EArenaDuelShotResult Result) { ClientShotConfirmation_Implementation(Sequence, Result, 0.0f, 1, Result == EArenaDuelShotResult::Head ? 1 : 0); }
 void UArenaDuelWeaponComponent::SelectSlotForTests(EArenaDuelLoadoutSlot Slot) { ServerSelectSlot_Implementation(static_cast<uint8>(Slot)); }
 void UArenaDuelWeaponComponent::UseEquipmentForTests(bool bAlternate) { ServerUseEquipment_Implementation(bAlternate); }
 void UArenaDuelWeaponComponent::SetFireHeldForTests(bool bHeld, float OwnerCrouchEaseAge, float OwnerSlideEaseAge) { ServerSetFireHeld_Implementation(bHeld, OwnerCrouchEaseAge, OwnerSlideEaseAge); }

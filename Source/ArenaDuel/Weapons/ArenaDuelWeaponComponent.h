@@ -383,7 +383,7 @@ public:
 	int32 GetConfirmedHeadHits() const { return ConfirmedHeadHits; }
 	int32 GetConfirmedBodyHits() const { return ConfirmedBodyHits; }
 	/** Tests: a confirmation as it arrives from the server. */
-	void ConfirmShotForTests(int32 Sequence, EArenaDuelShotResult Result) { ClientShotConfirmation_Implementation(Sequence, Result, 0.0f, 1, Result == EArenaDuelShotResult::Head ? 1 : 0); }
+	void ConfirmShotForTests(int32 Sequence, EArenaDuelShotResult Result);
 	/** Tests: the item and the use of it as the server receives them from a remote owner. */
 	void SelectSlotForTests(EArenaDuelLoadoutSlot Slot);
 	void UseEquipmentForTests(bool bAlternate);

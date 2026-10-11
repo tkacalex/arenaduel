@@ -165,15 +165,15 @@ void UArenaDuelHUDWidget::ShowConfirmedHits(UArenaDuelWeaponComponent* Weapon, b
 
 FVector2D UArenaDuelHUDWidget::GetHitMarkerRootSize() const
 {
-	const UCanvasPanelSlot* Slot = HitMarkerRoot ? Cast<UCanvasPanelSlot>(HitMarkerRoot->Slot) : nullptr;
-	return Slot ? Slot->GetSize() : FVector2D::ZeroVector;
+	const UCanvasPanelSlot* PanelSlot = HitMarkerRoot ? Cast<UCanvasPanelSlot>(HitMarkerRoot->Slot) : nullptr;
+	return PanelSlot ? PanelSlot->GetSize() : FVector2D::ZeroVector;
 }
 
 FVector2D UArenaDuelHUDWidget::GetHitMarkerTickCentre() const
 {
 	FVector2D Sum = FVector2D::ZeroVector;
 	int32 Count = 0;
-	for (const UBorder* Tick : HitMarkerTicks) if (const UCanvasPanelSlot* Slot = Tick ? Cast<UCanvasPanelSlot>(Tick->Slot) : nullptr) { Sum += Slot->GetPosition(); ++Count; }
+	for (const UBorder* Tick : HitMarkerTicks) if (const UCanvasPanelSlot* PanelSlot = Tick ? Cast<UCanvasPanelSlot>(Tick->Slot) : nullptr) { Sum += PanelSlot->GetPosition(); ++Count; }
 	return Count > 0 ? Sum / Count : FVector2D::ZeroVector;
 }
 
@@ -181,8 +181,8 @@ FVector2D UArenaDuelHUDWidget::GetHitMarkerPivotPoint() const { return HitMarker
 
 float UArenaDuelHUDWidget::GetHeadshotLabelCentreY() const
 {
-	const UCanvasPanelSlot* Slot = HeadshotLabel ? Cast<UCanvasPanelSlot>(HeadshotLabel->Slot) : nullptr;
-	return Slot ? Slot->GetPosition().Y : 0.0f;
+	const UCanvasPanelSlot* PanelSlot = HeadshotLabel ? Cast<UCanvasPanelSlot>(HeadshotLabel->Slot) : nullptr;
+	return PanelSlot ? PanelSlot->GetPosition().Y : 0.0f;
 }
 
 void UArenaDuelHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
