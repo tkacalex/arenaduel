@@ -36,7 +36,9 @@ namespace
 	TAutoConsoleVariable<float> CVarHipDrop(TEXT("ArenaDuel.Arms.HipDrop"), 5.5f, TEXT("How far the hip viewmodel is lowered, in centimetres"));
 	TAutoConsoleVariable<float> CVarAimEyeDistance(TEXT("ArenaDuel.Aim.EyeDistance"), 30.0f, TEXT("Aiming: distance from the camera to the rear of the weapon, in centimetres"));
 	TAutoConsoleVariable<float> CVarAimSightDrop(TEXT("ArenaDuel.Aim.SightDrop"), 1.2f, TEXT("Aiming: how far the top of the weapon sits below the line of sight, in centimetres"));
-	// Development helper: ArenaDuel.Slot 0|1|2 selects firearm, flashbang or knife for the local player.
+#if !UE_BUILD_SHIPPING
+	// Development helpers, not in shipping builds: they act for the local player without any input.
+	// ArenaDuel.Slot 0|1|2 selects firearm, flashbang or knife for the local player.
 	FAutoConsoleCommandWithWorldAndArgs CmdSelectSlot(TEXT("ArenaDuel.Slot"), TEXT("Select loadout slot 0 to 2 for the local player"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
 		{
@@ -87,6 +89,7 @@ namespace
 			if (Args.Num() > 1) Rotation.Yaw = FCString::Atof(*Args[1]);
 			Controller->SetControlRotation(Rotation);
 		}));
+#endif
 	// Exact critically damped step. Its response does not depend on the frame rate.
 	static void StepSpring(float& Position, float& Velocity, float Target, float Response, float DeltaSeconds)
 	{

@@ -6,7 +6,7 @@ How the bodies are made, where the files are, and what state each one is in. Wri
 
 1. **Blender** (5.2, with the MPFB 2.0.17 extension from extensions.blender.org; MPFB is the MakeHuman add-on, its assets are CC0). `Tools/Art/build_zombie.py` makes a human with the variant's build, gives it MPFB's game engine rig, poses that rig joint by joint onto the bind pose of the Unreal mannequin (`Tools/Art/manny.fbx`, exported from the project), bakes the result, marks material regions, binds the mesh to the mannequin armature and exports FBX. `Tools/Art/fp_arms.blend` is the same idea for the arms alone.
 2. **Unreal, editor closed**: `Tools/Editor/SetupZombieAssets.py` and `Tools/Editor/SetupFirstPersonHands.py` import the FBX files onto `SK_Mannequin` and create the materials.
-3. **Unreal, editor open**: the automation command `ArenaDuel.VisualAssetSetup.CharacterMaterials` assigns the materials by slot name and saves the meshes. This step is C++ because a Python script cannot save a skeletal mesh it has just loaded; an assignment made in the import run itself is lost.
+3. **Unreal, editor open**: the automation command `ProjectAssetSetup.CharacterMaterials` assigns the materials by slot name and saves the meshes. This step is C++ because a Python script cannot save a skeletal mesh it has just loaded; an assignment made in the import run itself is lost.
 
 Because every mesh shares the mannequin skeleton and bind pose, the mannequin clips, sockets and physics asset fit without retargeting. The physics asset (`PA_Mannequin`) supplies the hit zones, so head, torso and limb hits work as before.
 
@@ -78,7 +78,7 @@ Created, exported, in Unreal: all four. Checked in play: stills at the hip and a
 
 Crate and container have one box of their own size as collision. After the swap, three waves ran in auto play with every sampled enemy on a valid navigation path, and the survival and map tests pass. Not checked: walking into the props, vaulting the crates, the heal pad in the duel map, and the duel map's own blocks, which are unchanged cubes.
 
-Note on re-running `SetupZombieAssets.py`: it re-imports the bodies, which drops their materials and physics asset again. Run `ArenaDuel.VisualAssetSetup.CharacterMaterials` in the editor afterwards, every time.
+Note on re-running `SetupZombieAssets.py`: it re-imports the bodies, which drops their materials and physics asset again. Run `ProjectAssetSetup.CharacterMaterials` in the editor afterwards, every time.
 
 ## Zombie clips: charge, slam and falling (2026-10-10)
 

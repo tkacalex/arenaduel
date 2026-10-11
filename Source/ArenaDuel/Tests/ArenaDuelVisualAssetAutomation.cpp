@@ -43,7 +43,10 @@ namespace
 
 // Explicit editor setup command. It creates the forearm viewmodel and fixes the
 // native and saved Blueprint defaults so HandGrip_R is valid on the next PIE spawn.
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelCreateArmsAsset, "ArenaDuel.VisualAssetSetup.Arms", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+// These two are setup commands that write assets, not checks. Their names do not start with "ArenaDuel", so a
+// run of the project's tests ("Automation RunTests ArenaDuel") leaves them out; they run only when asked for
+// by name ("Automation RunTests ProjectAssetSetup").
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelCreateArmsAsset, "ProjectAssetSetup.Arms", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FArenaDuelCreateArmsAsset::RunTest(const FString& Parameters)
 {
 	const TCHAR* PackagePath = TEXT("/Game/ArenaDuel/Characters/Common/SKM_ArenaDuelFPSArms");
@@ -103,13 +106,14 @@ bool FArenaDuelCreateArmsAsset::RunTest(const FString& Parameters)
 // Explicit editor setup command, run after the import scripts under Tools/Editor: gives the first person
 // hands and the zombie bodies their materials by slot name and saves them. A Python script cannot do this
 // part: the package of a freshly loaded skeletal mesh stays open for reading and the save fails.
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelAssignCharacterMaterials, "ArenaDuel.VisualAssetSetup.CharacterMaterials", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelAssignCharacterMaterials, "ProjectAssetSetup.CharacterMaterials", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FArenaDuelAssignCharacterMaterials::RunTest(const FString& Parameters)
 {
 	const auto Assign = [this](const FString& MeshPath, const FString& Variant)
 	{
 		USkeletalMesh* Mesh = LoadObject<USkeletalMesh>(nullptr, *MeshPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
-		if (!Mesh) return;
+		// Every mesh named below is required: one that is missing fails the setup instead of being passed over.
+		if (!Mesh) { AddError(FString::Printf(TEXT("Required mesh missing: %s"), *MeshPath)); return; }
 		TArray<FSkeletalMaterial> Materials = Mesh->GetMaterials();
 		int32 Assigned = 0;
 		for (FSkeletalMaterial& Material : Materials)
@@ -124,7 +128,7 @@ bool FArenaDuelAssignCharacterMaterials::RunTest(const FString& Parameters)
 			else if (Slot.StartsWith(TEXT("Z_"))) Path = FString::Printf(TEXT("/Game/ArenaDuel/Characters/Zombies/M_Zombie%s"), *Slot.RightChop(2));
 			if (Path.IsEmpty()) continue;
 			if (UMaterialInterface* Found = LoadObject<UMaterialInterface>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet)) { Material.MaterialInterface = Found; ++Assigned; }
-			else AddWarning(FString::Printf(TEXT("%s: no material at %s for slot %s"), *Mesh->GetName(), *Path, *Slot));
+			else AddError(FString::Printf(TEXT("%s: required material missing at %s for slot %s"), *Mesh->GetName(), *Path, *Slot));
 		}
 		Mesh->Modify();
 		Mesh->SetMaterials(Materials);
@@ -132,6 +136,7 @@ bool FArenaDuelAssignCharacterMaterials::RunTest(const FString& Parameters)
 		if (!Variant.IsEmpty() && !Mesh->GetPhysicsAsset())
 		{
 			if (UPhysicsAsset* Zones = LoadObject<UPhysicsAsset>(nullptr, TEXT("/Game/Characters/Mannequins/Rigs/PA_Mannequin.PA_Mannequin"))) Mesh->SetPhysicsAsset(Zones);
+			else AddError(FString::Printf(TEXT("%s: the hit zone physics asset PA_Mannequin is missing"), *Mesh->GetName()));
 		}
 		ResetLoaders(Mesh->GetOutermost());
 		if (!SaveAssetPackage(Mesh)) AddError(FString::Printf(TEXT("Could not save %s"), *Mesh->GetName()));
@@ -142,7 +147,7 @@ bool FArenaDuelAssignCharacterMaterials::RunTest(const FString& Parameters)
 	{
 		Assign(FString::Printf(TEXT("/Game/ArenaDuel/Characters/Zombies/SKM_Zombie_%s"), Variant), Variant);
 	}
-	return true;
+	return !HasAnyErrors();
 }
 
 #endif

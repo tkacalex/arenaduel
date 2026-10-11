@@ -173,7 +173,7 @@ Checked in a two player session with real input, recorded from both views as sho
 
 Not checked: the sounds (they cannot be listened to from here; the calls are in the same multicasts as before), fingers in the recordings (too small at this size), the slow motion and movement recordings frame by frame, the quick change during a throw, and the wall case beyond that it ran without errors.
 
-Running the whole suite also runs the `ArenaDuel.VisualAssetSetup.*` commands, which re-save `BP_ArenaDuelCharacter`; restore that file afterwards or leave those two out.
+The asset setup commands that re-save `BP_ArenaDuelCharacter` are no longer part of the suite: they are named `ProjectAssetSetup.*` and run only when asked for by that name (Phase 9, E14).
 
 ## Less weapon kick under sustained fire (2026-10-11)
 

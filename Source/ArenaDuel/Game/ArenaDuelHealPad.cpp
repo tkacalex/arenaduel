@@ -10,9 +10,10 @@
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
 
+#if !UE_BUILD_SHIPPING
 namespace
 {
-	// Development helper: ArenaDuel.Health <value> sets the health of the local player, to try the pad without a fight.
+	// Development helper, not in shipping builds: ArenaDuel.Health <value> sets the health of the local player, to try the pad without a fight.
 	FAutoConsoleCommandWithWorldAndArgs CmdSetHealth(TEXT("ArenaDuel.Health"), TEXT("Set the health of the local player (server or listen host only)"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
 		{
@@ -21,6 +22,7 @@ namespace
 			if (Pawn && Args.Num() > 0) Pawn->AdminSetHealth(FCString::Atof(*Args[0]));
 		}));
 }
+#endif
 
 AArenaDuelHealPad::AArenaDuelHealPad()
 {
