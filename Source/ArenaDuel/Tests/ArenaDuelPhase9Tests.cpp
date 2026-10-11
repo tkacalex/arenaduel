@@ -920,7 +920,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 	// 9C.3, late messages: the confirmation of a shot is unreliable and can arrive after the weapon was changed
 	// or after a reload ended. What it says about the magazine belongs to the weapon and the filling it was
 	// fired from, not to whatever is in the hands when it arrives.
-	TEST_METHOD(LateConfirmationIsNotTakenForAnotherWeaponOrAnotherFilling)
+	TEST_METHOD(LateConfirmationOfAnotherWeaponIsNotTakenForTheOneInTheHands)
 	{
 		using namespace ArenaDuelPhase9Tests;
 		const int32 FirstWeapon = AnAutomaticWeapon(), OtherWeapon = AnotherWeaponThan(FirstWeapon);
@@ -951,14 +951,37 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 				Weapon->DeliverShotConfirmationForTests(State.Sequence + 1, 0, static_cast<uint8>(FirstWeapon), 200, 0, static_cast<uint8>(State.Serial));
 				if (Weapon->GetOwnerPredictedMagazine() != Weapon->GetCurrentMagazineAmmo())
 					TestRunner->AddError(FString::Printf(TEXT("A late confirmation of the other weapon was taken for the one in the hands: %d rounds assumed of %d"), Weapon->GetOwnerPredictedMagazine(), Weapon->GetCurrentMagazineAmmo()));
-			})
-			.ThenServer(TEXT("Server: back to the first weapon, and a reload"), [FirstWeapon](FArenaDuelPhase9State& State)
+			});
+	}
+
+	// The same across the end of a reload: what a shot left in the magazine says nothing about the magazine after
+	// it was filled, however late the message arrives.
+	TEST_METHOD(LateConfirmationFromBeforeAReloadIsNotTakenForTheFilledMagazine)
+	{
+		using namespace ArenaDuelPhase9Tests;
+		const int32 FirstWeapon = AnAutomaticWeapon();
+		Network
+			.UntilServer(TEXT("Both duel players have pawns"), [](FArenaDuelPhase9State& State) { return PawnForSlot(State.World, 0) && PawnForSlot(State.World, 1); }, FTimespan::FromSeconds(10.0))
+			.ThenServer(TEXT("Start a round"), [](FArenaDuelPhase9State& State) { StartMatch(State.World); })
+			.UntilServer(TEXT("Round one runs"), [](FArenaDuelPhase9State& State) { return BothAliveInRound(State.World); }, FTimespan::FromSeconds(6.0))
+			.ThenServer(TEXT("The client's pawn holds an automatic weapon with three rounds in it"), [FirstWeapon](FArenaDuelPhase9State& State)
 			{
 				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 1)->GetWeaponComponent();
+				Weapon->GrantAllWeaponsForDevelopment();
 				Weapon->EquipWeapon(FirstWeapon);
+				Weapon->RefillAllAmmoForDevelopment();
+				Weapon->ConsumeAmmoForTests(Weapon->GetCurrentMagazineAmmo() - 3);
 				Weapon->ClearActionTimesForTests();
-				Weapon->RequestReloadForTests();
 			})
+			.UntilClient(TEXT("Client: it has the weapon and the three rounds"), 0, [FirstWeapon](FArenaDuelPhase9State& State)
+			{
+				const UArenaDuelWeaponComponent* Weapon = LocalWeapon(State.World);
+				if (!Weapon || Weapon->GetEquippedWeaponIndex() != FirstWeapon || Weapon->GetActiveSlot() != EArenaDuelLoadoutSlot::Primary || Weapon->IsReloading() || Weapon->GetCurrentMagazineAmmo() != 3) return false;
+				State.Serial = Weapon->GetMagazineRefillSerial();
+				State.Sequence = Weapon->GetLastShotSequence();
+				return true;
+			}, FTimespan::FromSeconds(6.0))
+			.ThenServer(TEXT("Server: a reload"), [](FArenaDuelPhase9State& State) { PawnForSlot(State.World, 1)->GetWeaponComponent()->RequestReloadForTests(); })
 			.UntilClient(TEXT("Client: the reload is over and the magazine is full"), 0, [FirstWeapon](FArenaDuelPhase9State& State)
 			{
 				const UArenaDuelWeaponComponent* Weapon = LocalWeapon(State.World);
