@@ -752,8 +752,39 @@ void UArenaDuelWeaponComponent::StartAuthoritativeFire()
 		return;
 	}
 	bServerFireHeld = true;
-	FireAuthoritative();
-	if (GetCurrentDefinition().bAutomatic) { const float Interval = 60.0f / FMath::Max(GetCurrentDefinition().RoundsPerMinute, 1.0f); GetWorld()->GetTimerManager().SetTimer(AutomaticFireTimerHandle, this, &UArenaDuelWeaponComponent::FireAuthoritative, Interval, true, Interval); }
+	if (!GetCurrentDefinition().bAutomatic) { FireAuthoritative(); return; }
+	// An automatic weapon fires on a schedule of due times, one interval apart (NextAllowedFireServerTimes).
+	// A press starts a new schedule now, unless the last shot's interval is still running: then the first shot
+	// is due when that is over, so letting go and pressing again can never fire sooner than holding would.
+	const int32 DefinitionIndex = static_cast<int32>(EquippedWeaponIndex);
+	if (!NextAllowedFireServerTimes.IsValidIndex(DefinitionIndex)) NextAllowedFireServerTimes.SetNum(WeaponDefinitions.Num());
+	NextAllowedFireServerTimes[DefinitionIndex] = FMath::Max(NextAllowedFireServerTimes[DefinitionIndex], GetWorld()->GetTimeSeconds());
+	RunAutomaticFire();
+}
+
+void UArenaDuelWeaponComponent::RunAutomaticFire()
+{
+	UWorld* World = GetWorld();
+	if (!World || !bServerFireHeld) return;
+	const int32 DefinitionIndex = static_cast<int32>(EquippedWeaponIndex);
+	if (!NextAllowedFireServerTimes.IsValidIndex(DefinitionIndex)) return;
+	const double Now = World->GetTimeSeconds();
+	// Every shot that is due is fired: one in a normal frame, more than one only when a frame was longer than
+	// an interval, and never more than the catch-up time allows (FireAuthoritative drops older ones).
+	int32 Guard = 0;
+	while (bServerFireHeld && Now + KINDA_SMALL_NUMBER >= NextAllowedFireServerTimes[DefinitionIndex] && ++Guard <= 8)
+	{
+		const int32 Before = LastShotSequence;
+		FireAuthoritative();
+		if (LastShotSequence == Before) break;   // nothing left the barrel: empty, reloading, dead
+	}
+	if (!bServerFireHeld || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex) || static_cast<int32>(EquippedWeaponIndex) != DefinitionIndex) return;
+	// Woken for the next due time. A timer runs with the frame that follows its time, so the shot is late by a
+	// part of a frame; the due time after it is counted from the due time, not from when the shot left, and
+	// that lateness does not add up.
+	const double Interval = 60.0 / FMath::Max(static_cast<double>(GetCurrentDefinition().RoundsPerMinute), 1.0);
+	const double Wait = Now + KINDA_SMALL_NUMBER < NextAllowedFireServerTimes[DefinitionIndex] ? NextAllowedFireServerTimes[DefinitionIndex] - Now : Interval;
+	World->GetTimerManager().SetTimer(AutomaticFireTimerHandle, this, &UArenaDuelWeaponComponent::RunAutomaticFire, FMath::Max(static_cast<float>(Wait), 0.001f), false);
 }
 void UArenaDuelWeaponComponent::StopAuthoritativeFire()
 {
@@ -838,7 +869,13 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 	if (!NextAllowedFireServerTimes.IsValidIndex(DefinitionIndex)) NextAllowedFireServerTimes.SetNum(WeaponDefinitions.Num());
 	if (NextAllowedFireServerTimes.IsValidIndex(DefinitionIndex) && ServerTime + KINDA_SMALL_NUMBER < NextAllowedFireServerTimes[DefinitionIndex]) return;
 	if (!HasInfiniteAmmoForDevelopment()) State->MagazineAmmo--;
-	NextAllowedFireServerTimes[DefinitionIndex] = ServerTime + 60.0 / FMath::Max(static_cast<double>(Definition.RoundsPerMinute), 1.0);
+	const double ShotInterval = 60.0 / FMath::Max(static_cast<double>(Definition.RoundsPerMinute), 1.0);
+	// A single shot weapon may fire again one interval after this shot left. An automatic one is due again one
+	// interval after this shot was due: counted from when it left, the part of a frame every shot is late by
+	// would be added to every interval, and a shot whose timer came a moment early would be left out
+	// altogether, which is how the configured rate was missed before. What a frame longer than
+	// AutomaticFireCatchUpSeconds would owe is not made up for.
+	NextAllowedFireServerTimes[DefinitionIndex] = (Definition.bAutomatic ? FMath::Max(NextAllowedFireServerTimes[DefinitionIndex], ServerTime - static_cast<double>(AutomaticFireCatchUpSeconds)) : ServerTime) + ShotInterval;
 	const FVector Origin = Character->GetPawnViewLocation();
 	const FVector Direction = Controller->GetControlRotation().Vector();
 #if !UE_BUILD_SHIPPING

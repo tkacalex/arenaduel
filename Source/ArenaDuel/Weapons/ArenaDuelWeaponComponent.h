@@ -486,6 +486,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Loadout")
 	FArenaDuelFlashbangDefinition Flashbang;
 
+	/** Server, automatic weapons: how far behind its schedule the fire may be and still make up for it. A frame longer than this loses the shots that fell into the rest of it, so a hitch can add two shots to a frame at most and never a salvo. Not a tuning value of any weapon. */
+	UPROPERTY(EditDefaultsOnly, Category="Weapons|Server", meta = (ClampMin = "0", ClampMax = "0.25"))
+	float AutomaticFireCatchUpSeconds = 0.1f;
+
 	/** Seconds after a switch before the new item can be used. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Loadout", meta = (ClampMin = "0"))
 	float SwitchSeconds = 0.25f;
@@ -560,6 +564,8 @@ protected:
 	bool bServerFireWanted = false;
 	float FireCooldownRemaining = 0.0f;
 	FTimerHandle AutomaticFireTimerHandle;
+	/** Server: fires the shots of an automatic weapon that are due and wakes itself for the next one. */
+	void RunAutomaticFire();
 	FTimerHandle PendingFireTimerHandle;
 	FTimerHandle LocalCosmeticFireTimerHandle;
 	FTimerHandle LocalCosmeticRecoveryTimerHandle;
