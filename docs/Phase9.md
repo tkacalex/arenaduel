@@ -25,12 +25,12 @@ Rules for all of Phase 9: damage, ranges, ammunition, attack times, movement bal
 | E07 | 1 | Upgrade requests do not name their selection | confirmed | not reproduced before the fix | **fixed (9A)** |
 | E08 | 1 | Shot origin and smoothed camera differ during crouch and slide transitions | confirmed | not reproduced before the fix | **fixed (9B)** |
 | E09 | 2 | Reset Defaults works along two different, faulty paths | confirmed | not reproduced before the fix | **fixed (9B)** |
-| E10 | 2 | The survival shop charges for ammunition that is already full | confirmed | not reproduced before the fix | **fixed (9B)**, the purchase itself not run |
-| E11 | 2 | A zombie's movement at death is read after it was stopped | confirmed | not reproduced before the fix | **fixed (9B)**, no test, not looked at |
-| E12 | 1 | Boss spawns and rescue teleports do not account for the large capsule | confirmed | not reproduced before the fix | **fixed (9B)**, not run with a boss |
-| E13 | 2 | A developer health command is registered in shipping builds too | confirmed, and five more commands in the weapon component | no shipping build made | **fixed (9C)**, not checked in a shipping build |
+| E10 | 2 | The survival shop charges for ammunition that is already full | confirmed | not reproduced before the fix | **fixed (9B)**, the purchase run as a test (9C) |
+| E11 | 2 | A zombie's movement at death is read after it was stopped | confirmed | not reproduced before the fix | **fixed (9B)**, tested on server and client (9C), not looked at |
+| E12 | 1 | Boss spawns and rescue teleports do not account for the large capsule | confirmed | not reproduced before the fix | **fixed (9B)**, real boss spawns and rescues tested (9C), not looked at in a run |
+| E13 | 2 | A developer health command is registered in shipping builds too | confirmed, and five more commands in the weapon component | no shipping build made | **fixed (9C)**, confirmed in the shipping executable |
 | E14 | 2 | The full test suite re-saves productive assets | confirmed | reproduced earlier in this project (`BP_ArenaDuelCharacter` re-saved by a full run) | **fixed (9C)** |
-| E15 | 2 | Asset setup can skip missing required meshes silently | confirmed | not reproduced | **fixed (9C)**, the setup itself not run (it writes assets) |
+| E15 | 2 | Asset setup can skip missing required meshes silently | confirmed | not reproduced | **fixed (9C)**, negative test without touching assets |
 | E16 | 2 | Bullet marks derive the kind of hit from end points only | confirmed by reading `SpawnImpactMark` | not reproduced | open (9D) |
 | E17 | 1 | Survival can hang when the last living player disconnects | confirmed | not reproduced before the fix | **fixed (9B)** |
 | E18 | 2 | The documented double death rule does not match the immediate evaluation | confirmed | - | **fixed (9B)**: the document now says what the code does |
@@ -105,20 +105,63 @@ Not covered by a test: the shop purchase as a whole (E10), the zombie's death cl
 
 **E15.** A missing mesh was passed over and a missing material was a warning. Both, and a missing hit zone physics asset, are now errors, and the command fails when there was one. Not run: the command writes assets.
 
+### Phase 9B acceptance and 9C packaging (2026-10-11, second session)
+
+No mouse, keyboard or window was used for any of this: automation tests, scripts, and game processes without windows.
+
+**Checks added** (`ArenaDuelPhase9Tests.cpp`, and one in `ArenaDuelVisualAssetAutomation.cpp`):
+
+| Test | Shows |
+| --- | --- |
+| `ArenaDuel.Phase9.Survival.ShopChargesForAmmunitionOnlyWhenSomeIsMissing` | The real purchase on the server: fully loaded, it is refused and costs nothing; with five rounds missing it is sold, costs exactly the price once and fills the magazine; a second purchase right after is refused and free; with rounds missing and one point too few it is refused and nothing is delivered. (E10) |
+| `...ZombieDeathDataIsKeptAndTheSameOnServerAndClient` | Three zombies die: at 450 cm/s, standing, standing by a head shot. The server keeps the speed each had although it stops the body; it lets only the standing body shot buckle first. The client receives all three, each with speed, direction and head shot flag already there at the moment it is told of the death, makes the same three choices, and hands all three to physics. (E11, and the death part of R03) |
+| `...BigEnemiesSpawnAndAreRescuedOnlyWhereTheirCapsuleFits` | On a floor built for the test: the boss spawns on a free place with its scaled capsule and its feet on the floor; it is refused under a ceiling an ordinary zombie fits under, beside a wall an ordinary zombie fits beside, and on a place another enemy stands on, and an ordinary zombie is accepted in the first two. A rescue to each of the three tight places is refused, moves nothing, and is counted as refused and not as done; a rescue to a free place works, is counted, and resets the enemy's progress. (E12) |
+| `ArenaDuel.Phase9.Combat.ClientTriggerGoesByTheItemItAskedFor` | See "found under latency" below. |
+| `ArenaDuel.Phase9.AssetSetup.MissingAssetsAreErrors` | The setup's own check against a mesh that does not exist and against slots whose materials do not exist: one error per missing asset, naming it, none for an unrelated slot. The real hands and the five zombie meshes have everything. It loads and never saves. (E15) |
+
+For this the spawn and the rescue became callable steps (`SpawnZombieAt`, `RescueZombieTo`, `FindCapsuleRoomAtSpawn`), the choice between buckling and dropping became one function of the replicated death data (`ShouldBuckleBeforeRagdoll`), and the setup's asset check was separated from its saving. Behaviour is unchanged, with one exception that the review asked for: a rescue is only counted when the teleport reported success.
+
+**Found: the game could not be packaged.** `ArenaDuelItemMeshes.cpp` used a constructor of `FStaticMaterial` that only exists in editor builds, so the game target did not compile; nothing had ever built it. Fixed. The game target now builds as Development and as Shipping.
+
+**Found: the packaged game lacked both playable maps and most of what is loaded by path (R04).** The first package contained what the main menu references and nothing else: of 248 project assets, 157 were not cooked, among them `L_ArenaDistrict`, `L_ZombieArena`, every sound, every zombie mesh and material, knife, flashbang, the moving weapon parts, the ammunition box and the bullet mark. In play most of those loads are quiet, so the game would have run with silent fallbacks where it ran at all. `Config/DefaultGame.ini` now names the three maps to cook and the directories that are loaded by path (`Audio`, `Characters/Common`, `Characters/Zombies`, `Weapons`, `Props`). After that, every content path that appears in the game code is in the cooked set; 19 assets are left out, all of them test maps, development materials or unused mannequin variants.
+
+**Packaged game, outside the editor** (`Saved/Packages/Development`, started without a window, read from its logs):
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Starts into the main menu | log: `LoadMap /Game/ArenaDuel/Maps/L_MainMenu` | passed |
+| Everything loaded by path is there | the development command `ArenaDuel.Dev.AssetCheck` loads 53 assets by path (13 sounds, 5 zombie meshes and materials, 5 zombie clips, 11 weapon parts, knife, flashbang, bullet mark, ammunition box, hands, hit zone physics asset, fire sound, the two Blueprint classes) and looks for the three maps: `0 missing` | passed |
+| Duel between two packaged processes | host log: both players joined with their duel slots, no load problem on either side | passed |
+| Firearms in the packaged duel | host log: four real shots from at least three different firearms (magazines of 30, 12 and 6 rounds), fired by script | partly: not all four shown to fire, knife and flashbang not exercised; their assets load (row above) |
+| Survival with every enemy type | log: waves 1 to 16 started and their queues emptied, with ordinary, runner, armoured, brute (wave 5) and boss (waves 10 and 15); navigation valid; no load problem | passed |
+| Developer commands are out of shipping | the shipping executable contains none of the names `ArenaDuel.Health`, `.Slot`, `.Fire`, `.Weapon`, `.Pitch`, `.Dev.*`, `.Round.*`, `.Zombie.*`; the development executable contains all of them | passed |
+
+Not done with the packaged game: nobody looked at it or played it, the shipping package was built but not started, characters were not chosen by hand (the automatic choice was used), and nothing was listened to.
+
+**Host and separately running client under latency** (editor binaries as two game processes without windows, the client with 100 ms simulated latency, playing a fixed sequence by itself through `ArenaDuel.Dev.After`; both sides log every real and every shown shot with `ArenaDuel.Dev.ShotLog 1`):
+
+- *Found under latency:* a trigger pressed right after asking for the firearm did nothing at all, on either side. The client still showed the knife when the press came, so it asked for a knife stroke, which the server, already switched, threw away. The owner now goes by the item it asked for while the server's answer is on its way (`GetExpectedSlot`), and counts the switch time from its own request. After the fix: first shown shot 0.273 s after the request, first real shot 0.303 s after the switch on the server, none before the 0.25 s switch time on either side.
+- *Shot origin through a crouch and a stand-up:* both sides ease along the same curve, but not at the same moment. First shots of a burst fired into a crouch: shown from 31.9 cm above the settled height, real from 19.2 cm; into a stand-up: 32.3 cm below against 19.1 cm below. Within three shots both are within 2 cm. Before the fix of E08 the real shot would have started from the settled height, 32 to 48 cm away from the shown one. What remains is the difference in when the crouch and the trigger reach the server; it is not corrected.
+- *Open, not changed: fewer real shots than shown ones.* In four held bursts the owner showed 31 shots and the server fired 22. The server's log shows gaps of two intervals where a shot was left out. Its repeating timer is phase locked, and a shot is refused when it comes earlier than one interval after the previous one was actually fired, which a frame-quantised timer does again and again. So the real rate of fire of automatic weapons is below the defined one, by an amount that depends on the server's frame rate. This was measured, not fixed: correcting it raises the real rate of fire of every automatic weapon, which is a change of balance and needs a decision.
+
+Slides were not covered between separate processes (there is no scripted way to slide yet); the eased eye is the same function for crouch and slide.
+
+Whole regression run at the end, filter `ArenaDuel`: 115 of 115 passed. Working tree clean afterwards.
+
 ## Areas to check
 
 | ID | P | Area | State |
 | --- | --- | --- | --- |
 | R01 | 1 | Server pose against visible animation on a dedicated server | open (9C) |
 | R02 | 1 | Prediction of the extended movement states under latency and loss | open (9C) |
-| R03 | 1 | Order and completeness of replicated presentation data | open (9C) |
-| R04 | 1 | Cook and packaging coverage of assets loaded by path | open (9C) |
+| R03 | 1 | Order and completeness of replicated presentation data | partly: zombie death data is complete when a client is told of the death (test); skins, scale and late join are open |
+| R04 | 1 | Cook and packaging coverage of assets loaded by path | checked and fixed (9C): see the packaging section; the shipping package was built, not started |
 | R05 | 2 | Sound quality, placement in space, one fire sound for four weapons | open (9D); needs listening |
 | R06 | 1 | Hands, fingers, IK and every weapon action, own view and opponent's view | open (9D) |
 | R07 | 1 | Zombie hit zones, boss clips, death clip into ragdoll | open (9D) |
 | R08 | 2 | The new arena: geometry, visibility, movement routes | open (9D) |
 | R09 | 2 | CPU, GPU, network and memory under load, outside the editor | open (9E) |
-| R10 | 1 | Tests between real processes, upgrade and menu edge cases | partly: see "Separate processes" below |
+| R10 | 1 | Tests between real processes, upgrade and menu edge cases | partly: see "Separate processes" below and the latency run above |
 
 ## Separate processes
 
@@ -148,12 +191,13 @@ Limits: nobody played in these processes. No shot, knife attack, switch or upgra
 
 ## Open after 2026-10-11
 
-Nothing in this list has been done; none of it should be read as checked.
+Nothing in this list has been done; none of it should be read as checked. Phase 9 is not finished.
 
-- Looking at a running game for the changes above: a knife fight around a corner (E02), a held trigger after a switch seen by both players (E04), the pause menu during a fight (E06), a boss spawn and a rescue (E12), a zombie killed while running and while standing, on host and client (E11).
-- A shipping build (E13) and a packaged build outside the editor with every mode, weapon and zombie type (R04).
-- A dedicated server with two clients (R01), movement under 50 to 150 ms latency and packet loss with forced corrections (R02), late join and replication order (R03).
+- A decision on the real rate of fire of automatic weapons (measured above: the server fires fewer shots than the owner shows).
+- Looking at a running game: a knife fight around a corner (E02), a held trigger after a switch seen by both players (E04), the pause menu during a fight (E06), a boss spawn and a rescue in a real wave (E12), a zombie killed while running and while standing (E11), the packaged game on screen.
+- Starting the shipping package; choosing each character by hand; knife and flashbang in the packaged duel.
+- A dedicated server with two clients (R01), movement under latency and packet loss with forced corrections (R02), skins, scale and late join (R03).
 - Sound (R05): nothing has been listened to. The sessions that did this work cannot hear.
-- Hands, fingers and every weapon action from both views (R06), zombie hit zones, boss clips and the hand-over to the ragdoll (R07), a full match on the reworked arena (R08), load outside the editor (R09).
-- Between separate processes (R10): a played round, an upgrade choice, a wrong address or version, the host quitting, a rejoin.
-- E16, bullet marks from end points only: open.
+- Hands, fingers and every weapon action from both views (R06), zombie hit zones, boss clips and the hand-over to the ragdoll on screen (R07), a full match on the reworked arena (R08), load outside the editor (R09).
+- Between separate processes (R10): a played round to its end, an upgrade choice, a wrong address or version, the host quitting, a rejoin, slides under latency.
+- E16, bullet marks from end points only: open (9D).

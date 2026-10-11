@@ -43,3 +43,17 @@ In a Development/Editor standalone session or as the listen-server host, press F
 `Tools/Tests/RunPhase4Validation.ps1` builds `ArenaDuelEditor` and runs the Phase 3 regression suite plus the Phase 4 asset and movement-state suite twice. The Phase 4 suite validates the temporary movement map, input assets, Blueprint assignments, sprint and slide state transitions, slide jump, and movement bounds. Unreal's CQTest report is the source of truth; engine PIE NetGUID warnings are tolerated only when the report has no failed or not-run tests.
 
 Phase 4.1 expands the suite to 13 registered tests, including sprint, crouch, slide, slide jump, air control, stamina configuration, wall run, wall jump, vault, mantle, and a listen-server sprint/crouch intent test. Phase 4.4 adds the slide input buffer, mouse direction and pitch checks, map structure checks, and movement HUD wiring checks. The runner executes both Phase 3 and Phase 4 suites twice. Automated results are technical verification, not a replacement for feel testing or high-latency profiling. Phase 5 remains blocked until the human movement retest is complete.
+
+## Packaging and development helpers (2026-10-11)
+
+Package with the editor closed:
+
+```
+Engine\Build\BatchFiles\RunUAT.bat BuildCookRun -project=<uproject> -noP4 -platform=Win64 -clientconfig=Development -build -cook -stage -pak -archive -archivedirectory=<dir>
+```
+
+and with `-clientconfig=Shipping -skipcook` for the shipping package. What is cooked beyond the main menu's references is listed in `Config/DefaultGame.ini` under `ProjectPackagingSettings`: a new map that can be opened, or a new directory whose assets are loaded by path, has to be added there. `ArenaDuel.Dev.AssetCheck` in a packaged Development game loads every asset the code asks for by path and logs the ones that are missing; a new path loaded from code belongs in its list (`ArenaDuelZombieGameMode.cpp`).
+
+A packaged game is a small launcher that starts the real process. Stopping the launcher leaves the game running: end it by process name. `-RenderOffscreen` runs a game without a window; `-log` opens a console window even then.
+
+Development only, compiled out of shipping builds: `ArenaDuel.Dev.After <seconds> <command...>` runs a console command later and survives the travel to a server, so a game started from a command line can act out a sequence by itself; `ArenaDuel.Dev.Crouch 1|0`; `ArenaDuel.Dev.ShotLog 1` logs every real shot on the server and every shown shot on the owner; `ArenaDuel.Zombie.NextWave` ends the running wave.
