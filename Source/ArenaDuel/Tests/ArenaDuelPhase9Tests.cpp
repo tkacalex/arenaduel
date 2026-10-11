@@ -9,6 +9,8 @@
 #include "ArenaDuelTestUpgrades.h"
 #include "Components/PIENetworkComponent.h"
 #include "Misc/AutomationTest.h"
+#include "HAL/IConsoleManager.h"
+#include "HAL/PlatformProcess.h"
 
 #include "ArenaDuel/Characters/ArenaDuelCharacter.h"
 #include "ArenaDuel/Game/ArenaDuelGameMode.h"
@@ -610,6 +612,274 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 				if (Host->HasChosenUpgrade() || Host->GetUpgradeLevel(EArenaDuelUpgrade::Reload) != 0) TestRunner->AddError(TEXT("A choice from the earlier selection used up the new one"));
 				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Reload, State.Serial + 1);
 				if (!Host->HasChosenUpgrade() || Host->GetUpgradeLevel(EArenaDuelUpgrade::Reload) != 1 || Host->GetUpgradeLevel(EArenaDuelUpgrade::Reserve) != 1) TestRunner->AddError(TEXT("The current choice was not taken exactly once"));
+			});
+	}
+};
+
+// The server's rate of fire for automatic weapons: the configured rounds per minute, at any frame rate, with no
+// shot left out and none added, and nothing fired after the fire was cut off.
+namespace ArenaDuelPhase9FireRate
+{
+	static void SetServerFrameRate(float Fps)
+	{
+		if (IConsoleVariable* MaxFps = IConsoleManager::Get().FindConsoleVariable(TEXT("t.MaxFPS"))) MaxFps->Set(Fps);
+	}
+	static TArray<int32> AutomaticWeapons()
+	{
+		TArray<int32> Found;
+		const UArenaDuelWeaponComponent* Defaults = GetDefault<UArenaDuelWeaponComponent>();
+		for (int32 Index = 0; Index < Defaults->GetWeaponDefinitionCount(); ++Index) if (Defaults->GetWeaponDefinition(Index)->bAutomatic) Found.Add(Index);
+		return Found;
+	}
+	static double Interval(const UArenaDuelWeaponComponent* Weapon) { return 60.0 / FMath::Max(static_cast<double>(Weapon->GetCurrentDefinition().RoundsPerMinute), 1.0); }
+	/** Shots a held trigger may and must have fired in this many seconds: one at once, then one per interval. */
+	static int32 ShotsDue(double Seconds, double ShotInterval) { return FMath::FloorToInt32(Seconds / ShotInterval) + 1; }
+}
+
+NETWORK_TEST_CLASS(FArenaDuelPhase9FireRateTest, "ArenaDuel.Phase9.FireRate")
+{
+	FPIENetworkComponent<FArenaDuelPhase9State> Network{TestRunner, TestCommandBuilder, bInitializing};
+
+	BEFORE_EACH()
+	{
+		SetMatchUpgradesForTests(false);
+		UClass* GameModeClass = LoadClass<AGameModeBase>(nullptr, ArenaDuelPhase9Tests::GameModeClassPath);
+		FNetworkComponentBuilder<FArenaDuelPhase9State>()
+			.WithClients(1)
+			.AsListenServer()
+			.WithGameMode(GameModeClass)
+			.Build(Network);
+	}
+
+	AFTER_EACH()
+	{
+		ArenaDuelPhase9FireRate::SetServerFrameRate(0.0f);
+		SetMatchUpgradesForTests(true);
+	}
+
+	// One held burst of 1.5 s per automatic weapon and frame rate: 30, 60 and 144 frames per second, a frame rate
+	// that jumps between 25 and 200 from frame to frame, and 60 with one hitch of a quarter of a second.
+	TEST_METHOD(HeldFireKeepsTheConfiguredRateAtAnyFrameRate)
+	{
+		using namespace ArenaDuelPhase9Tests;
+		using namespace ArenaDuelPhase9FireRate;
+		Network
+			.UntilServer(TEXT("Both duel players have pawns"), [](FArenaDuelPhase9State& State) { return PawnForSlot(State.World, 0) && PawnForSlot(State.World, 1); }, FTimespan::FromSeconds(10.0))
+			.ThenServer(TEXT("Start a round"), [](FArenaDuelPhase9State& State) { StartMatch(State.World); })
+			.UntilServer(TEXT("Round one runs"), [](FArenaDuelPhase9State& State) { return BothAliveInRound(State.World); }, FTimespan::FromSeconds(6.0));
+		// Frame rate: above zero as given, -1 jumping, -2 at 60 with a hitch.
+		for (const int32 WeaponIndex : AutomaticWeapons()) for (const float Fps : { 30.0f, 60.0f, 144.0f, -1.0f, -2.0f })
+		{
+			Network
+				.ThenServer(TEXT("Take the weapon, fill it and hold the trigger"), [WeaponIndex, Fps](FArenaDuelPhase9State& State)
+				{
+					UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 0)->GetWeaponComponent();
+					SetServerFrameRate(Fps > 0.0f ? Fps : 60.0f);
+					Weapon->StopFire();
+					Weapon->GrantAllWeaponsForDevelopment();
+					Weapon->EquipWeapon(WeaponIndex);
+					Weapon->RefillAllAmmoForDevelopment();
+					State.Mark = 0.0;
+					State.Serial = 0;
+				})
+				.UntilServer(TEXT("The burst runs for a second and a half and has every shot that was due"), [this, WeaponIndex, Fps](FArenaDuelPhase9State& State)
+				{
+					UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 0)->GetWeaponComponent();
+					const double Now = State.World->GetTimeSeconds();
+					if (State.Mark <= 0.0)
+					{
+						// A few frames at the new frame rate first, and the last shot's own interval, then press.
+						if (++State.Serial < 12 || Weapon->GetEquippedWeaponIndex() != WeaponIndex) return false;
+						Weapon->ClearActionTimesForTests();
+						State.Sequence = Weapon->GetLastShotSequence();
+						State.Ammo = Weapon->GetCurrentMagazineAmmo();
+						State.Health = 0.0f;
+						Weapon->StartFire();
+						State.Mark = Now;
+						if (Weapon->GetLastShotSequence() != State.Sequence + 1) TestRunner->AddError(TEXT("The first shot did not leave with the press"));
+						return false;
+					}
+					if (Fps == -1.0f) SetServerFrameRate((++State.Serial % 2) == 0 ? 25.0f : 200.0f);
+					if (Fps == -2.0f && State.Health == 0.0f && Now - State.Mark > 0.6)
+					{
+						// One long frame. The shots that fell into it may be made up for only in part.
+						State.Health = 1.0f;
+						State.Lateral = static_cast<float>(Weapon->GetLastShotSequence());
+						FPlatformProcess::Sleep(0.25f);
+						return false;
+					}
+					if (Fps == -2.0f && State.Health == 1.0f)
+					{
+						State.Health = 2.0f;
+						const int32 InOneFrame = Weapon->GetLastShotSequence() - static_cast<int32>(State.Lateral);
+						if (InOneFrame > 3) TestRunner->AddError(FString::Printf(TEXT("%d shots left in the frame after a hitch"), InOneFrame));
+					}
+					if (Now - State.Mark < 1.5) return false;
+					const double Held = Now - State.Mark;
+					const int32 Shots = Weapon->GetLastShotSequence() - State.Sequence;
+					const int32 Due = ShotsDue(Held, Interval(Weapon));
+					Weapon->StopFire();
+					const FString Case = FString::Printf(TEXT("weapon %d, %s: %d shots in %.3f s, %d due at %.0f rounds per minute"), WeaponIndex, Fps > 0.0f ? *FString::Printf(TEXT("%.0f fps"), Fps) : (Fps == -1.0f ? TEXT("jumping frame rate") : TEXT("a hitch")), Shots, Held, Due, Weapon->GetCurrentDefinition().RoundsPerMinute);
+					UE_LOG(LogTemp, Display, TEXT("FireRate %s"), *Case);
+					// With a hitch the shots of at most the long frame may be missing, less what was made up for.
+					const int32 MayMiss = Fps == -2.0f ? FMath::CeilToInt32(0.25 / Interval(Weapon)) + 1 : 1;
+					if (Shots > Due) TestRunner->AddError(FString::Printf(TEXT("More shots than the rate allows (%s)"), *Case));
+					if (Shots < Due - MayMiss) TestRunner->AddError(FString::Printf(TEXT("Shots were left out (%s)"), *Case));
+					if (State.Ammo - Weapon->GetCurrentMagazineAmmo() != Shots) TestRunner->AddError(FString::Printf(TEXT("Rounds used and shots fired differ (%s)"), *Case));
+					return true;
+				}, FTimespan::FromSeconds(8.0));
+		}
+	}
+
+	// Everything that cuts a burst off: letting go, pressing again and again, a switch, a reload, the last round,
+	// the end of the round. No shot after the cut, none more than the rate allows, none below zero.
+	TEST_METHOD(NothingFiresAfterTheFireIsCutOffAndNothingExtraFromPressingAgain)
+	{
+		using namespace ArenaDuelPhase9Tests;
+		using namespace ArenaDuelPhase9FireRate;
+		const int32 WeaponIndex = AutomaticWeapons().Num() > 0 ? AutomaticWeapons()[0] : 0;
+		const auto Wait = [](double Seconds) { return [Seconds](FArenaDuelPhase9State& State) { return State.World->GetTimeSeconds() - State.Mark >= Seconds; }; };
+		Network
+			.UntilServer(TEXT("Both duel players have pawns"), [](FArenaDuelPhase9State& State) { return PawnForSlot(State.World, 0) && PawnForSlot(State.World, 1); }, FTimespan::FromSeconds(10.0))
+			.ThenServer(TEXT("Start a round and take an automatic weapon"), [WeaponIndex](FArenaDuelPhase9State& State)
+			{
+				StartMatch(State.World);
+				SetServerFrameRate(60.0f);
+			})
+			.UntilServer(TEXT("Round one runs"), [](FArenaDuelPhase9State& State) { return BothAliveInRound(State.World); }, FTimespan::FromSeconds(6.0))
+			.ThenServer(TEXT("Hold, then let go"), [WeaponIndex](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 0)->GetWeaponComponent();
+				Weapon->GrantAllWeaponsForDevelopment();
+				Weapon->EquipWeapon(WeaponIndex);
+				Weapon->RefillAllAmmoForDevelopment();
+				Weapon->ClearActionTimesForTests();
+				Weapon->StartFire();
+				State.Mark = State.World->GetTimeSeconds();
+			})
+			.UntilServer(TEXT("A third of a second of fire"), Wait(0.33), FTimespan::FromSeconds(3.0))
+			.ThenServer(TEXT("Let go"), [](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 0)->GetWeaponComponent();
+				Weapon->StopFire();
+				State.Sequence = Weapon->GetLastShotSequence();
+				State.Mark = State.World->GetTimeSeconds();
+			})
+			.UntilServer(TEXT("Nothing fires after letting go"), [this](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 0)->GetWeaponComponent();
+				if (State.World->GetTimeSeconds() - State.Mark < 0.4) return false;
+				if (Weapon->GetLastShotSequence() != State.Sequence) TestRunner->AddError(TEXT("A shot left after the trigger was let go"));
+				// Now press and let go on every frame for a second.
+				Weapon->RefillAllAmmoForDevelopment();
+				State.Sequence = Weapon->GetLastShotSequence();
+				State.Mark = State.World->GetTimeSeconds();
+				Weapon->StartFire();
+				return true;
+			}, FTimespan::FromSeconds(3.0))
+			.UntilServer(TEXT("Pressing again and again gives no shot more than holding would"), [this](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 0)->GetWeaponComponent();
+				const double Held = State.World->GetTimeSeconds() - State.Mark;
+				Weapon->StopFire();
+				if (Held < 1.0) { Weapon->StartFire(); return false; }
+				const int32 Shots = Weapon->GetLastShotSequence() - State.Sequence, Due = ShotsDue(Held, Interval(Weapon));
+				if (Shots > Due) TestRunner->AddError(FString::Printf(TEXT("Pressing again and again fired %d shots where %d were due"), Shots, Due));
+				if (Shots < Due / 2) TestRunner->AddError(FString::Printf(TEXT("Pressing again and again fired only %d shots where %d were due"), Shots, Due));
+				// A switch in the middle of a burst.
+				Weapon->RefillAllAmmoForDevelopment();
+				Weapon->StartFire();
+				State.Mark = State.World->GetTimeSeconds();
+				return true;
+			}, FTimespan::FromSeconds(4.0))
+			.UntilServer(TEXT("A fifth of a second of fire"), Wait(0.2), FTimespan::FromSeconds(3.0))
+			.ThenServer(TEXT("Switch to the knife"), [this](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 0)->GetWeaponComponent();
+				Weapon->SelectSlot(EArenaDuelLoadoutSlot::Knife);
+				if (Weapon->GetActiveSlot() != EArenaDuelLoadoutSlot::Knife || Weapon->IsServerFiring()) TestRunner->AddError(TEXT("The switch did not stop the fire"));
+				State.Sequence = Weapon->GetLastShotSequence();
+				State.Mark = State.World->GetTimeSeconds();
+			})
+			.UntilServer(TEXT("Nothing fires after the switch"), [this, WeaponIndex](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 0)->GetWeaponComponent();
+				if (State.World->GetTimeSeconds() - State.Mark < 0.4) return false;
+				if (Weapon->GetLastShotSequence() != State.Sequence) TestRunner->AddError(TEXT("A shot left after the switch to the knife"));
+				// Back to the firearm; a reload in the middle of a burst.
+				Weapon->SelectSlot(EArenaDuelLoadoutSlot::Primary);
+				Weapon->ClearActionTimesForTests();
+				Weapon->StartFire();
+				State.Mark = State.World->GetTimeSeconds();
+				return true;
+			}, FTimespan::FromSeconds(3.0))
+			.UntilServer(TEXT("A fifth of a second of fire again"), Wait(0.2), FTimespan::FromSeconds(3.0))
+			.ThenServer(TEXT("Reload"), [this](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 0)->GetWeaponComponent();
+				Weapon->Reload();
+				if (!Weapon->IsReloading() || Weapon->IsServerFiring()) TestRunner->AddError(TEXT("The reload did not start or did not stop the fire"));
+				State.Sequence = Weapon->GetLastShotSequence();
+				State.Mark = State.World->GetTimeSeconds();
+			})
+			.UntilServer(TEXT("Nothing fires during the reload; then the last three rounds"), [this](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 0)->GetWeaponComponent();
+				if (Weapon->IsReloading())
+				{
+					if (Weapon->GetLastShotSequence() != State.Sequence) TestRunner->AddError(TEXT("A shot left during the reload"));
+					return false;
+				}
+				// Three rounds left, the trigger held: three shots, then the reload the empty magazine starts.
+				Weapon->ConsumeAmmoForTests(Weapon->GetCurrentMagazineAmmo() - 3);
+				State.Sequence = Weapon->GetLastShotSequence();
+				State.Ammo = Weapon->GetReserveAmmo();
+				Weapon->ClearActionTimesForTests();
+				Weapon->StartFire();
+				State.Mark = State.World->GetTimeSeconds();
+				return true;
+			}, FTimespan::FromSeconds(8.0))
+			.UntilServer(TEXT("Exactly the rounds that were there, then a reload"), [this](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 0)->GetWeaponComponent();
+				if (State.World->GetTimeSeconds() - State.Mark < 0.8) return false;
+				const int32 Shots = Weapon->GetLastShotSequence() - State.Sequence;
+				if (Shots != 3) TestRunner->AddError(FString::Printf(TEXT("%d shots left from a magazine of three"), Shots));
+				if (Weapon->GetCurrentMagazineAmmo() < 0) TestRunner->AddError(TEXT("The magazine went below zero"));
+				if (!Weapon->IsReloading() && Weapon->GetCurrentMagazineAmmo() == 0) TestRunner->AddError(TEXT("The empty magazine did not start a reload"));
+				Weapon->StopFire();
+				return !Weapon->IsReloading();
+			}, FTimespan::FromSeconds(8.0))
+			.ThenServer(TEXT("Hold again, then the round ends"), [this](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 0)->GetWeaponComponent();
+				Weapon->ClearActionTimesForTests();
+				Weapon->StartFire();
+				PawnForSlot(State.World, 1)->ApplyServerDamage(1000.0f);
+				if (State.World->GetGameState<AArenaDuelGameState>()->IsRoundInProgress()) TestRunner->AddError(TEXT("The round did not end with the kill"));
+				State.Sequence = Weapon->GetLastShotSequence();
+				State.Mark = State.World->GetTimeSeconds();
+			})
+			.UntilServer(TEXT("Nothing fires after the round has ended"), [this](FArenaDuelPhase9State& State)
+			{
+				const AArenaDuelCharacter* Pawn = PawnForSlot(State.World, 0);
+				if (!Pawn || State.World->GetTimeSeconds() - State.Mark < 0.3) return false;
+				// The pawn of the next round is a new one; the check is for the one that held the trigger.
+				if (State.World->GetGameState<AArenaDuelGameState>()->GetRoundNumber() == 1 && Pawn->GetWeaponComponent()->GetLastShotSequence() != State.Sequence) TestRunner->AddError(TEXT("A shot left after the round had ended"));
+				return true;
+			}, FTimespan::FromSeconds(3.0))
+			.UntilServer(TEXT("Round two runs"), [](FArenaDuelPhase9State& State) { return BothAliveInRound(State.World) && State.World->GetGameState<AArenaDuelGameState>()->GetRoundNumber() == 2; }, FTimespan::FromSeconds(8.0))
+			.ThenServer(TEXT("Hold, then the shooter dies"), [this, WeaponIndex](FArenaDuelPhase9State& State)
+			{
+				AArenaDuelCharacter* Shooter = PawnForSlot(State.World, 0);
+				UArenaDuelWeaponComponent* Weapon = Shooter->GetWeaponComponent();
+				Weapon->ClearActionTimesForTests();
+				Weapon->StartFire();
+				const int32 Sequence = Weapon->GetLastShotSequence();
+				Shooter->ApplyServerDamage(1000.0f);
+				if (!Shooter->IsDead()) TestRunner->AddError(TEXT("The shooter did not die"));
+				Weapon->FireAuthoritativeForTests();
+				if (Weapon->GetLastShotSequence() != Sequence || Weapon->IsServerFiring()) TestRunner->AddError(TEXT("A dead player's weapon fired or kept the trigger"));
 			});
 	}
 };

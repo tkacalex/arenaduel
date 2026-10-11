@@ -809,6 +809,7 @@ void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 	GetWorld()->GetTimerManager().SetTimer(ReloadTimerHandle, ReloadDelegate, GetReloadDuration(), false);
 }
 void UArenaDuelWeaponComponent::RequestReloadForTests() { ServerRequestReload_Implementation(); }
+void UArenaDuelWeaponComponent::FireAuthoritativeForTests() { FireAuthoritative(); }
 void UArenaDuelWeaponComponent::ConsumeAmmoForTests(int32 Rounds)
 {
 	if (FArenaDuelWeaponRuntimeState* State = GetOwnerRole() == ROLE_Authority ? GetMutableCurrentRuntimeState() : nullptr) State->MagazineAmmo = FMath::Max(0, State->MagazineAmmo - FMath::Max(Rounds, 0));
