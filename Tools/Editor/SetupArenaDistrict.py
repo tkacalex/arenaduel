@@ -7,9 +7,12 @@ crates are the modelled crate from Tools/Editor/SetupProps.py, scaled to the siz
 
 Look: the surfaces use the textured materials of Tools/Editor/SetupDistrictMaterials.py (run that first):
 cast concrete, sealed floor, painted render on the house, tread plate on decks and bridge, a steel deck
-ceiling. Everything that is only there to be looked at (light panels, wall caps, painted lines, edge trims,
-the team bands) is placed by decor() and has no collision, so cover, routes and traces are what the
+ceiling. Everything that is only there to be looked at (lamps, wall caps, painted lines, edge trims, the
+neon, ivy) is placed by decor() and prop() and has no collision, so cover, routes and traces are what the
 layout says and nothing else.
+
+Light follows the lamps: every light in the hall sits at a lamp that can be seen, every lamp carries a light,
+and a shaded lamp only lights what is below its shade.
 """
 import unreal
 
@@ -26,8 +29,9 @@ T = 40.0  # wall thickness
 # units, and the fixed exposure the picture is developed with.
 FILL_INTENSITY = 420.0
 KEY_INTENSITY = 4600.0
-SCONCE_INTENSITY = 30.0
-WASH_INTENSITY = 95.0
+SCONCE_INTENSITY = 55.0
+HALL_LAMP_INTENSITY = 260.0
+NEON_INTENSITY = 26.0
 EXPOSURE = 1.0
 count = {'pieces': 0, 'windows': 0, 'decor': 0, 'lights': 0}
 
@@ -59,6 +63,25 @@ def make_material(name, color, metallic, roughness, emissive=None):
 def cube(label, x0, x1, y0, y1, z0, z1, material, yaw=0.0):
     """Axis aligned box given by its extents, optionally turned about its centre."""
     if x1 - x0 <= 0.5 or y1 - y0 <= 0.5 or z1 - z0 <= 0.5:
+        return
+    if material and material.get_name() == 'M_DistrictDarkCrate' and LIB.does_asset_exist(PROPS + '/SM_DistrictCrate'):
+        # The timber crate of Tools/Art/build_district_props.py, scaled to the block's exact size: its collision
+        # is one box of that size, so cover heights and gaps stay what they were. A tall block is a stack.
+        stack = max(1, int(round((z1 - z0) / max(x1 - x0, y1 - y0))))
+        height = (z1 - z0) / stack
+        for level in range(stack):
+            centre = unreal.Vector((x0 + x1) * 0.5, (y0 + y1) * 0.5, z0 + height * (level + 0.5))
+            # Every second crate of a stack is turned a quarter, so the braces do not all run the same way.
+            turned = (level + count['pieces']) % 2 == 1 and abs(yaw) < 0.5
+            actor = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.StaticMeshActor, centre, unreal.Rotator(roll=0.0, pitch=0.0, yaw=yaw + (90.0 if turned else 0.0)))
+            actor.set_actor_label('%s%s_%03d' % (PREFIX, label, count['pieces']))
+            component = actor.static_mesh_component
+            component.set_static_mesh(unreal.load_asset(PROPS + '/SM_DistrictCrate'))
+            component.set_mobility(unreal.ComponentMobility.STATIC)
+            component.set_collision_profile_name('BlockAll')
+            size = ((y1 - y0), (x1 - x0)) if turned else ((x1 - x0), (y1 - y0))
+            actor.set_actor_scale3d(unreal.Vector(size[0] / 140.0, size[1] / 140.0, height / 140.0))
+            count['pieces'] += 1
         return
     if material and material.get_name() == 'M_DistrictDarkCrate' and LIB.does_asset_exist(CRATE):
         # Every crate-coloured block becomes the modelled crate, scaled to the block's exact size, so cover
@@ -132,32 +155,48 @@ def prop(name, x, y, z, yaw=0.0, scale=1.0, collide=False, mirror=False, shadow=
     return True
 
 
-def glow_light(label, x, y, z, color, intensity, radius, mirror=False):
-    """A small shadowless light: the pool of a wall lamp, the wash on a wall, the tint of a neon strip."""
-    light = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.PointLight, unreal.Vector(x, y, z), unreal.Rotator())
+def tube_light(label, x, y, z, color, intensity, radius, length):
+    """The light of a neon strip: one light as long as its piece of the strip, so the wall and the floor are
+    lit evenly along it instead of in one spot. The strip runs along Y."""
+    light = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.PointLight, unreal.Vector(x, y, z), unreal.Rotator(roll=90.0, pitch=0.0, yaw=0.0))
     light.set_actor_label('%s%s_%03d' % (PREFIX, label, count['lights']))
     component = light.get_component_by_class(unreal.PointLightComponent)
     component.set_mobility(unreal.ComponentMobility.MOVABLE)
     component.set_cast_shadows(False)
     component.set_editor_property('intensity', intensity)
     component.set_editor_property('attenuation_radius', radius)
-    component.set_editor_property('source_radius', 12.0)
+    component.set_editor_property('source_radius', 4.0)
+    component.set_editor_property('source_length', length)
+    component.set_editor_property('light_color', unreal.Color(r=color[0], g=color[1], b=color[2], a=255))
+    component.set_editor_property('use_inverse_squared_falloff', True)
+    count['lights'] += 1
+
+
+def down_light(label, x, y, z, color, intensity, radius, mirror=False):
+    """The light of a shaded lamp: a cone straight down from under the shade. Nothing above the lamp is lit."""
+    light = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.SpotLight, unreal.Vector(x, y, z), unreal.Rotator(roll=0.0, pitch=-90.0, yaw=0.0))
+    light.set_actor_label('%s%s_%03d' % (PREFIX, label, count['lights']))
+    component = light.get_component_by_class(unreal.SpotLightComponent)
+    component.set_mobility(unreal.ComponentMobility.MOVABLE)
+    component.set_cast_shadows(False)
+    component.set_editor_property('intensity', intensity)
+    component.set_editor_property('attenuation_radius', radius)
+    component.set_editor_property('outer_cone_angle', 66.0)
+    component.set_editor_property('inner_cone_angle', 26.0)
+    component.set_editor_property('source_radius', 6.0)
     component.set_editor_property('light_color', unreal.Color(r=color[0], g=color[1], b=color[2], a=255))
     component.set_editor_property('use_inverse_squared_falloff', True)
     count['lights'] += 1
     if mirror and abs(x) > 0.5:
-        glow_light(label, -x, y, z, color, intensity, radius, False)
+        down_light(label, -x, y, z, color, intensity, radius, False)
 
 
-def sconce(x, y, nx, ny, z=255.0, mirror=True):
-    """A wall lamp on a wall face at (x, y) looking along (nx, ny): a small glowing box and its warm pool."""
+def sconce(x, y, nx, ny, z=255.0, mirror=True, scale=1.0, intensity=None, radius=560.0):
+    """A shaded wall lamp on a wall face at (x, y) looking along (nx, ny), and its light under the shade."""
     import math
-    if not prop('SM_WallLamp', x, y, z, math.degrees(math.atan2(ny, nx)), mirror=mirror, shadow=False):
-        half_x, half_y = (4.0, 16.0) if abs(nx) > 0.5 else (16.0, 4.0)
-        cx, cy = x + nx * 5.0, y + ny * 5.0
-        decor('Sconce', cx - half_x, cx + half_x, cy - half_y, cy + half_y, z - 9.0, z + 9.0, LOOK.get('sconce'), shadow=False, mirror=mirror)
-        decor('SconceHood', cx - half_x - 2.0, cx + half_x + 2.0, cy - half_y - 2.0, cy + half_y + 2.0, z + 9.0, z + 13.0, LOOK.get('cap'), shadow=False, mirror=mirror)
-    glow_light('SconceLight', x + nx * 45.0, y + ny * 45.0, z - 25.0, (255, 176, 96), SCONCE_INTENSITY, 620.0, mirror)
+    prop('SM_WallLamp', x, y, z, math.degrees(math.atan2(ny, nx)), scale=scale, mirror=mirror, shadow=False)
+    reach = 18.0 * scale
+    down_light('LampLight', x + nx * reach, y + ny * reach, z - 13.0 * scale, (255, 170, 88), intensity or SCONCE_INTENSITY, radius, mirror)
 
 
 def both(label, x0, x1, y0, y1, z0, z1, material, yaw=0.0):
@@ -206,7 +245,7 @@ def door(a, width=200.0):
 
 
 def spawn_lights():
-    """Rows of light panels under the ceiling. Each panel is a glowing box with a shadowless fill light, which
+    """Rows of linear lights under the ceiling. Each one carries a shadowless fill light, which
     keeps the hall evenly readable; a few shadow-casting spots over the main areas give objects a footing."""
     index = 0
     for x in (-2800, -1400, 0, 1400, 2800):
@@ -229,7 +268,8 @@ def spawn_lights():
             index += 1
     # Shadow casters: straight down over both halves of the field and the house. Three, not more: every one of
     # them is rendered into shadow maps each frame.
-    for number, (x, y) in enumerate(((-2000, 0), (2000, 0), (0, 0))):
+    # They hang where a ceiling light hangs.
+    for number, (x, y) in enumerate(((-1400, 0), (1400, 0), (0, 0))):
         spot = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.SpotLight, unreal.Vector(x, y, 1470), unreal.Rotator(roll=0.0, pitch=-90.0, yaw=0.0))
         spot.set_actor_label('%sKeyLight_%02d' % (PREFIX, number))
         component = spot.get_component_by_class(unreal.SpotLightComponent)
@@ -397,28 +437,24 @@ def build():
         start.set_actor_label(PREFIX + 'PlayerStart_' + name)
         start.set_editor_property('player_start_tag', 'ArenaCore_' + name)
     # --- Only to look at; none of this has collision.
-    # Neon along the hall behind each spawn, in the team colour, with its glow on the wall and floor.
-    decor('Neon', -3500, -3494, -2500, 2500, 430, 446, cyan, shadow=False)
-    decor('Neon', 3494, 3500, -2500, 2500, 430, 446, violet, shadow=False)
-    decor('Band', -3500, 3500, 2496, 2500, 330, 352, LOOK['cap'], shadow=False)
-    decor('Band', -3500, 3500, -2500, -2496, 330, 352, LOOK['cap'], shadow=False)
-    for y in (-1100, 1100):
-        glow_light('NeonGlow', -3380, y, 420, (40, 200, 255), 130.0, 1400.0)
-        glow_light('NeonGlow', 3380, y, 420, (178, 70, 255), 130.0, 1400.0)
+    # Neon along the hall behind each spawn, in the team colour, in a dark channel. Its light is as long as
+    # the strip, so the wall glows along all of it.
+    for x, material, color, side in ((-3500, cyan, (30, 170, 255), 1.0), (3500, violet, (150, 50, 255), -1.0)):
+        decor('NeonChannel', min(x, x + side * 5), max(x, x + side * 5), -2420, 2420, 424, 452, LOOK['cap'], shadow=False)
+        decor('Neon', min(x + side * 5, x + side * 9), max(x + side * 5, x + side * 9), -2400, 2400, 432, 444, material, shadow=False)
+        for y in (-1600, 0, 1600):
+            tube_light('NeonLight', x + side * 70, y, 438, color, NEON_INTENSITY, 1150.0, 1600.0)
     # Orange diagonals on the long walls, two pairs each, leaning towards the middle.
     for y, face in ((2497.0, -1.0), (-2497.0, 1.0)):
         for x, lean in ((-2300, 34.0), (-1500, -34.0)):
             decor('Stripe', x - 430, x + 430, y - 1.5, y + 1.5, 700, 760, orange, shadow=False, mirror=True, pitch=lean)
-    # Warm washes down the hall walls, as from lamps under the roof.
-    # Lamps are cheap to look at and lights are not: every second lamp carries a light, and that light is wider.
-    for x in (-3000, -2000, -1000, 0, 1000, 2000, 3000):
-        for y in (2380, -2380):
-            if x in (-2000, 0, 2000):
-                glow_light('WallWash', x, y, 820, (255, 170, 90), WASH_INTENSITY * 1.8, 1500.0)
-            decor('WashLamp', x - 14, x + 14, (2486 if y > 0 else -2496), (2496 if y > 0 else -2486), 1030, 1046, LOOK['sconce'], shadow=False)
-    for y in (-1400, 1400):
-        for x in (3380, -3380):
-            glow_light('WallWash', x, y, 820, (255, 170, 90), WASH_INTENSITY * 1.8, 1500.0)
+    # Large shaded lamps along the hall walls, each with its own light: they light the two lanes and the wall
+    # below them.
+    for x in (-2800, -2000, -1200, -400):
+        sconce(x, 2500.0, 0.0, -1.0, z=350.0, scale=2.0, intensity=HALL_LAMP_INTENSITY, radius=1000.0)
+        sconce(x, -2500.0, 0.0, 1.0, z=350.0, scale=2.0, intensity=HALL_LAMP_INTENSITY, radius=1000.0)
+    for y in (-1700, 1700):
+        sconce(-3500.0, y, 1.0, 0.0, z=330.0, scale=2.0, intensity=HALL_LAMP_INTENSITY, radius=1000.0)
     # Wall lamps on the cover walls and the house.
     for y in (-330, 330):
         sconce(-2500 - T * 0.5, y, -1.0, 0.0)
@@ -437,13 +473,7 @@ def build():
     for x in (-1800, -1150):
         sconce(x, 1700.0, 0.0, -1.0, z=300.0)
         sconce(x, 1740.0, 0.0, 1.0, z=420.0)
-    for x in (-2300, -1000):
-        glow_light('LaneFill', x, 2300, 260, (255, 196, 130), 130.0, 1300.0, True)
-        glow_light('LaneFill', x, -1750, 260, (255, 196, 130), 130.0, 1300.0, True)
-    glow_light('LaneFill', 0, 2300, 200, (255, 196, 130), 90.0, 1000.0)
-    glow_light('LaneFill', 0, -2250, 260, (255, 196, 130), 90.0, 1000.0)
-    # Green: ivy over the tops of the cover walls, away from windows and doors, and a planted tub in each
-    # corner of the hall and between the lanes and the hall wall, where nobody fights.
+    # Green: ivy over the tops of the cover walls, away from windows and doors.
     for y in (-820, 820):
         prop('SM_Ivy', -2500 + T * 0.5 + 5, y, 338.0, 0.0, mirror=True)
         prop('SM_Ivy', -2500 - T * 0.5 - 5, y, 338.0, 180.0, mirror=True)
@@ -452,10 +482,6 @@ def build():
     prop('SM_Ivy', -1500.0, -1280 + T * 0.5 + 5, 338.0, 90.0, mirror=True)
     prop('SM_Ivy', -620.0, -1280 + T * 0.5 + 5, 338.0, 90.0, mirror=True)
     prop('SM_Ivy', -600 - T * 0.5 - 5, 0.0, 338.0, 180.0, mirror=True, scale=0.9)
-    for (x, y) in ((-3410, -2410), (-3410, 2410)):
-        prop('SM_Planter', x, y, 0.0, 0.0, collide=True, mirror=True)
-    for y in (-2420, 2420):
-        prop('SM_Planter', 0.0, y, 0.0, 0.0, scale=0.9, collide=True)
     # Orange floor markings: the edges of the two lanes, a box around each spawn, the approaches to the house doors.
     for y in (-1500, 1500):
         decor('Line', -3400, 3400, y - 6, y + 6, 0.0, 0.6, orange, shadow=False)

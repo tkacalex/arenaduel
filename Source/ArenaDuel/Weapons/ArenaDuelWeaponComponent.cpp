@@ -13,6 +13,7 @@
 #include "../Characters/ArenaDuelZombie.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
+#include "Components/DecalComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundBase.h"
 #include "HAL/IConsoleManager.h"
@@ -96,8 +97,6 @@ namespace
 		Velocity = (Velocity - Response * Step) * Decay;
 	}
 
-	// Raise it to keep tracers on screen long enough to inspect where they start.
-	static TAutoConsoleVariable<float> CVarTracerSeconds(TEXT("ArenaDuel.TracerSeconds"), 0.11f, TEXT("How long a cosmetic shot tracer stays visible."));
 
 	static TArray<FArenaDuelWeaponDefinition> MakeDefinitions()
 	{
@@ -149,7 +148,7 @@ EArenaDuelShotResult UArenaDuelWeaponComponent::ClassifyHitBone(FName BoneName)
 UArenaDuelWeaponComponent::UArenaDuelWeaponComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
-	// After movement, so the viewmodel and tracers use this frame's final position.
+	// After movement, so the viewmodel and the muzzle flash use this frame's final position.
 	PrimaryComponentTick.TickGroup = TG_PostPhysics;
 	PrimaryComponentTick.bStartWithTickEnabled = false;
 	SetIsReplicatedByDefault(true);
@@ -246,10 +245,10 @@ void UArenaDuelWeaponComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled()) UpdateAimFromIntent();
 	TickLocalPresentation(DeltaTime);
 	TickWeaponParts();
-	UpdateTracers();
+	UpdateMuzzleFlash();
 }
 
-FVector UArenaDuelWeaponComponent::GetTracerStart() const
+FVector UArenaDuelWeaponComponent::GetMuzzleWorldLocation() const
 {
 	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character) return FVector::ZeroVector;
@@ -267,8 +266,8 @@ FVector UArenaDuelWeaponComponent::GetTracerStart() const
 			Muzzle = Gun->GetComponentTransform().TransformPosition(Bounds.Origin + FVector(Bounds.BoxExtent.X, 0.0f, 0.0f));
 		}
 	}
-	// The viewmodel is drawn through its own lens and scaled toward the eye, while tracers are world
-	// geometry. Map the muzzle to the world point that lands on the same pixel as the drawn barrel tip.
+	// The viewmodel is drawn through its own lens and scaled toward the eye, while the flash is a world
+	// light. Map the muzzle to the world point that lands on the same pixel as the drawn barrel tip.
 	// CalcCamera gives the view exactly as it will be rendered, including slide roll and FOV kick.
 	const UCameraComponent* Camera = bLocalView ? Character->GetFirstPersonCamera() : nullptr;
 	if (Camera)
@@ -285,63 +284,42 @@ FVector UArenaDuelWeaponComponent::GetTracerStart() const
 	return Muzzle;
 }
 
-UStaticMeshComponent* UArenaDuelWeaponComponent::AcquireTracerMesh(UMaterialInterface* Material)
-{
-	for (UStaticMeshComponent* Pooled : TracerPool)
-	{
-		if (Pooled && !Pooled->IsVisible())
-		{
-			if (Material && Pooled->GetMaterial(0) != Material) Pooled->SetMaterial(0, Material);
-			return Pooled;
-		}
-	}
-	// A shotgun shows eight at once; beyond that extra tracers are simply skipped.
-	constexpr int32 MaxPooledTracers = 16;
-	UStaticMesh* Cylinder = TracerPool.Num() < MaxPooledTracers ? LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder")) : nullptr;
-	if (!Cylinder || !GetWorld()) return nullptr;
-	UStaticMeshComponent* Created = NewObject<UStaticMeshComponent>(GetOwner());
-	Created->SetStaticMesh(Cylinder);
-	if (Material) Created->SetMaterial(0, Material);
-	Created->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	Created->SetGenerateOverlapEvents(false);
-	Created->SetCastShadow(false);
-	Created->bAffectDynamicIndirectLighting = false;
-	Created->bAffectDistanceFieldLighting = false;
-	Created->SetVisibility(false);
-	Created->RegisterComponentWithWorld(GetWorld());
-	TracerPool.Add(Created);
-	return Created;
-}
-
-void UArenaDuelWeaponComponent::UpdateTracers()
+void UArenaDuelWeaponComponent::UpdateMuzzleFlash()
 {
 	const UWorld* World = GetWorld();
 	const float Now = World ? World->GetTimeSeconds() : 0.0f;
 	if (MuzzleFlashLight && MuzzleFlashLight->IsVisible() && Now >= MuzzleFlashOffWorldTime) MuzzleFlashLight->SetVisibility(false);
 	const bool bFlashOn = MuzzleFlashLight && MuzzleFlashLight->IsVisible();
-	if (ActiveTracers.Num() == 0)
-	{
-		const AArenaDuelCharacter* IdleOwner = Cast<AArenaDuelCharacter>(GetOwner());
-		if (!bFlashOn && !AreWeaponPartsBusy() && !(IdleOwner && IdleOwner->IsLocallyControlled() && !IdleOwner->IsDead())) SetComponentTickEnabled(false);
-		return;
-	}
-	const FVector Start = GetTracerStart();
-	for (int32 Index = ActiveTracers.Num() - 1; Index >= 0; --Index)
-	{
-		FActiveTracer& Tracer = ActiveTracers[Index];
-		UStaticMeshComponent* Mesh = Tracer.Mesh.Get();
-		const FVector Delta = Tracer.End - Start;
-		const double Length = Delta.Size();
-		if (!Mesh || Now >= Tracer.ExpireWorldTime || Length < 1.0)
-		{
-			if (Mesh) Mesh->SetVisibility(false);
-			ActiveTracers.RemoveAtSwap(Index);
-			continue;
-		}
-		Mesh->SetWorldTransform(FTransform(FRotationMatrix::MakeFromZ(Delta).ToQuat(), Start + Delta * 0.5, FVector(0.005, 0.005, Length / 100.0)));
-	}
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
-	if (ActiveTracers.Num() == 0 && !bFlashOn && !AreWeaponPartsBusy() && !(Character && Character->IsLocallyControlled() && !Character->IsDead())) SetComponentTickEnabled(false);
+	if (!bFlashOn && !AreWeaponPartsBusy() && !(Character && Character->IsLocallyControlled() && !Character->IsDead())) SetComponentTickEnabled(false);
+}
+
+void UArenaDuelWeaponComponent::SpawnImpactMark(const FVector& Muzzle, const FVector& End)
+{
+	// A mark where a bullet met the world. The shot result arrives as end points only, so the surface is found
+	// again with a short trace through the end point: a wall or floor gets a mark, a player, a zombie or thin
+	// air (a shot that reached its range) gets none.
+	UWorld* World = GetWorld();
+	const FVector Direction = (End - Muzzle).GetSafeNormal();
+	if (!World || Direction.IsNearlyZero()) return;
+	if (!ImpactMarkMaterial && !bImpactMarkLoaded)
+	{
+		bImpactMarkLoaded = true;
+		ImpactMarkMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ArenaDuel/Weapons/M_BulletImpact.M_BulletImpact"));
+	}
+	if (!ImpactMarkMaterial) return;
+	FHitResult Surface;
+	const FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelImpactMark), false, GetOwner());
+	if (!World->LineTraceSingleByChannel(Surface, End - Direction * 12.0, End + Direction * 12.0, ECC_Visibility, Params) || Cast<APawn>(Surface.GetActor())) return;
+	// Each mark is turned a little differently, so a burst does not stamp the same picture again and again.
+	FRotator Facing = (-Surface.ImpactNormal).Rotation();
+	Facing.Roll = FMath::FRandRange(0.0f, 360.0f);
+	const float Size = FMath::FRandRange(5.5f, 8.0f);
+	if (UDecalComponent* Mark = UGameplayStatics::SpawnDecalAtLocation(World, ImpactMarkMaterial, FVector(6.0f, Size, Size), Surface.ImpactPoint, Facing, ImpactMarkSeconds))
+	{
+		Mark->SetFadeOut(ImpactMarkSeconds - 2.0f, 2.0f, false);
+		Mark->SetFadeScreenSize(0.0005f);
+	}
 }
 
 bool UArenaDuelWeaponComponent::GetLeftHandGripWorldLocation(FVector& OutLocation, bool bThirdPerson) const
@@ -872,22 +850,8 @@ void UArenaDuelWeaponComponent::MulticastShotFired_Implementation(const TArray<F
 	UWorld* World = GetWorld();
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!World || !Character || World->GetNetMode() == NM_DedicatedServer) return;
-	const FVector Muzzle = GetTracerStart();
-	const AArenaDuelPlayerState* PlayerState = Character->GetPlayerState<AArenaDuelPlayerState>();
-	UMaterialInterface* Material = PlayerState && PlayerState->GetDuelSlot() == 1 ? WeaponAccentViolet.Get() : WeaponAccentCyan.Get();
-	for (const FVector_NetQuantize& End : TraceEnds)
-	{
-		const FVector Delta = FVector(End) - Muzzle;
-		const double Length = Delta.Size();
-		UStaticMeshComponent* Tracer = Length >= 40.0 ? AcquireTracerMesh(Material) : nullptr;
-		if (!Tracer) continue;
-		Tracer->SetWorldTransform(FTransform(FRotationMatrix::MakeFromZ(Delta).ToQuat(), Muzzle + Delta * 0.5, FVector(0.005, 0.005, Length / 100.0)));
-		Tracer->SetVisibility(true);
-		FActiveTracer& NewTracer = ActiveTracers.AddDefaulted_GetRef();
-		NewTracer.Mesh = Tracer;
-		NewTracer.End = FVector(End);
-		NewTracer.ExpireWorldTime = World->GetTimeSeconds() + CVarTracerSeconds.GetValueOnGameThread();
-	}
+	const FVector Muzzle = GetMuzzleWorldLocation();
+	for (const FVector_NetQuantize& End : TraceEnds) SpawnImpactMark(Muzzle, FVector(End));
 	// One reusable muzzle light per weapon: no shadows, no bounce lighting, just a blink.
 	if (!MuzzleFlashLight)
 	{

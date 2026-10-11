@@ -33,7 +33,7 @@ Lumen, virtual shadow maps and Substrate are still enabled.
 
 ## Earlier pass on gameplay effects
 
-- Tracers come from a pool of 16 meshes and the muzzle flash is one reused light, so firing allocates nothing.
+- The muzzle flash is one reused light. A shot draws no tracer line; a bullet that meets the world leaves a decal that fades after 25 seconds.
 - The flashbang burst and the enemy glow lights cast no shadows.
 - Per-bone hit zone collision and the always-ticking pose exist on the server only.
 

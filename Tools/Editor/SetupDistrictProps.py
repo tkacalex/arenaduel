@@ -4,7 +4,7 @@ Two editor runs with the editor closed, after Tools/Editor/SetupDistrictMaterial
 1. as it is: imports Tools/Art/District/SM_*.fbx to /Game/ArenaDuel/Maps/District/Props;
 2. with ARENADUEL_DISTRICT_FINISH=1: gives every slot its material and saves (the importer finishes a
    mesh after the script, so both cannot happen in one run).
-The planter gets a simple collision box; lamps and ivy have none.
+The crate gets one collision box of its exact size; lamps and ivy have none.
 """
 import os
 import unreal
@@ -14,10 +14,14 @@ LOOK = '/Game/ArenaDuel/Maps/District'
 ART = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Art', 'District'))
 LIB = unreal.EditorAssetLibrary
 FINISH = os.environ.get('ARENADUEL_DISTRICT_FINISH') == '1'
-MESHES = ('SM_WallLamp', 'SM_CeilingLamp', 'SM_Planter', 'SM_Ivy')
+MESHES = ('SM_WallLamp', 'SM_CeilingLamp', 'SM_Ivy', 'SM_DistrictCrate')
 # Slot name in the FBX to material of the map.
-MATERIALS = {'D_Metal': 'MI_District_SteelDark', 'D_Glow': 'M_DistrictSconce', 'D_Concrete': 'MI_District_Concrete', 'D_Soil': 'M_DistrictSoil', 'D_Bark': 'M_DistrictSoil', 'D_Leaf': 'M_DistrictLeaf'}
+MATERIALS = {'D_Metal': 'MI_District_SteelDark', 'D_Glow': 'M_DistrictSconce', 'D_Bark': 'M_DistrictBark', 'D_Leaf': 'M_DistrictLeaf', 'D_Crate': 'M_DistrictCrate'}
+# The ceiling light has a cool lens, the wall lamp a warm one.
+GLOW = {'SM_CeilingLamp': 'M_DistrictLightPanel'}
 report = []
+if not FINISH and LIB.does_asset_exist(DEST + '/SM_Planter'):
+    LIB.delete_asset(DEST + '/SM_Planter')   # the planted tubs are gone from the map
 for name in MESHES:
     path = DEST + '/' + name
     if not FINISH:
@@ -39,7 +43,7 @@ for name in MESHES:
         ui.set_editor_property('mesh_type_to_import', unreal.FBXImportType.FBXIT_STATIC_MESH)
         data = ui.get_editor_property('static_mesh_import_data')
         data.set_editor_property('combine_meshes', True)
-        data.set_editor_property('auto_generate_collision', name == 'SM_Planter')
+        data.set_editor_property('auto_generate_collision', False)
         data.set_editor_property('generate_lightmap_u_vs', False)
         data.set_editor_property('normal_import_method', unreal.FBXNormalImportMethod.FBXNIM_IMPORT_NORMALS)
         data.set_editor_property('vertex_color_import_option', unreal.VertexColorImportOption.REPLACE)
@@ -52,9 +56,13 @@ for name in MESHES:
         continue
     slots = [str(entry.material_slot_name) for entry in mesh.get_editor_property('static_materials')]
     for index, slot in enumerate(slots):
-        material = unreal.load_asset(LOOK + '/' + MATERIALS.get(slot, 'MI_District_SteelDark'))
+        material = unreal.load_asset(LOOK + '/' + (GLOW.get(name) if slot == 'D_Glow' and name in GLOW else MATERIALS.get(slot, 'MI_District_SteelDark')))
         if material:
             mesh.set_material(index, material)
+    if name == 'SM_DistrictCrate':
+        meshes = unreal.get_editor_subsystem(unreal.StaticMeshEditorSubsystem)
+        meshes.remove_collisions(mesh)
+        meshes.add_simple_collisions(mesh, unreal.ScriptingCollisionShapeType.BOX)
     saved = LIB.save_loaded_asset(mesh, only_if_is_dirty=False)
     bounds = mesh.get_bounds()
     report.append('%s saved=%s slots=%s size=(%.0f, %.0f, %.0f)' % (name, saved, slots, bounds.box_extent.x * 2, bounds.box_extent.y * 2, bounds.box_extent.z * 2))

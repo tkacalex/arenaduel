@@ -501,25 +501,19 @@ protected:
 	UPROPERTY() TObjectPtr<UMaterialInterface> WeaponAccentViolet;
 	UPROPERTY() TObjectPtr<class USoundBase> FireSound;
 
-	// A tracer keeps its barrel end on the muzzle while it is visible, so it does not drift off a moving gun.
-	struct FActiveTracer
-	{
-		TWeakObjectPtr<UStaticMeshComponent> Mesh;
-		FVector End = FVector::ZeroVector;
-		float ExpireWorldTime = 0.0f;
-	};
-	TArray<FActiveTracer> ActiveTracers;
-	// Shot effects are created once and reused. Spawning and destroying render components per shot
-	// at automatic fire rates caused frame time spikes.
-	UPROPERTY(Transient) TArray<TObjectPtr<UStaticMeshComponent>> TracerPool;
+	/** Bullet marks on the world, loaded on first use: /Game/ArenaDuel/Weapons/M_BulletImpact (Tools/Editor/SetupImpactDecal.py). */
+	UPROPERTY(Transient) TObjectPtr<UMaterialInterface> ImpactMarkMaterial;
+	bool bImpactMarkLoaded = false;
+	/** How long a bullet mark stays, fading over its last two seconds. */
+	UPROPERTY(EditDefaultsOnly, Category="Weapons|Presentation") float ImpactMarkSeconds = 25.0f;
 	UPROPERTY(Transient) TObjectPtr<class UPointLightComponent> MuzzleFlashLight;
 	/** Knife or flashbang model in hand, built in code on first use. */
 	UPROPERTY(Transient) TObjectPtr<UStaticMesh> ItemModel;
 	UPROPERTY() TObjectPtr<UMaterialInterface> KnifeBladeMaterial;
 	float MuzzleFlashOffWorldTime = 0.0f;
-	UStaticMeshComponent* AcquireTracerMesh(UMaterialInterface* Material);
-	FVector GetTracerStart() const;
-	void UpdateTracers();
+	FVector GetMuzzleWorldLocation() const;
+	void UpdateMuzzleFlash();
+	void SpawnImpactMark(const FVector& Muzzle, const FVector& End);
 
 	FTimerHandle ReloadTimerHandle;
 
