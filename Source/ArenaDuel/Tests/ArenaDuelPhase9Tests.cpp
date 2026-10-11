@@ -689,6 +689,109 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 			}, FTimespan::FromSeconds(5.0));
 	}
 
+	// Hit feedback: real hits confirmed by the server reach the shooter's machine as events, one each, head or
+	// body, for every firearm, a zombie and the knife, and reach nobody else.
+	TEST_METHOD(ConfirmedHitsReachTheShooterAndOnlyTheShooter)
+	{
+		using namespace ArenaDuelPhase9Tests;
+		Network
+			.UntilServer(TEXT("Both duel players have pawns"), [](FArenaDuelPhase9State& State) { return PawnForSlot(State.World, 0) && PawnForSlot(State.World, 1); }, FTimespan::FromSeconds(10.0))
+			.ThenServer(TEXT("Start a round"), [](FArenaDuelPhase9State& State) { StartMatch(State.World); })
+			.UntilServer(TEXT("Round one runs"), [](FArenaDuelPhase9State& State) { return BothAliveInRound(State.World); }, FTimespan::FromSeconds(6.0))
+			.ThenServer(TEXT("The client's pawn faces the host's pawn and a zombie, all held in place"), [this](FArenaDuelPhase9State& State)
+			{
+				AArenaDuelCharacter* Shooter = PawnForSlot(State.World, 1);
+				AArenaDuelCharacter* Victim = PawnForSlot(State.World, 0);
+				AArenaDuelGameMode* GameMode = State.World->GetAuthGameMode<AArenaDuelGameMode>();
+				// The victim does not die of this: hits are judged all the same.
+				if (AArenaDuelPlayerState* VictimState = GameMode->FindPlayerStateByDuelSlot(0); VictimState && !VictimState->HasAdminGodMode()) VictimState->ToggleAdminGodMode();
+				for (AArenaDuelCharacter* Pawn : { Shooter, Victim }) Pawn->GetCharacterMovement()->DisableMovement();
+				const float Reach = FMath::Min(150.0f, Shooter->GetWeaponComponent()->GetKnifeDefinition().Range * 0.7f);
+				Shooter->SetActorLocation(FVector(2000.0f, 2000.0f, 600.0f), false, nullptr, ETeleportType::TeleportPhysics);
+				Victim->SetActorLocation(FVector(2000.0f + Reach, 2000.0f, 600.0f), false, nullptr, ETeleportType::TeleportPhysics);
+				Victim->SetActorRotation(FRotator(0.0f, 180.0f, 0.0f));
+				AArenaDuelZombie* Zombie = State.World->SpawnActor<AArenaDuelZombie>(AArenaDuelZombie::StaticClass(), FVector(2000.0f - Reach, 2000.0f, 600.0f), FRotator::ZeroRotator);
+				if (!Zombie) { TestRunner->AddError(TEXT("No zombie for the check")); return; }
+				Zombie->InitializeZombie(EArenaDuelZombieType::Normal, GetDefault<AArenaDuelZombieGameMode>()->GetTypeConfigs()[0], 100.0f, 1.0f);
+				Zombie->GetCharacterMovement()->DisableMovement();
+				State.Wall = Zombie;
+				Shooter->GetWeaponComponent()->GrantAllWeaponsForDevelopment();
+				State.Mark = State.World->GetTimeSeconds();
+				State.Serial = 0;
+				State.Sequence = 0;   // head shots the server has judged
+				State.Ammo = 0;       // body hits the server has judged
+			})
+			.UntilServer(TEXT("Every firearm into body and head, the zombie's body and head, the knife at the head"), [this](FArenaDuelPhase9State& State)
+			{
+				AArenaDuelCharacter* Shooter = PawnForSlot(State.World, 1);
+				AArenaDuelCharacter* Victim = PawnForSlot(State.World, 0);
+				AArenaDuelZombie* Zombie = Cast<AArenaDuelZombie>(State.Wall.Get());
+				UArenaDuelWeaponComponent* Weapon = Shooter->GetWeaponComponent();
+				const double Now = State.World->GetTimeSeconds();
+				// Bodies follow their pawns a frame later, and the slowest firearm needs its interval between two shots.
+				const int32 Weapons = Weapon->GetWeaponDefinitionCount();
+				const int32 Steps = 2 * Weapons + 3;
+				const double Pause = State.Serial == Weapons ? 1.0 : 0.3;
+				if (Now - State.Mark < Pause) return false;
+				State.Mark = Now;
+				const int32 Step = State.Serial++;
+				const bool bHead = Step >= Weapons && Step != 2 * Weapons;
+				const bool bZombie = Step >= 2 * Weapons && Step < 2 * Weapons + 2;
+				const bool bKnife = Step == 2 * Weapons + 2;
+				const AActor* TargetActor = bZombie ? static_cast<const AActor*>(Zombie) : Victim;
+				const USkeletalMeshComponent* TargetMesh = bZombie ? Zombie->GetMesh() : Victim->GetMesh();
+				const FVector Target = bHead ? TargetMesh->GetBoneLocation(TEXT("head")) + FVector(0.0f, 0.0f, 4.0f) : TargetActor->GetActorLocation() + FVector(0.0f, 0.0f, 15.0f);
+				Shooter->GetController()->SetControlRotation((Target - Shooter->GetPawnViewLocation()).Rotation());
+				const int32 Before = Weapon->GetLastShotSequence();
+				Weapon->ClearActionTimesForTests();
+				if (bKnife)
+				{
+					Weapon->SelectSlotForTests(EArenaDuelLoadoutSlot::Knife);
+					Weapon->ClearActionTimesForTests();
+					Weapon->UseEquipmentForTests(false);
+				}
+				else
+				{
+					Weapon->EquipWeapon(bZombie ? 0 : Step % Weapons);
+					Weapon->RefillAllAmmoForDevelopment();
+					Weapon->ClearActionTimesForTests();
+					Weapon->SetFireHeldForTests(true, 1000.0f, 1000.0f);
+					Weapon->SetFireHeldForTests(false, 1000.0f, 1000.0f);
+				}
+				const FString What = FString::Printf(TEXT("step %d (%s at the %s of the %s)"), Step, bKnife ? TEXT("knife") : *FString::Printf(TEXT("firearm %d"), Weapon->GetEquippedWeaponIndex()), bHead ? TEXT("head") : TEXT("body"), bZombie ? TEXT("zombie") : TEXT("player"));
+				if (Weapon->GetLastShotSequence() != Before + 1) { TestRunner->AddError(FString::Printf(TEXT("Not exactly one shot or stroke was made in %s"), *What)); return true; }
+				const EArenaDuelShotResult Result = Weapon->GetLastShotResult();
+				// The knife's rule: whatever it meets, it counts as a body hit.
+				const bool bExpectHead = bHead && !bKnife;
+				if (bExpectHead ? Result != EArenaDuelShotResult::Head : (Result != EArenaDuelShotResult::Body && Result != EArenaDuelShotResult::Limb)) TestRunner->AddError(FString::Printf(TEXT("The server judged %s as %d"), *What, static_cast<int32>(Result)));
+				if (Result == EArenaDuelShotResult::Head) { ++State.Sequence; if (Weapon->GetLastHeadPellets() < 1) TestRunner->AddError(TEXT("A head shot without a pellet in the head")); }
+				else if (Result == EArenaDuelShotResult::Body || Result == EArenaDuelShotResult::Limb) ++State.Ammo;
+				// A blast of several pellets is one shot and one confirmation, a head shot as soon as one pellet is in the head.
+				if (Weapon->GetLastPelletsHit() > 1 && bHead && Weapon->GetLastHeadPellets() > Weapon->GetLastPelletsHit()) TestRunner->AddError(TEXT("More pellets in the head than hit at all"));
+				if (State.Serial < Steps) return false;
+				const int32 WantHeads = Weapons + 1, WantBodies = Weapons + 2;
+				if (State.Sequence != WantHeads || State.Ammo != WantBodies) TestRunner->AddError(FString::Printf(TEXT("The server judged %d head and %d body hits, expected %d and %d"), State.Sequence, State.Ammo, WantHeads, WantBodies));
+				// Not on the server: its copy of the shooter's weapon is not the shooter's machine, and the host shot nobody.
+				if (Weapon->GetConfirmedHeadHits() != 0 || Weapon->GetConfirmedBodyHits() != 0 || Weapon->GetPendingHitFeedbackCount() != 0) TestRunner->AddError(TEXT("The server's copy of the shooter's weapon collected hit feedback"));
+				const UArenaDuelWeaponComponent* HostWeapon = Victim->GetWeaponComponent();
+				if (HostWeapon->GetConfirmedHeadHits() != 0 || HostWeapon->GetConfirmedBodyHits() != 0) TestRunner->AddError(TEXT("The victim got hit feedback"));
+				return true;
+			}, FTimespan::FromSeconds(20.0))
+			.UntilClient(TEXT("The shooter's machine has every one of them, once"), 0, [this](FArenaDuelPhase9State& State)
+			{
+				const APlayerController* Controller = State.World->GetFirstPlayerController();
+				const AArenaDuelCharacter* Own = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
+				if (!Own) return false;
+				const UArenaDuelWeaponComponent* Weapon = Own->GetWeaponComponent();
+				const int32 Weapons = Weapon->GetWeaponDefinitionCount();
+				if (Weapon->GetConfirmedHeadHits() < Weapons + 1 || Weapon->GetConfirmedBodyHits() < Weapons + 2) return false;
+				if (Weapon->GetConfirmedHeadHits() != Weapons + 1 || Weapon->GetConfirmedBodyHits() != Weapons + 2) TestRunner->AddError(FString::Printf(TEXT("The shooter was told of %d head and %d body hits, the server judged %d and %d"), Weapon->GetConfirmedHeadHits(), Weapon->GetConfirmedBodyHits(), Weapons + 1, Weapons + 2));
+				// The other player's pawn on this machine: no feedback for what was done to it.
+				for (TActorIterator<AArenaDuelCharacter> It(State.World); It; ++It) if (*It != Own && (It->GetWeaponComponent()->GetConfirmedHeadHits() != 0 || It->GetWeaponComponent()->GetConfirmedBodyHits() != 0)) TestRunner->AddError(TEXT("Another player's weapon collected hit feedback on the shooter's machine"));
+				return true;
+			}, FTimespan::FromSeconds(8.0));
+	}
+
 	// E07: a choice names its selection; one from an earlier selection is refused in a later one.
 	TEST_METHOD(UpgradeChoiceFromAnEarlierSelectionIsRefused)
 	{

@@ -102,7 +102,7 @@ bool FArenaDuelNativeHUDWidgetTreeTest::RunTest(const FString& Parameters)
 	Weapon->ConfirmShotForTests(7, EArenaDuelShotResult::Head);
 	Weapon->ConfirmShotForTests(3, EArenaDuelShotResult::Head);
 	TestEqual(TEXT("A repeated or older confirmation is not taken again"), Weapon->GetPendingHitFeedbackCount(), 0);
-	TestTrue(TEXT("The weapon counted four head and three body hits"), Weapon->GetConfirmedHeadHits() == 2 && Weapon->GetConfirmedBodyHits() == 3);
+	TestTrue(TEXT("The weapon counted two head and three body hits"), Weapon->GetConfirmedHeadHits() == 2 && Weapon->GetConfirmedBodyHits() == 3);
 	// Many hits confirmed for one frame: one sound of each kind, and the buffer stays bounded.
 	const int32 HeadBefore = Feedback->GetHitSoundsAsked(true), BodyBefore = Feedback->GetHitSoundsAsked(false);
 	for (int32 Sequence = 8; Sequence < 48; ++Sequence) Weapon->ConfirmShotForTests(Sequence, Sequence % 2 == 0 ? EArenaDuelShotResult::Body : EArenaDuelShotResult::Head);
