@@ -10,6 +10,7 @@
 #include "../Player/ArenaDuelPlayerState.h"
 #include "../UI/ArenaDuelAdminWidget.h"
 #include "../UI/ArenaDuelCharacterSelectWidget.h"
+#include "../UI/ArenaDuelUpgradeWidget.h"
 #include "../UI/ArenaDuelPlayerMenuWidget.h"
 #include "../Game/ArenaDuelZombieGameMode.h"
 #include "../Game/ArenaDuelZombieGameState.h"
@@ -110,6 +111,7 @@ void AArenaDuelPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReaso
 	CloseAdminMenu();
 	GetWorldTimerManager().ClearTimer(MatchPresentationTimer);
 	if (CharacterSelectWidget) CharacterSelectWidget->RemoveFromParent();
+	if (UpgradeWidget) UpgradeWidget->RemoveFromParent();
 	if (PlayerMenuWidget) PlayerMenuWidget->RemoveFromParent();
 	Super::EndPlay(EndPlayReason);
 }
@@ -135,11 +137,56 @@ void AArenaDuelPlayerController::ServerSetCharacterReady_Implementation(bool bRe
 	if (AArenaDuelGameMode* Mode = GetWorld()->GetAuthGameMode<AArenaDuelGameMode>()) Mode->RequestCharacterReady(this, bReady);
 }
 
+void AArenaDuelPlayerController::ChooseUpgrade(uint8 UpgradeId)
+{
+	if (IsLocalController()) ServerChooseUpgrade(UpgradeId);
+}
+
+void AArenaDuelPlayerController::ServerChooseUpgrade_Implementation(uint8 UpgradeId)
+{
+	if (AArenaDuelGameMode* Mode = GetWorld()->GetAuthGameMode<AArenaDuelGameMode>()) Mode->RequestUpgradeChoice(this, UpgradeId);
+}
+
 void AArenaDuelPlayerController::RefreshMatchPresentation()
 {
 	if (!IsLocalController()) return;
 	const AArenaDuelGameState* State = GetWorld()->GetGameState<AArenaDuelGameState>();
 	if (!State) return;
+	// The upgrade selection between rounds: a screen of its own for the two duel players, with the cursor.
+	// It closes with the phase, and the game gets its input back whether or not anything was chosen.
+	const AArenaDuelPlayerState* LocalDuelPlayer = GetPlayerState<AArenaDuelPlayerState>();
+	const bool bUpgrade = State->IsUpgradeSelect() && LocalDuelPlayer && LocalDuelPlayer->GetDuelSlot() < 2;
+	if (bUpgrade != bUpgradeSelectOpen)
+	{
+		if (bUpgrade)
+		{
+			CloseAdminMenu();
+			if (bPlayerMenuOpen) ClosePlayerMenu();
+			if (!UpgradeWidget) UpgradeWidget = CreateWidget<UArenaDuelUpgradeWidget>(this, UArenaDuelUpgradeWidget::StaticClass());
+			if (UpgradeWidget)
+			{
+				UpgradeWidget->AddToViewport(40);
+				bShowMouseCursor = true;
+				FInputModeUIOnly Mode;
+				Mode.SetWidgetToFocus(UpgradeWidget->TakeWidget());
+				Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+				SetInputMode(Mode);
+				UpgradeWidget->SetKeyboardFocus();
+				bUpgradeSelectOpen = true;
+			}
+		}
+		else
+		{
+			if (UpgradeWidget) UpgradeWidget->RemoveFromParent();
+			bUpgradeSelectOpen = false;
+			// Character selection takes over the cursor itself when it is the next thing on screen.
+			if (!State->IsCharacterSelectVisible() && !bCharacterSelectOpen && !bPlayerMenuOpen)
+			{
+				bShowMouseCursor = false;
+				SetInputMode(FInputModeGameOnly());
+			}
+		}
+	}
 	const bool bShow = State->IsCharacterSelectVisible();
 	if (AArenaDuelMovementDebugHUD* HUD = Cast<AArenaDuelMovementDebugHUD>(GetHUD())) HUD->SetCharacterSelectVisible(bShow);
 	if (bShow == bCharacterSelectOpen) return;
