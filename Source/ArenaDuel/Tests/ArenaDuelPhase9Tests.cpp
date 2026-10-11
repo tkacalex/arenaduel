@@ -446,13 +446,14 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 				Pawn->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
 				Pawn->GetCharacterMovement()->GravityScale = 0.0f;
 				Pawn->GetCharacterMovement()->bCrouchMaintainsBaseLocation = true;
+				// Away from the other pawn: the two share the origin of the empty test world, and a capsule that starts
+				// inside another cannot be moved down by the crouch.
+				Pawn->SetActorLocation(FVector(3000.0f, 3000.0f, 800.0f), false, nullptr, ETeleportType::TeleportPhysics);
 				const double EyeBefore = Pawn->GetPawnViewLocation().Z;
-				const double CentreBefore = Pawn->GetActorLocation().Z;
 				if (!FMath::IsNearlyZero(Pawn->GetEyeEaseOffset(), 0.01f)) TestRunner->AddError(TEXT("The eye is not at rest before the crouch"));
 				Pawn->GetCharacterMovement()->bWantsToCrouch = true;
 				Pawn->GetCharacterMovement()->Crouch(false);
 				if (!Pawn->bIsCrouched) { TestRunner->AddError(TEXT("The pawn did not crouch")); return; }
-				UE_LOG(LogTemp, Display, TEXT("P9EYE centre %.1f -> %.1f eye %.1f -> %.1f ease %.1f mode %d maintain %d half %.1f"), CentreBefore, Pawn->GetActorLocation().Z, EyeBefore, Pawn->GetPawnViewLocation().Z, Pawn->GetEyeEaseOffset(), static_cast<int32>(Pawn->GetCharacterMovement()->MovementMode.GetValue()), Pawn->GetCharacterMovement()->bCrouchMaintainsBaseLocation ? 1 : 0, Pawn->GetSimpleCollisionHalfHeight());
 				// The capsule has shrunk at once; the eye, and with it the shot origin, has not moved yet.
 				if (Pawn->GetEyeEaseOffset() < 5.0f) TestRunner->AddError(TEXT("The server does not ease the eye of a remote player's pawn"));
 				if (!FMath::IsNearlyEqual(Pawn->GetPawnViewLocation().Z, EyeBefore, 1.5)) TestRunner->AddError(FString::Printf(TEXT("The shot origin jumped by %.1f cm with the crouch"), Pawn->GetPawnViewLocation().Z - EyeBefore));
