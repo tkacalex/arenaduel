@@ -633,11 +633,14 @@ bool UArenaDuelCharacterMovementComponent::CanStartWallRun(const FVector& Normal
 	// a wall would otherwise grab the wall for a moment instead of landing.
 	if (Velocity.Z < -1.0f)
 	{
+		// Swept with what the pawn itself collides with, a little narrower so the wall beside it does not count.
+		const UCapsuleComponent* Capsule = CharacterOwner->GetCapsuleComponent();
 		const FVector Start = CharacterOwner->GetActorLocation();
-		const float Reach = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + WallRunMinGroundClearance;
-		FHitResult Floor;
-		const FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelWallRunFloor), false, CharacterOwner);
-		if (GetWorld()->LineTraceSingleByChannel(Floor, Start, Start - FVector::UpVector * Reach, ECC_Visibility, Params)) return false;
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelWallRunFloor), false, CharacterOwner);
+		FCollisionResponseParams Response;
+		InitCollisionParams(Params, Response);
+		const FCollisionShape Shape = FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius() * 0.6f, Capsule->GetScaledCapsuleHalfHeight());
+		if (GetWorld()->SweepTestByChannel(Start, Start - FVector::UpVector * WallRunMinGroundClearance, FQuat::Identity, UpdatedComponent->GetCollisionObjectType(), Shape, Params, Response)) return false;
 	}
 	return true;
 }
