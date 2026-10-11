@@ -293,6 +293,13 @@ public:
 	/** Cosmetic: which firearm is in hand and when the trigger was last pulled on this machine. */
 	int32 GetEquippedWeaponIndex() const { return EquippedWeaponIndex; }
 	float GetLastTriggerWorldTime() const { return PartShotWorldTime; }
+	/** Cosmetic, on every machine: when the last knife swing and the last throw were shown, for the world body's arm. */
+	float GetKnifeSwingWorldTime() const { return KnifeSwingStartWorldTime; }
+	bool WasKnifeSwingHeavy() const { return bKnifeSwingHeavy; }
+	float GetThrowWorldTime() const { return ThrowStartWorldTime; }
+	bool WasThrowShort() const { return bThrowShort; }
+	/** How the world weapon sits in the hand socket when it is not steered by the aim. */
+	FRotator GetThirdPersonGripRotation() const { return WeaponVisualDefinitions.IsValidIndex(EquippedWeaponIndex) ? WeaponVisualDefinitions[EquippedWeaponIndex].ThirdPersonGripRotation : FRotator::ZeroRotator; }
 	float GetAimSensitivityMultiplier() const;
 	/** 0 none, 1 first zoom, 2 second zoom. Local to the owning player. */
 	int32 GetScopeLevel() const { return ScopeLevel; }

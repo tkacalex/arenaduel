@@ -29,4 +29,6 @@ private:
 	UPROPERTY() TObjectPtr<UAnimSequence> RunClips[4];
 	int32 MoveDirection = 0;
 	float GroundedSeconds = 1.0f;
+	/** World body: how far the firearm is raised from the low ready to the line of sight. */
+	float WorldAimBlend = 0.0f;
 };

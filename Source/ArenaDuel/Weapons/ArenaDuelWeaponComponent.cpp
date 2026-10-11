@@ -1534,10 +1534,11 @@ void UArenaDuelWeaponComponent::MulticastEquipmentThrown_Implementation(bool bSh
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character || !GetWorld() || GetNetMode() == NM_DedicatedServer) return;
 	if (USoundBase* Pin = ArenaDuelItemMeshes::Sound(TEXT("S_FlashPin"))) UGameplayStatics::PlaySoundAtLocation(this, Pin, Character->GetPawnViewLocation(), Character->IsLocallyControlled() ? 0.7f : 0.9f);
-	if (!Character->IsLocallyControlled()) return;
-	// The arm follows through after the release. The throw itself already happened; nothing waits for this.
+	// Everyone sees the arm of the world body throw; the rest is the owner's viewmodel.
 	ThrowStartWorldTime = GetWorld()->GetTimeSeconds();
 	bThrowShort = bShort;
+	if (!Character->IsLocallyControlled()) return;
+	// The arm follows through after the release. The throw itself already happened; nothing waits for this.
 	LastCosmeticShotWorldTime = ThrowStartWorldTime;
 	SetComponentTickEnabled(true);
 }
@@ -1551,9 +1552,10 @@ void UArenaDuelWeaponComponent::MulticastKnifeSwing_Implementation(bool bHit, bo
 	if (USoundBase* Air = ArenaDuelItemMeshes::Sound(bHeavy ? TEXT("S_KnifeStab") : TEXT("S_KnifeSwing"))) UGameplayStatics::PlaySoundAtLocation(this, Air, Character->GetPawnViewLocation(), Volume);
 	if (bHit) if (USoundBase* Thud = ArenaDuelItemMeshes::Sound(TEXT("S_KnifeHit"))) UGameplayStatics::PlaySoundAtLocation(this, Thud, Character->GetPawnViewLocation() + Character->GetControlRotation().Vector() * 80.0f, Volume);
 	// The rest is the owner's viewmodel: the swing itself and a kick that bites deeper on a hit. Negative kick pushes forward.
-	if (!Character->IsLocallyControlled()) return;
+	// Everyone sees the arm of the world body swing.
 	KnifeSwingStartWorldTime = GetWorld()->GetTimeSeconds();
 	bKnifeSwingHeavy = bHeavy;
+	if (!Character->IsLocallyControlled()) return;
 	const float Weight = bHeavy ? 1.8f : 1.0f;
 	LocalWeaponKick = (bHit ? -2.2f : -1.2f) * Weight;
 	VisualYawKick = (bHit ? 1.2f : 0.7f) * Weight;

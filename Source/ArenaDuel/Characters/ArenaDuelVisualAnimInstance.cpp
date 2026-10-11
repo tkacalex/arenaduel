@@ -92,6 +92,9 @@ namespace
 		float LowReadyWeight = 0;
 		float LookPitch = 0;
 		static constexpr float LowReadyDegrees = 26.0f;
+		// World body: the weapon arm's own motion for a knife swing or a throw, as turns of the upper arm in degrees.
+		float ActionRaise = 0;
+		float ActionSweep = 0;
 		float ForearmRoll = 0;
 		// Fingers follow what is held; the trigger finger squeezes on a shot.
 		FArenaDuelFingerPose Fingers, FingerTarget;
@@ -172,6 +175,24 @@ namespace
 			const float PitchTarget = bWorldBodyPose ? FMath::Clamp(FRotator::NormalizeAxis(Character->GetBaseAimRotation().Pitch), -80.0f, 80.0f) : 0.0f;
 			LookPitch = PitchTarget + (LookPitch - PitchTarget) * FMath::Exp(-20.0f * FMath::Max(DeltaSeconds, 0.0f));
 			ReloadWeight = (bReloadingBody ? 1.0f : 0.0f) + (ReloadWeight - (bReloadingBody ? 1.0f : 0.0f)) * Decay;
+			ActionRaise = ActionSweep = 0.0f;
+			if (bWorldBodyPose && Weapon && Instance->GetWorld())
+			{
+				const float Now = Instance->GetWorld()->GetTimeSeconds();
+				if (const float Length = Weapon->WasKnifeSwingHeavy() ? 0.42f : 0.26f, Age = Now - Weapon->GetKnifeSwingWorldTime(); Age >= 0.0f && Age < Length)
+				{
+					// A slash comes up and across the body; a stab is drawn back and driven forward.
+					const float T = Age / Length, Arc = FMath::Sin(PI * T);
+					if (Weapon->WasKnifeSwingHeavy()) ActionRaise = T < 0.3f ? -18.0f * FMath::Sin(PI * T / 0.3f) : 62.0f * FMath::Sin(PI * FMath::Clamp((T - 0.3f) / 0.7f, 0.0f, 1.0f));
+					else { ActionRaise = 48.0f * Arc; ActionSweep = FMath::Lerp(-30.0f, 42.0f, T) * Arc; }
+				}
+				if (const float Age = Now - Weapon->GetThrowWorldTime(); Age >= 0.0f && Age < 0.4f)
+				{
+					// The arm goes over the shoulder for a long throw and swings low for a short one.
+					const float Arc = FMath::Sin(PI * Age / 0.4f);
+					ActionRaise += (Weapon->WasThrowShort() ? 40.0f : 115.0f) * Arc;
+				}
+			}
 			bFingerPose = Character && !Character->IsDead() && Weapon && (bRigidForearm || bThirdPersonBody);
 			if (bFingerPose)
 			{
@@ -225,7 +246,8 @@ namespace
 				const FCompactPoseBoneIndex LowSpineIndex = FindBone(TEXT("spine_03")), HighSpineIndex = FindBone(TEXT("spine_05")), WeaponArmIndex = FindBone(TEXT("upperarm_r"));
 				const bool bLook = FMath::Abs(LookPitch) > 0.5f && LowSpineIndex.GetInt() != INDEX_NONE && HighSpineIndex.GetInt() != INDEX_NONE;
 				const bool bLower = LowReadyWeight > KINDA_SMALL_NUMBER && WeaponArmIndex.GetInt() != INDEX_NONE;
-				if (bLook || bLower)
+				const bool bAct = (!FMath::IsNearlyZero(ActionRaise) || !FMath::IsNearlyZero(ActionSweep)) && WeaponArmIndex.GetInt() != INDEX_NONE;
+				if (bLook || bLower || bAct)
 				{
 					FCSPose<FCompactPose> LookPose;
 					LookPose.InitPose(Output.Pose);
@@ -243,6 +265,13 @@ namespace
 					}
 					// Not aiming: the weapon arm drops to a low ready. The support hand follows through its grip target.
 					if (bLower) Turn(WeaponArmIndex, -LowReadyDegrees * LowReadyWeight);
+					if (bAct)
+					{
+						Turn(WeaponArmIndex, ActionRaise);
+						FTransform Arm = LookPose.GetComponentSpaceTransform(WeaponArmIndex);
+						Arm.SetRotation(FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(ActionSweep)) * Arm.GetRotation());
+						if (!Arm.ContainsNaN()) LookPose.SetComponentSpaceTransform(WeaponArmIndex, Arm);
+					}
 					FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(MoveTemp(LookPose), Output.Pose);
 				}
 			}
@@ -485,6 +514,28 @@ void UArenaDuelVisualAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	// Death hands the world body to ragdoll physics. Clip selection must never restart on a corpse.
 	if (!Character || Character->IsDead()) { SetPlaying(false); return; }
 	Super::NativeUpdateAnimation(DeltaSeconds);	const bool bFirstPerson = GetSkelMeshComponent() == Character->GetFirstPersonArms();
+	if (UArenaDuelWeaponComponent* Held = bFirstPerson ? nullptr : Character->GetWeaponComponent())
+	{
+		// The hand socket turns with whatever the arm does, and a fixed offset in it only suits one pose. The
+		// world firearm is therefore steered by the aim itself: along the line of sight when aiming, lowered
+		// with the weapon arm when not. Knife and grenade stay as the hand holds them.
+		if (UStaticMeshComponent* Gun = Held->GetThirdPersonWeaponMesh())
+		{
+			const bool bFirearm = Held->GetActiveSlot() == EArenaDuelLoadoutSlot::Primary;
+			WorldAimBlend = FMath::FInterpTo(WorldAimBlend, Held->IsAiming() && !Held->IsReloading() ? 1.0f : 0.0f, DeltaSeconds, 12.0f);
+			if (bFirearm)
+			{
+				Gun->SetUsingAbsoluteRotation(true);
+				const float Pitch = FMath::Clamp(FRotator::NormalizeAxis(Character->GetBaseAimRotation().Pitch), -80.0f, 80.0f);
+				Gun->SetWorldRotation(FRotator(Pitch - 22.0f * (1.0f - WorldAimBlend), Character->GetActorRotation().Yaw, 0.0f));
+			}
+			else if (Gun->IsUsingAbsoluteRotation())
+			{
+				Gun->SetUsingAbsoluteRotation(false);
+				Gun->SetRelativeRotation(Held->GetThirdPersonGripRotation());
+			}
+		}
+	}
 	const float Speed = Character->GetVelocity().Size2D();
 	UAnimSequence* Desired = Idle;
 	bool bLocomotion = false;
