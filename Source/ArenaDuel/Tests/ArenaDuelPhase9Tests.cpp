@@ -153,6 +153,7 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 				AArenaDuelCharacter* Victim = PawnForSlot(State.World, 1);
 				const double Now = State.World->GetTimeSeconds();
 				if (State.Mark > 0.0 && Now - State.Mark < 0.2) return false;
+				if (State.Mark > 0.0) UE_LOG(LogTemp, Display, TEXT("P9KNIFE lateral=%.0f mask=%d victim=%s eye=%s"), State.Lateral, RaysOnBody(Attacker, Victim), *Victim->GetActorLocation().ToCompactString(), *Attacker->GetPawnViewLocation().ToCompactString());
 				if (State.Mark > 0.0 && RaysOnBody(Attacker, Victim) == (1 << 1)) return true;
 				if (State.Mark > 0.0) State.Lateral -= 2.0f;
 				if (State.Lateral < 0.0f) { TestRunner->AddError(TEXT("No place found where only the right ray reaches the body")); return true; }
