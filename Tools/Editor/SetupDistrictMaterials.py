@@ -30,7 +30,7 @@ float eflip = a.x > a.y && a.x > a.z ? -sgn.x : sgn.y;
 float3 e = Texture2DSample(Mono, MonoSampler, euv / max(EngraveSize, 1.0)).rgb;
 float eamount = Engrave * step(a.z, 0.5);
 '''
-COLOR_CODE = PICK + ENGRAVE + '''float3 c = Texture2DSample(Tex, TexSampler, uv).rgb * (1.0 - 0.5 * e.r * eamount);
+COLOR_CODE = PICK + ENGRAVE + '''float3 c = Texture2DSample(Tex, TexSampler, uv).rgb * (1.0 - 0.42 * e.r * eamount);
 float3 q = WP / max(MacroSize, 1.0);
 float2 guv = a.x > a.y && a.x > a.z ? float2(q.y, -q.z) : (a.y > a.z ? float2(q.x, -q.z) : float2(q.x, q.y));
 float g = Texture2DSample(Grunge, GrungeSampler, guv).r;
@@ -120,7 +120,7 @@ def parent(textures):
     rm_tex = texture_parameter(mat, 'RM', textures['Concrete'][2], 700)
     grunge_tex = texture_parameter(mat, 'Grunge', textures['Grunge'], 900)
     mono_tex = texture_parameter(mat, 'Monogram', textures['Monogram'], 1100)
-    engrave_size = scalar(mat, 'EngraveSize', 56.0, 1300)
+    engrave_size = scalar(mat, 'EngraveSize', 12.0, 1300)
     engrave = scalar(mat, 'Engrave', 0.0, 1380)
 
     color = custom(mat, COLOR_CODE, ('WP', 'N', 'Size', 'Tex', 'MacroSize', 'Grunge', 'Macro', 'DirtHeight', 'DirtAmount', 'Tint', 'Mono', 'EngraveSize', 'Engrave'), -700, -400)

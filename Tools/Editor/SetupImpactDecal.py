@@ -35,8 +35,8 @@ def custom(code, output, y):
     return node
 
 
-color = custom('''float hole = 1.0 - smoothstep(0.14, 0.24, r);
-float scorch = 1.0 - smoothstep(0.20, 0.48 * jag, r);
+color = custom('''float hole = 1.0 - smoothstep(0.17, 0.28, r);
+float scorch = 1.0 - smoothstep(0.24, 0.55 * jag, r);
 return lerp(float3(0.46, 0.44, 0.41), float3(0.012, 0.011, 0.010), saturate(hole + scorch * 0.75));''', unreal.CustomMaterialOutputType.CMOT_FLOAT3, 0)
 opacity = custom('return 1.0 - smoothstep(0.50 * jag, 0.80 * jag, r);', unreal.CustomMaterialOutputType.CMOT_FLOAT1, 300)
 rough = EDIT.create_material_expression(mat, unreal.MaterialExpressionConstant, -500, 600)

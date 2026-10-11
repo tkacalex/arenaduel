@@ -314,7 +314,7 @@ void UArenaDuelWeaponComponent::SpawnImpactMark(const FVector& Muzzle, const FVe
 	// Each mark is turned a little differently, so a burst does not stamp the same picture again and again.
 	FRotator Facing = (-Surface.ImpactNormal).Rotation();
 	Facing.Roll = FMath::FRandRange(0.0f, 360.0f);
-	const float Size = FMath::FRandRange(5.5f, 8.0f);
+	const float Size = FMath::FRandRange(9.0f, 12.5f);
 	if (UDecalComponent* Mark = UGameplayStatics::SpawnDecalAtLocation(World, ImpactMarkMaterial, FVector(6.0f, Size, Size), Surface.ImpactPoint, Facing, ImpactMarkSeconds))
 	{
 		Mark->SetFadeOut(ImpactMarkSeconds - 2.0f, 2.0f, false);

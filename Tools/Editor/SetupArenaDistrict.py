@@ -27,11 +27,12 @@ PREFIX = 'District_'
 T = 40.0  # wall thickness
 # Brightness of the hall: the fill light of each panel and the shadow-casting spots, in the engine's light
 # units, and the fixed exposure the picture is developed with.
-FILL_INTENSITY = 420.0
+FILL_INTENSITY = 700.0
 KEY_INTENSITY = 4600.0
 SCONCE_INTENSITY = 55.0
 HALL_LAMP_INTENSITY = 260.0
 NEON_INTENSITY = 26.0
+AMBIENT_INTENSITY = 4.0
 EXPOSURE = 1.0
 count = {'pieces': 0, 'windows': 0, 'decor': 0, 'lights': 0}
 
@@ -268,8 +269,10 @@ def spawn_lights():
             index += 1
     # Shadow casters: straight down over both halves of the field and the house. Three, not more: every one of
     # them is rendered into shadow maps each frame.
-    # They hang where a ceiling light hangs.
-    for number, (x, y) in enumerate(((-1400, 0), (1400, 0), (0, 0))):
+    # Each hangs at a ceiling light of its own, turned across the rows so it reads as a different fitting.
+    for number, (x, y) in enumerate(((-2000, 0), (2000, 0), (0, 0))):
+        if abs(x) > 0.5:
+            prop('SM_CeilingLamp', x, y, 1500.0, yaw=90.0, shadow=False)
         spot = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.SpotLight, unreal.Vector(x, y, 1470), unreal.Rotator(roll=0.0, pitch=-90.0, yaw=0.0))
         spot.set_actor_label('%sKeyLight_%02d' % (PREFIX, number))
         component = spot.get_component_by_class(unreal.SpotLightComponent)
@@ -282,6 +285,19 @@ def spawn_lights():
         component.set_editor_property('source_radius', 40.0)
         component.set_editor_property('light_color', unreal.Color(r=255, g=250, b=240, a=255))
         component.set_editor_property('use_inverse_squared_falloff', True)
+
+
+def spawn_ambient():
+    """A sky light that captures the hall itself: with bounced light switched off, this is what keeps a face
+    that looks away from every lamp from going black. It casts no shadow and costs next to nothing."""
+    sky = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.SkyLight, unreal.Vector(0, 0, 700), unreal.Rotator())
+    sky.set_actor_label(PREFIX + 'Ambient')
+    component = sky.get_component_by_class(unreal.SkyLightComponent)
+    component.set_mobility(unreal.ComponentMobility.MOVABLE)
+    component.set_editor_property('source_type', unreal.SkyLightSourceType.SLS_CAPTURED_SCENE)
+    component.set_editor_property('real_time_capture', False)
+    component.set_editor_property('intensity', AMBIENT_INTENSITY)
+    component.set_cast_shadows(False)
 
 
 def spawn_post_process():
@@ -451,10 +467,10 @@ def build():
     # Large shaded lamps along the hall walls, each with its own light: they light the two lanes and the wall
     # below them.
     for x in (-2800, -2000, -1200, -400):
-        sconce(x, 2500.0, 0.0, -1.0, z=350.0, scale=2.0, intensity=HALL_LAMP_INTENSITY, radius=1000.0)
-        sconce(x, -2500.0, 0.0, 1.0, z=350.0, scale=2.0, intensity=HALL_LAMP_INTENSITY, radius=1000.0)
+        sconce(x, 2500.0, 0.0, -1.0, z=350.0, scale=2.0, intensity=HALL_LAMP_INTENSITY, radius=900.0)
+        sconce(x, -2500.0, 0.0, 1.0, z=350.0, scale=2.0, intensity=HALL_LAMP_INTENSITY, radius=900.0)
     for y in (-1700, 1700):
-        sconce(-3500.0, y, 1.0, 0.0, z=330.0, scale=2.0, intensity=HALL_LAMP_INTENSITY, radius=1000.0)
+        sconce(-3500.0, y, 1.0, 0.0, z=330.0, scale=2.0, intensity=HALL_LAMP_INTENSITY, radius=900.0)
     # Wall lamps on the cover walls and the house.
     for y in (-330, 330):
         sconce(-2500 - T * 0.5, y, -1.0, 0.0)
@@ -503,6 +519,7 @@ def build():
     decor('RoofEdge', -626, 626, 464, 476, 340, 352, LOOK['cap'])
     decor('RoofEdge', -626, -614, -476, 476, 340, 352, LOOK['cap'], mirror=True)
     spawn_lights()
+    spawn_ambient()
     spawn_post_process()
 
     world = unreal.EditorLevelLibrary.get_editor_world()
