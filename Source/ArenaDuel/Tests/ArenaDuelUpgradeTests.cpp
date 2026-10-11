@@ -88,6 +88,12 @@ namespace ArenaDuelUpgradeTests
 		// Reserve, reload, ability as one number, e.g. 120.
 		return Player ? Player->GetUpgradeLevel(EArenaDuelUpgrade::Reserve) * 100 + Player->GetUpgradeLevel(EArenaDuelUpgrade::Reload) * 10 + Player->GetUpgradeLevel(EArenaDuelUpgrade::Ability) : -1;
 	}
+	/** The serial of the selection that is open, which every choice has to name. */
+	static int32 OpenSelection(UWorld* World)
+	{
+		const AArenaDuelGameState* GameState = World ? World->GetGameState<AArenaDuelGameState>() : nullptr;
+		return GameState ? GameState->GetUpgradeSelectSerial() : -1;
+	}
 	static void StartRound(UWorld* World, float SelectSeconds)
 	{
 		AArenaDuelGameMode* GameMode = World->GetAuthGameMode<AArenaDuelGameMode>();
@@ -134,7 +140,7 @@ NETWORK_TEST_CLASS(FArenaDuelUpgradeNetworkTest, "ArenaDuel.Phase8.Upgrades")
 				if (Weapon->GetReserveAmmo() != State.BaseReserve || !FMath::IsNearlyEqual(Weapon->GetReloadDuration(), State.BaseReload)) TestRunner->AddError(TEXT("A fresh match does not start with base ammunition and reload time"));
 				// Nothing can be taken while a round runs.
 				AArenaDuelGameMode* GameMode = State.World->GetAuthGameMode<AArenaDuelGameMode>();
-				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Reserve);
+				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Reserve, OpenSelection(State.World));
 				if (Levels(PlayerForSlot(State.World, 0)) != 0) TestRunner->AddError(TEXT("An upgrade was granted outside the selection"));
 				return true;
 			}, FTimespan::FromSeconds(6.0))
@@ -151,13 +157,13 @@ NETWORK_TEST_CLASS(FArenaDuelUpgradeNetworkTest, "ArenaDuel.Phase8.Upgrades")
 				if (GameState->CanLivingCharacterMove(Winner) || Winner->GetCharacterMovement()->MovementMode != MOVE_None) TestRunner->AddError(TEXT("The round winner can move during the selection"));
 				if (PlayerForSlot(State.World, 0)->HasChosenUpgrade() || PlayerForSlot(State.World, 1)->HasChosenUpgrade()) TestRunner->AddError(TEXT("A player counts as done before choosing"));
 				// Requests that must change nothing.
-				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), 7);
-				GameMode->RequestUpgradeChoice(nullptr, Reserve);
+				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), 7, OpenSelection(State.World));
+				GameMode->RequestUpgradeChoice(nullptr, Reserve, OpenSelection(State.World));
 				if (Levels(PlayerForSlot(State.World, 0)) != 0 || Levels(PlayerForSlot(State.World, 1)) != 0) TestRunner->AddError(TEXT("An invalid request granted an upgrade"));
 				// The host takes Supply; a second and a third request are ignored.
-				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Reserve);
-				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Reserve);
-				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Reload);
+				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Reserve, OpenSelection(State.World));
+				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Reserve, OpenSelection(State.World));
+				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Reload, OpenSelection(State.World));
 				if (Levels(PlayerForSlot(State.World, 0)) != 100 || !PlayerForSlot(State.World, 0)->HasChosenUpgrade()) TestRunner->AddError(TEXT("The host did not get exactly one level of Supply"));
 				if (!GameState->IsUpgradeSelect()) TestRunner->AddError(TEXT("The selection closed before the second player chose"));
 			})
@@ -193,7 +199,7 @@ NETWORK_TEST_CLASS(FArenaDuelUpgradeNetworkTest, "ArenaDuel.Phase8.Upgrades")
 				if (GetDefault<UArenaDuelWeaponComponent>()->GetReserveCapacity(0) != GetDefault<UArenaDuelWeaponComponent>()->GetCurrentDefinition().ReserveCapacity) TestRunner->AddError(TEXT("The shared weapon definitions were changed"));
 				// A request after the selection has closed is late.
 				AArenaDuelGameMode* Rules = State.World->GetAuthGameMode<AArenaDuelGameMode>();
-				Rules->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Ability);
+				Rules->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Ability, OpenSelection(State.World));
 				if (Levels(PlayerForSlot(State.World, 0)) != 100) TestRunner->AddError(TEXT("A late request granted an upgrade"));
 				return true;
 			}, FTimespan::FromSeconds(8.0))
@@ -255,7 +261,7 @@ NETWORK_TEST_CLASS(FArenaDuelUpgradeNetworkTest, "ArenaDuel.Phase8.Upgrades")
 				const AArenaDuelGameState* GameState = State.World->GetGameState<AArenaDuelGameState>();
 				if (!GameState->IsUpgradeSelect()) { TestRunner->AddError(TEXT("No selection after the decided round")); return; }
 				// A maxed kind is refused and does not use up the choice.
-				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Reserve);
+				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Reserve, OpenSelection(State.World));
 				if (Levels(Host) != 312 || Host->HasChosenUpgrade()) TestRunner->AddError(TEXT("A maxed upgrade was accepted"));
 			})
 			.UntilServer(TEXT("Time runs out: each gets the lowest available, ties in the fixed order"), [this](FArenaDuelUpgradeState& State)
@@ -286,7 +292,7 @@ NETWORK_TEST_CLASS(FArenaDuelUpgradeNetworkTest, "ArenaDuel.Phase8.Upgrades")
 				const AArenaDuelGameState* GameState = State.World->GetGameState<AArenaDuelGameState>();
 				GameMode->EndRoundWithoutWinnerForTests();
 				if (GameState->IsUpgradeSelect() || GameMode->IsUpgradeSelectionPending() || GameState->GetMatchPhase() != EArenaDuelMatchPhase::RoundBreak) TestRunner->AddError(TEXT("A round without a winner opened the selection"));
-				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Reserve);
+				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Reserve, OpenSelection(State.World));
 				if (Levels(PlayerForSlot(State.World, 0)) != 0) TestRunner->AddError(TEXT("An upgrade was granted in the plain break"));
 			})
 			.UntilServer(TEXT("Round two runs"), [](FArenaDuelUpgradeState& State) { return BothAliveInRound(State.World, 2); }, FTimespan::FromSeconds(6.0))
@@ -296,13 +302,13 @@ NETWORK_TEST_CLASS(FArenaDuelUpgradeNetworkTest, "ArenaDuel.Phase8.Upgrades")
 				const AArenaDuelGameState* GameState = State.World->GetGameState<AArenaDuelGameState>();
 				AArenaDuelPlayerState* Host = PlayerForSlot(State.World, 0);
 				PawnForSlot(State.World, 1)->ApplyServerDamage(1000.0f);
-				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Ability);
+				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Ability, OpenSelection(State.World));
 				if (!GameState->IsUpgradeSelect() || Levels(Host) != 1) { TestRunner->AddError(TEXT("Could not reach an open selection with one choice made")); return; }
 				AController* Leaving = ControllerForSlot(State.World, 1);
 				GameMode->Logout(Leaving);
 				if (GameState->GetMatchPhase() != EArenaDuelMatchPhase::CharacterSelect || GameMode->IsUpgradeSelectionPending()) TestRunner->AddError(TEXT("Leaving did not close the selection and return to character selection"));
 				if (Levels(Host) != 0 || Host->HasChosenUpgrade() || Host->GetRoundWins() != 0) TestRunner->AddError(TEXT("The abandoned match left upgrades or points behind"));
-				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Reload);
+				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Reload, OpenSelection(State.World));
 				if (Levels(Host) != 0) TestRunner->AddError(TEXT("An upgrade was granted in character selection"));
 			});
 	}
@@ -324,7 +330,7 @@ NETWORK_TEST_CLASS(FArenaDuelUpgradeNetworkTest, "ArenaDuel.Phase8.Upgrades")
 				PawnForSlot(State.World, 1)->ApplyServerDamage(1000.0f);
 				if (!GameState->IsMatchComplete() || GameState->GetMatchPhase() != EArenaDuelMatchPhase::MatchResult) TestRunner->AddError(TEXT("The fifth win did not end the match"));
 				if (GameState->IsUpgradeSelect() || GameMode->IsUpgradeSelectionPending()) TestRunner->AddError(TEXT("The match deciding round opened the selection"));
-				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Reserve);
+				GameMode->RequestUpgradeChoice(ControllerForSlot(State.World, 0), Reserve, OpenSelection(State.World));
 				if (Levels(Host) != 10) TestRunner->AddError(TEXT("An upgrade was granted at the match result"));
 			})
 			.UntilServer(TEXT("Back in character selection the upgrades are gone"), [this](FArenaDuelUpgradeState& State)

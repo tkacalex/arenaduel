@@ -36,8 +36,10 @@ public:
 	/** The duel offers match upgrades between rounds. Modes built on the duel classes that have none say no. */
 	virtual bool UsesMatchUpgrades() const { return true; }
 	float GetUpgradeSelectSeconds() const { return UpgradeSelectSeconds; }
-	/** A player's choice in the running selection. Checked on the server: the player, the phase, the id, the level, one per selection. */
-	void RequestUpgradeChoice(APlayerController* Requester, uint8 UpgradeId);
+	/** A player's choice in the selection with this serial (AArenaDuelGameState::GetUpgradeSelectSerial). Checked on the server: the player, the phase, the selection, the id, the level, one per selection. */
+	void RequestUpgradeChoice(APlayerController* Requester, uint8 UpgradeId, int32 SelectionSerial);
+	/** The duel is fought by the two players holding a duel slot; anyone else connected only watches. Modes for more players say no. */
+	virtual bool IsLimitedToDuelPlayers() const { return true; }
 	bool IsUpgradeSelectionPending() const;
 	void SetUpgradeSelectSecondsForTests(float Seconds) { UpgradeSelectSeconds = FMath::Max(0.1f, Seconds); }
 	/** A round that ends with nobody left standing, for tests. */

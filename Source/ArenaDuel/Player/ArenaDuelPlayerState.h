@@ -33,6 +33,9 @@ public:
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	UArenaDuelAttributeSet* GetArenaDuelAttributes() const { return AttributeSet; }
 	uint8 GetDuelSlot() const { return DuelSlot; }
+	/** Server: joined while both duel places were taken, and so only watches. */
+	bool IsDuelSpectator() const { return bDuelSpectator; }
+	void SetDuelSpectator(bool bSpectator) { bDuelSpectator = bSpectator; }
 	int32 GetRoundWins() const { return RoundWins; }
 	// Zombie Survival. Kept per player so a co-op run can score everyone separately.
 	int32 GetSurvivalPoints() const { return SurvivalPoints; }
@@ -115,6 +118,8 @@ protected:
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
 	uint8 DuelSlot = 0;
+
+	bool bDuelSpectator = false;
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
 	int32 RoundWins = 0;

@@ -44,6 +44,8 @@ public:
 	// Upgrade selection between rounds.
 	bool IsUpgradeSelect() const { return MatchPhase == EArenaDuelMatchPhase::UpgradeSelect; }
 	float GetUpgradeSelectEndServerTime() const { return UpgradeSelectEndServerTime; }
+	/** Number of the selection that is open or was open last. It only ever grows, across rounds and matches, so it names one selection of one match. */
+	int32 GetUpgradeSelectSerial() const { return UpgradeSelectSerial; }
 	/** Seconds until the selection closes on its own. */
 	float GetUpgradeSelectSecondsRemaining() const;
 	/** Server only. Opens the selection after a decided round; it ends at EndServerTime at the latest. */
@@ -104,6 +106,9 @@ protected:
 
 	UPROPERTY(Replicated)
 	float UpgradeSelectEndServerTime = 0.0f;
+
+	UPROPERTY(Replicated)
+	int32 UpgradeSelectSerial = 0;
 
 	void ClearRoundClock();
 

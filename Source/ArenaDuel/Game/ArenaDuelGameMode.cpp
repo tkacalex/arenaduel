@@ -62,6 +62,18 @@ void AArenaDuelGameMode::PostLogin(APlayerController* NewPlayer)
 	if (NewPlayer)
 	{
 		AssignDuelSlot(NewPlayer->GetPlayerState<AArenaDuelPlayerState>());
+		const AArenaDuelPlayerState* Joined = NewPlayer->GetPlayerState<AArenaDuelPlayerState>();
+		if (IsLimitedToDuelPlayers() && (!Joined || Joined->GetDuelSlot() > 1))
+		{
+			// Both places are taken: this player watches. The engine gave them a pawn before the slot was
+			// known; it goes, and no later restart gives them another (RestartPlayer).
+			if (APawn* Extra = NewPlayer->GetPawn())
+			{
+				NewPlayer->UnPossess();
+				Extra->Destroy();
+			}
+			return;
+		}
 		if (GetGameState<AArenaDuelGameState>() && GetGameState<AArenaDuelGameState>()->GetMatchPhase() == EArenaDuelMatchPhase::CharacterSelect)
 		{
 			StartCharacterAutoReadyTimer();
@@ -98,10 +110,14 @@ void AArenaDuelGameMode::AssignDuelSlot(AArenaDuelPlayerState* JoiningPlayerStat
 		}
 	}
 	JoiningPlayerState->SetDuelSlot(bSlotTaken[0] ? (bSlotTaken[1] ? 255 : 1) : 0);
+	JoiningPlayerState->SetDuelSpectator(bSlotTaken[0] && bSlotTaken[1]);
 }
 
 void AArenaDuelGameMode::RestartPlayer(AController* NewPlayer)
 {
+	// A player who has been told they are not one of the two gets no pawn. (A player who has not been given a
+	// slot yet is let through: the engine starts a joining player before PostLogin assigns it.)
+	if (const AArenaDuelPlayerState* Asked = NewPlayer ? NewPlayer->GetPlayerState<AArenaDuelPlayerState>() : nullptr; Asked && IsLimitedToDuelPlayers() && Asked->IsDuelSpectator()) return;
 	Super::RestartPlayer(NewPlayer);
 	// The new pawn starts with what its player has taken so far in this match.
 	if (const AArenaDuelCharacter* Spawned = NewPlayer ? Cast<AArenaDuelCharacter>(NewPlayer->GetPawn()) : nullptr; Spawned && Spawned->GetWeaponComponent()) Spawned->GetWeaponComponent()->ApplyMatchUpgrades();
@@ -130,16 +146,19 @@ AActor* AArenaDuelGameMode::FindPlayerStart_Implementation(AController* Player, 
 
 void AArenaDuelGameMode::Logout(AController* Exiting)
 {
+	bool bWasDuelPlayer = false;
 	if (const APlayerController* Controller = Cast<APlayerController>(Exiting))
 		if (AArenaDuelPlayerState* Player = Controller->GetPlayerState<AArenaDuelPlayerState>())
 		{
+			bWasDuelPlayer = Player->GetDuelSlot() < 2;
 			Player->SetCharacterReadyAuthoritatively(false);
 			Player->SetDuelSlot(255);
 			AArenaDuelPhaseGateVisual::DestroyOwnedByPlayerState(GetWorld(), Player);
 		}
 	Super::Logout(Exiting);
-	// No ranked forfeit here. A missing opponent safely returns the duel to selection.
-	if (GetWorld() && !GetWorld()->bIsTearingDown) EnterCharacterSelect();
+	// No ranked forfeit here. A missing opponent safely returns the duel to selection. Someone who was only
+	// watching leaves without touching the match.
+	if (bWasDuelPlayer && GetWorld() && !GetWorld()->bIsTearingDown) EnterCharacterSelect();
 }
 
 void AArenaDuelGameMode::EnterCharacterSelect()
@@ -306,19 +325,13 @@ void AArenaDuelGameMode::HandlePlayerDeath(AArenaDuelCharacter* DeadCharacter)
 	AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>();
 	if (!ArenaGameState || !ArenaGameState->IsRoundInProgress()) return;
 
+	// Only the two duel players decide a round: the one who died loses it, the other one wins it if alive.
 	AArenaDuelPlayerState* LosingPlayerState = DeadCharacter->GetPlayerState<AArenaDuelPlayerState>();
-	AArenaDuelPlayerState* WinningPlayerState = nullptr;
-	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
-	{
-		APlayerController* PlayerController = It->Get();
-		AArenaDuelPlayerState* CandidateState = PlayerController ? PlayerController->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
-		AArenaDuelCharacter* CandidateCharacter = PlayerController ? Cast<AArenaDuelCharacter>(PlayerController->GetPawn()) : nullptr;
-		if (CandidateState && CandidateState != LosingPlayerState && CandidateCharacter && !CandidateCharacter->IsDead())
-		{
-			WinningPlayerState = CandidateState;
-			break;
-		}
-	}
+	if (!LosingPlayerState || LosingPlayerState->GetDuelSlot() > 1) return;
+	AArenaDuelPlayerState* WinningPlayerState = FindPlayerStateByDuelSlot(1 - LosingPlayerState->GetDuelSlot());
+	const AController* WinningController = WinningPlayerState ? Cast<AController>(WinningPlayerState->GetOwner()) : nullptr;
+	const AArenaDuelCharacter* WinningCharacter = WinningController ? Cast<AArenaDuelCharacter>(WinningController->GetPawn()) : nullptr;
+	if (!WinningCharacter || WinningCharacter->IsDead()) WinningPlayerState = nullptr;
 
 	EndRoundForDevelopment(WinningPlayerState);
 }
@@ -403,13 +416,16 @@ void AArenaDuelGameMode::BeginUpgradeSelection()
 	GetWorldTimerManager().SetTimer(UpgradeSelectTimer, this, &AArenaDuelGameMode::FinishUpgradeSelection, UpgradeSelectSeconds, false);
 }
 
-void AArenaDuelGameMode::RequestUpgradeChoice(APlayerController* Requester, uint8 UpgradeId)
+void AArenaDuelGameMode::RequestUpgradeChoice(APlayerController* Requester, uint8 UpgradeId, int32 SelectionSerial)
 {
 	const AArenaDuelGameState* State = GetGameState<AArenaDuelGameState>();
 	AArenaDuelPlayerState* Player = Requester ? Requester->GetPlayerState<AArenaDuelPlayerState>() : nullptr;
 	// Only a duel player, only for themselves, only while the selection is open, only one upgrade, only a
 	// known kind that is not at its maximum. Anything else, a second or a late request included, changes nothing.
 	if (!HasAuthority() || !State || !State->IsUpgradeSelect() || !IsUpgradeSelectionPending()) return;
+	// The request names the selection it was made in. One from an earlier selection, however late it
+	// arrives, is not a choice in this one.
+	if (SelectionSerial != State->GetUpgradeSelectSerial()) return;
 	if (!Player || Player->GetOwner() != Requester || Player->GetDuelSlot() > 1 || Player->HasChosenUpgrade()) return;
 	if (!ArenaDuelUpgrades::IsValidId(UpgradeId) || !Player->AddUpgradeLevelAuthoritatively(static_cast<EArenaDuelUpgrade>(UpgradeId))) return;
 	Player->SetUpgradeChosenAuthoritatively(true);

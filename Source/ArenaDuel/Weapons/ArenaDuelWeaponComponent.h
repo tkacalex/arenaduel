@@ -272,6 +272,18 @@ public:
 	bool IsShowingKnifeSwing() const;
 	/** The hands' part of a throw takes as long as the switch back to the firearm, so the firearm is up when it can fire. */
 	float GetThrowSeconds() const { return FMath::Max(SwitchSeconds, 0.1f); }
+	float GetSwitchSeconds() const { return SwitchSeconds; }
+	/** Server: the trigger is held and shots are leaving. */
+	bool IsServerFiring() const { return bServerFireHeld; }
+	/** Server: the trigger is held and the first shot waits for the switch time. */
+	bool IsServerFirePending() const { return bServerFireWanted && !bServerFireHeld; }
+	/** Owner: the trigger is held on this machine. */
+	bool IsLocalFireHeld() const { return bFireHeld; }
+	const FArenaDuelKnifeDefinition& GetKnifeDefinition() const { return Knife; }
+	/** Tests: the reload request as the server receives it, without the checks Reload() makes on the owner. */
+	void RequestReloadForTests() { ServerRequestReload_Implementation(); }
+	/** Tests: forget the running switch and knife times, so the next step of a test starts from a ready item. */
+	void ClearActionTimesForTests() { EquipmentReadyServerTime = 0.0; KnifeReadyServerTime = 0.0; LocalSwitchReadyWorldTime = 0.0; }
 	/** True when the support hand goes with the magazine or the pump during a reload instead of leaving the weapon to the clip. */
 	bool DoesSupportHandFollowReload() const;
 	/** The cosmetic half of the multicasts and of a change of the held item, callable on their own. */
@@ -390,6 +402,8 @@ protected:
 	void StartAuthoritativeFire();
 	void StopAuthoritativeFire();
 	bool CanBeginAuthoritativeFire() const;
+	bool IsAuthoritativeFireAllowedOnceReady() const;
+	void BeginLocalCosmeticFire();
 	bool IsRoundInProgress() const;
 	bool HasInfiniteAmmoForDevelopment() const;
 	bool IsLocalAdminMenuOpen() const;
@@ -470,7 +484,12 @@ protected:
 
 	int32 AppliedLoadoutArchetype = -1;
 	bool bLoadoutUnrestricted = false;
+	/** Server: when the item in the hands may act after a switch. */
 	double EquipmentReadyServerTime = 0.0;
+	/** Server: when the knife may strike again. Kept apart from the switch time, so switching away and back cannot shorten it. */
+	double KnifeReadyServerTime = 0.0;
+	/** Owner: the same switch time, counted from when this machine learned of the switch. */
+	double LocalSwitchReadyWorldTime = 0.0;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Weapons")
 	TObjectPtr<UStaticMeshComponent> FirstPersonWeaponMesh;
@@ -526,8 +545,11 @@ protected:
 	float LastShotWorldTime = -1.0f;
 	bool bFireHeld = false;
 	bool bServerFireHeld = false;
+	/** Server: the trigger is held, whether or not shots are leaving yet (they wait for the switch time). */
+	bool bServerFireWanted = false;
 	float FireCooldownRemaining = 0.0f;
 	FTimerHandle AutomaticFireTimerHandle;
+	FTimerHandle PendingFireTimerHandle;
 	FTimerHandle LocalCosmeticFireTimerHandle;
 	FTimerHandle LocalCosmeticRecoveryTimerHandle;
 	FTimerHandle AimVisualTimerHandle;

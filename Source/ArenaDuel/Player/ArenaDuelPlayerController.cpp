@@ -139,12 +139,14 @@ void AArenaDuelPlayerController::ServerSetCharacterReady_Implementation(bool bRe
 
 void AArenaDuelPlayerController::ChooseUpgrade(uint8 UpgradeId)
 {
-	if (IsLocalController()) ServerChooseUpgrade(UpgradeId);
+	// The choice is for the selection this machine is looking at; the server refuses it for any other.
+	const AArenaDuelGameState* State = GetWorld() ? GetWorld()->GetGameState<AArenaDuelGameState>() : nullptr;
+	if (IsLocalController() && State) ServerChooseUpgrade(UpgradeId, State->GetUpgradeSelectSerial());
 }
 
-void AArenaDuelPlayerController::ServerChooseUpgrade_Implementation(uint8 UpgradeId)
+void AArenaDuelPlayerController::ServerChooseUpgrade_Implementation(uint8 UpgradeId, int32 SelectionSerial)
 {
-	if (AArenaDuelGameMode* Mode = GetWorld()->GetAuthGameMode<AArenaDuelGameMode>()) Mode->RequestUpgradeChoice(this, UpgradeId);
+	if (AArenaDuelGameMode* Mode = GetWorld()->GetAuthGameMode<AArenaDuelGameMode>()) Mode->RequestUpgradeChoice(this, UpgradeId, SelectionSerial);
 }
 
 void AArenaDuelPlayerController::RefreshMatchPresentation()

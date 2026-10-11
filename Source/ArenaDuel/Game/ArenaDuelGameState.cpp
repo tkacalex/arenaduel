@@ -44,6 +44,7 @@ void AArenaDuelGameState::SetMatchPhase(EArenaDuelMatchPhase NewPhase, float End
 void AArenaDuelGameState::BeginUpgradeSelect(float EndServerTime)
 {
 	if (!HasAuthority()) return;
+	++UpgradeSelectSerial;
 	SetMatchPhase(EArenaDuelMatchPhase::UpgradeSelect);
 	UpgradeSelectEndServerTime = FMath::Max(0.0f, EndServerTime);
 	ForceNetUpdate();
@@ -126,6 +127,7 @@ void AArenaDuelGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	DOREPLIFETIME(AArenaDuelGameState, bOvertime);
 	DOREPLIFETIME(AArenaDuelGameState, OvertimeStartServerTime);
 	DOREPLIFETIME(AArenaDuelGameState, UpgradeSelectEndServerTime);
+	DOREPLIFETIME(AArenaDuelGameState, UpgradeSelectSerial);
 }
 
 void AArenaDuelGameState::OnRep_RoundInProgress()

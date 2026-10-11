@@ -46,7 +46,7 @@ public:
 	/** Asks the server for one level of an upgrade in the running selection. */
 	void ChooseUpgrade(uint8 UpgradeId);
 	UFUNCTION(Server, Reliable)
-	void ServerChooseUpgrade(uint8 UpgradeId);
+	void ServerChooseUpgrade(uint8 UpgradeId, int32 SelectionSerial);
 	bool IsUpgradeSelectOpen() const { return bUpgradeSelectOpen; }
 	UArenaDuelUpgradeWidget* GetUpgradeWidget() const { return UpgradeWidget; }
 

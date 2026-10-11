@@ -357,6 +357,7 @@ void UArenaDuelWeaponComponent::EndPlay(const EEndPlayReason::Type EndPlayReason
 		FTimerManager& TimerManager = GetWorld()->GetTimerManager();
 		TimerManager.ClearTimer(ReloadTimerHandle);
 		TimerManager.ClearTimer(AutomaticFireTimerHandle);
+		TimerManager.ClearTimer(PendingFireTimerHandle);
 		TimerManager.ClearTimer(LocalCosmeticFireTimerHandle);
 		TimerManager.ClearTimer(LocalCosmeticRecoveryTimerHandle);
 		TimerManager.ClearTimer(AimVisualTimerHandle);
@@ -443,16 +444,25 @@ void UArenaDuelWeaponComponent::StartFire()
 	if (bFireHeld) return;
 	if (bReloading || (GetCurrentMagazineAmmo() <= 0 && !HasInfiniteAmmoForDevelopment()) || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	bFireHeld = true;
-	if (AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled())
+	if (AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled() && GetWorld())
 	{
-		LocalCosmeticShot();
-		if (GetCurrentDefinition().bAutomatic && GetWorld())
-		{
-			const float Interval = 60.0f / FMath::Max(GetCurrentDefinition().RoundsPerMinute, 1.0f);
-			GetWorld()->GetTimerManager().SetTimer(LocalCosmeticFireTimerHandle, this, &UArenaDuelWeaponComponent::LocalCosmeticShot, Interval, true, Interval);
-		}
+		// Pressed inside the switch time: the server holds the shot back until the item is ready, so the shown
+		// fire waits for the same moment instead of kicking a weapon that is not shooting.
+		const float Wait = static_cast<float>(LocalSwitchReadyWorldTime - GetWorld()->GetTimeSeconds());
+		if (Wait > 0.0f) GetWorld()->GetTimerManager().SetTimer(LocalCosmeticFireTimerHandle, this, &UArenaDuelWeaponComponent::BeginLocalCosmeticFire, Wait, false);
+		else BeginLocalCosmeticFire();
 	}
-	if (GetOwnerRole() == ROLE_Authority) StartAuthoritativeFire(); else ServerSetFireHeld(true);
+	if (GetOwnerRole() == ROLE_Authority) ServerSetFireHeld_Implementation(true); else ServerSetFireHeld(true);
+}
+void UArenaDuelWeaponComponent::BeginLocalCosmeticFire()
+{
+	if (!bFireHeld || !GetWorld()) return;
+	LocalCosmeticShot();
+	if (bFireHeld && GetCurrentDefinition().bAutomatic)
+	{
+		const float Interval = 60.0f / FMath::Max(GetCurrentDefinition().RoundsPerMinute, 1.0f);
+		GetWorld()->GetTimerManager().SetTimer(LocalCosmeticFireTimerHandle, this, &UArenaDuelWeaponComponent::LocalCosmeticShot, Interval, true, Interval);
+	}
 }
 void UArenaDuelWeaponComponent::StopFire()
 {
@@ -641,7 +651,12 @@ void UArenaDuelWeaponComponent::ServerSetAiming_Implementation(bool bAimingState
 		bAiming = true;
 	}
 }
-void UArenaDuelWeaponComponent::ServerSetFireHeld_Implementation(bool bHeld) { if (bHeld && IsRoundInProgress()) StartAuthoritativeFire(); else StopAuthoritativeFire(); }
+void UArenaDuelWeaponComponent::ServerSetFireHeld_Implementation(bool bHeld)
+{
+	if (!bHeld || !IsRoundInProgress()) { StopAuthoritativeFire(); return; }
+	bServerFireWanted = true;
+	StartAuthoritativeFire();
+}
 bool UArenaDuelWeaponComponent::IsRoundInProgress() const
 {
 	const UWorld* World = GetWorld();
@@ -663,17 +678,42 @@ bool UArenaDuelWeaponComponent::IsLocalAdminMenuOpen() const
 bool UArenaDuelWeaponComponent::CanBeginAuthoritativeFire() const
 {
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	return IsAuthoritativeFireAllowedOnceReady() && GetWorld()->GetTimeSeconds() >= EquipmentReadyServerTime;
+}
+bool UArenaDuelWeaponComponent::IsAuthoritativeFireAllowedOnceReady() const
+{
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	return Character && !Character->IsDead() && IsRoundInProgress() && Character->GetController() && GetWorld() && WeaponDefinitions.IsValidIndex(EquippedWeaponIndex) && !bReloading && (GetCurrentMagazineAmmo() > 0 || HasInfiniteAmmoForDevelopment())
-		&& GetActiveSlot() == EArenaDuelLoadoutSlot::Primary && GetWorld()->GetTimeSeconds() >= EquipmentReadyServerTime;
+		&& GetActiveSlot() == EArenaDuelLoadoutSlot::Primary;
 }
 void UArenaDuelWeaponComponent::StartAuthoritativeFire()
 {
-	if (bServerFireHeld || !CanBeginAuthoritativeFire()) return;
+	if (bServerFireHeld) return;
+	if (!CanBeginAuthoritativeFire())
+	{
+		// Only the switch time stands in the way and the trigger is held: fire as soon as it is over. A switch,
+		// a release, a reload or the end of the round clears the wish before that (StopAuthoritativeFire).
+		if (bServerFireWanted && IsAuthoritativeFireAllowedOnceReady())
+		{
+			const float Wait = FMath::Max(static_cast<float>(EquipmentReadyServerTime - GetWorld()->GetTimeSeconds()), 0.001f);
+			GetWorld()->GetTimerManager().SetTimer(PendingFireTimerHandle, this, &UArenaDuelWeaponComponent::StartAuthoritativeFire, Wait, false);
+		}
+		return;
+	}
 	bServerFireHeld = true;
 	FireAuthoritative();
 	if (GetCurrentDefinition().bAutomatic) { const float Interval = 60.0f / FMath::Max(GetCurrentDefinition().RoundsPerMinute, 1.0f); GetWorld()->GetTimerManager().SetTimer(AutomaticFireTimerHandle, this, &UArenaDuelWeaponComponent::FireAuthoritative, Interval, true, Interval); }
 }
-void UArenaDuelWeaponComponent::StopAuthoritativeFire() { bServerFireHeld = false; if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(AutomaticFireTimerHandle); }
+void UArenaDuelWeaponComponent::StopAuthoritativeFire()
+{
+	bServerFireHeld = false;
+	bServerFireWanted = false;
+	if (GetWorld())
+	{
+		GetWorld()->GetTimerManager().ClearTimer(AutomaticFireTimerHandle);
+		GetWorld()->GetTimerManager().ClearTimer(PendingFireTimerHandle);
+	}
+}
 void UArenaDuelWeaponComponent::CancelLocalAndServerFire(bool bClearLocalRecoil)
 {
 	const bool bWasFireHeld = bFireHeld;
@@ -703,7 +743,10 @@ void UArenaDuelWeaponComponent::CancelLocalAndServerFire(bool bClearLocalRecoil)
 void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 {
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
-	if (!Character || Character->IsDead() || !IsRoundInProgress()) return;
+	if (!Character || Character->IsDead() || !Character->GetController() || !IsRoundInProgress()) return;
+	// Only the firearm in the hands reloads. Reload() on the owner checks the same; a request that skips it
+	// must not load the holstered gun behind a knife or a flashbang.
+	if (GetActiveSlot() != EArenaDuelLoadoutSlot::Primary || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	FArenaDuelWeaponRuntimeState* State = GetMutableCurrentRuntimeState();
 	if (!State || bReloading || State->MagazineAmmo >= GetCurrentDefinition().MagazineCapacity || (State->ReserveAmmo <= 0 && !HasInfiniteAmmoForDevelopment())) return;
 	StopAuthoritativeFire();
@@ -1447,7 +1490,8 @@ void UArenaDuelWeaponComponent::ServerUseEquipment_Implementation(bool bAlternat
 	if (!Character || Character->IsDead() || !Character->GetController() || !IsRoundInProgress() || !GetWorld()) return;
 	if (GetWorld()->GetTimeSeconds() < EquipmentReadyServerTime) return;
 	if (GetActiveSlot() == EArenaDuelLoadoutSlot::Flashbang) ThrowFlashbangAuthoritative(bAlternate);
-	else if (GetActiveSlot() == EArenaDuelLoadoutSlot::Knife) KnifeAttackAuthoritative(bAlternate);
+	// The knife waits for the switch time and for its own attack time. A switch away and back renews only the first.
+	else if (GetActiveSlot() == EArenaDuelLoadoutSlot::Knife && GetWorld()->GetTimeSeconds() >= KnifeReadyServerTime) KnifeAttackAuthoritative(bAlternate);
 }
 
 void UArenaDuelWeaponComponent::ThrowFlashbangAuthoritative(bool bShort)
@@ -1480,21 +1524,34 @@ void UArenaDuelWeaponComponent::KnifeAttackAuthoritative(bool bHeavy)
 {
 	AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character) return;
-	EquipmentReadyServerTime = GetWorld()->GetTimeSeconds() + (bHeavy ? Knife.HeavyAttackInterval : Knife.AttackInterval);
+	KnifeReadyServerTime = GetWorld()->GetTimeSeconds() + (bHeavy ? Knife.HeavyAttackInterval : Knife.AttackInterval);
 	const FVector Origin = Character->GetPawnViewLocation();
 	const FRotationMatrix Aim(Character->GetControlRotation());
 	const FVector Forward = Aim.GetUnitAxis(EAxis::X);
-	// Walls stop the blade: nothing behind the first world hit can be struck.
-	FHitResult WorldHit;
+	// Walls stop the blade. The swing is five rays, one down the middle and four spread around it; each of
+	// them ends at the first thing of the world it meets, so a body behind a corner is safe from a side ray
+	// even when the middle one passes the corner.
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(ArenaDuelKnifeReach), true, Character);
-	const bool bWorld = GetWorld()->LineTraceSingleByChannel(WorldHit, Origin, Origin + Forward * Knife.Range, ECC_Visibility, Params);
-	const float Reach = bWorld ? WorldHit.Distance : Knife.Range;
+	const FVector2D Fan[] = { FVector2D(0.0f, 0.0f), FVector2D(1.0f, 0.0f), FVector2D(-1.0f, 0.0f), FVector2D(0.0f, 1.0f), FVector2D(0.0f, -1.0f) };
+	bool bWorld = false;
+	float Reach = Knife.Range;
 	FHitResult BestHit;
 	AArenaDuelCharacter* Victim = nullptr;
-	const FVector2D Fan[] = { FVector2D(0.0f, 0.0f), FVector2D(1.0f, 0.0f), FVector2D(-1.0f, 0.0f), FVector2D(0.0f, 1.0f), FVector2D(0.0f, -1.0f) };
-	for (const FVector2D& Offset : Fan)
+	// The blade also reaches survival enemies; the nearest body in the fan takes the hit.
+	AArenaDuelZombie* ZombieVictim = nullptr;
+	FHitResult ZombieHit;
+	for (int32 Ray = 0; Ray < UE_ARRAY_COUNT(Fan); ++Ray)
 	{
-		const FVector End = Origin + Forward * Reach + (Aim.GetUnitAxis(EAxis::Y) * Offset.X + Aim.GetUnitAxis(EAxis::Z) * Offset.Y) * Knife.SwingHalfWidth * (Reach / FMath::Max(Knife.Range, 1.0f));
+		const FVector FullEnd = Origin + Forward * Knife.Range + (Aim.GetUnitAxis(EAxis::Y) * Fan[Ray].X + Aim.GetUnitAxis(EAxis::Z) * Fan[Ray].Y) * Knife.SwingHalfWidth;
+		FHitResult WorldHit;
+		const bool bBlocked = GetWorld()->LineTraceSingleByChannel(WorldHit, Origin, FullEnd, ECC_Visibility, Params);
+		const FVector End = bBlocked ? FVector(WorldHit.ImpactPoint) : FullEnd;
+		if (Ray == 0)
+		{
+			// The result shown to the attacker (wall or air, and how far) is that of the middle ray, as before.
+			bWorld = bBlocked;
+			Reach = bBlocked ? WorldHit.Distance : Knife.Range;
+		}
 		for (TActorIterator<AArenaDuelCharacter> It(GetWorld()); It; ++It)
 		{
 			FHitResult Candidate;
@@ -1504,13 +1561,6 @@ void UArenaDuelWeaponComponent::KnifeAttackAuthoritative(bool bHeavy)
 				Victim = *It;
 			}
 		}
-	}
-	// The blade also reaches survival enemies; the nearest body in the fan takes the hit.
-	AArenaDuelZombie* ZombieVictim = nullptr;
-	FHitResult ZombieHit;
-	for (const FVector2D& Offset : Fan)
-	{
-		const FVector End = Origin + Forward * Reach + (Aim.GetUnitAxis(EAxis::Y) * Offset.X + Aim.GetUnitAxis(EAxis::Z) * Offset.Y) * Knife.SwingHalfWidth * (Reach / FMath::Max(Knife.Range, 1.0f));
 		for (TActorIterator<AArenaDuelZombie> It(GetWorld()); It; ++It)
 		{
 			FHitResult Candidate;
@@ -1622,7 +1672,13 @@ void UArenaDuelWeaponComponent::NotifyHeldItemChanged()
 		LocalWeaponKick = 0.0f;
 		VisualYawKick = 0.0f;
 	}
-	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled()) EquipDrop = 1.0f;
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled())
+	{
+		EquipDrop = 1.0f;
+		// The server lets the new item act SwitchSeconds after the switch; the owner counts the same time from
+		// the moment it learns of it.
+		if (GetWorld()) LocalSwitchReadyWorldTime = GetWorld()->GetTimeSeconds() + SwitchSeconds;
+	}
 	RefreshWeaponVisual();
 }
 
