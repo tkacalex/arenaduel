@@ -550,18 +550,29 @@ ARENA_PHASE4_COMPONENT_TEST(FArenaDuelPhase4WallRunNoStickTest, "ArenaDuel.Phase
 	FAutomationEditorCommonUtils::LoadMap(ArenaDuelPhase4Tests::MovementMap); UWorld* World = GEditor->GetEditorWorldContext().World();
 	// Coming down beside a wall with the floor right below: land, do not grab the wall.
 	AArenaDuelCharacter* Landing = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(800.0f, 390.0f, 100.0f), FVector(900.0f, 0.0f, -300.0f)); UArenaDuelCharacterMovementComponent* LandingMove = ArenaDuelPhase4HardeningTests::Movement(Landing);
+	// The floor under this spot, so the pawn can be put a hand's width above it.
+	FHitResult FloorHit;
+	const bool bFloor = World->LineTraceSingleByChannel(FloorHit, FVector(800.0f, 390.0f, 100.0f), FVector(800.0f, 390.0f, -500.0f), ECC_WorldStatic, FCollisionQueryParams(NAME_None, false, Landing));
+	TestTrue(TEXT("There is a floor beside the wall"), bFloor);
+	const float NearFloorZ = FloorHit.ImpactPoint.Z + Landing->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 12.0f;
+	Landing->SetActorLocation(FVector(800.0f, 390.0f, NearFloorZ));
 	LandingMove->StartSprint(); LandingMove->UpdateCharacterStateBeforeMovement(0.016f);
 	TestFalse(TEXT("About to land beside a wall does not start a wall run"), LandingMove->IsWallRunning());
+	// The same spot without falling speed still catches the wall, as does the same fall with air below.
+	LandingMove->Velocity = FVector(900.0f, 0.0f, 0.0f); LandingMove->UpdateCharacterStateBeforeMovement(0.016f);
+	TestTrue(TEXT("Level flight beside the wall still starts a wall run"), LandingMove->IsWallRunning());
 	// Running straight at a wall is not a wall run either.
 	AArenaDuelCharacter* HeadOn = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(800.0f, 390.0f, 100.0f), FVector(0.0f, 900.0f, 0.0f)); UArenaDuelCharacterMovementComponent* HeadOnMove = ArenaDuelPhase4HardeningTests::Movement(HeadOn);
 	HeadOnMove->StartSprint(); HeadOnMove->UpdateCharacterStateBeforeMovement(0.016f);
 	TestFalse(TEXT("Straight at the wall does not start a wall run"), HeadOnMove->IsWallRunning());
 	// A run that sinks to the floor ends there instead of staying pressed against it.
 	AArenaDuelCharacter* Sinking = ArenaDuelPhase4HardeningTests::SpawnFalling(World, FVector(800.0f, 390.0f, 100.0f), FVector(900.0f, 0.0f, 0.0f)); UArenaDuelCharacterMovementComponent* SinkingMove = ArenaDuelPhase4HardeningTests::Movement(Sinking);
+	Sinking->SetActorLocation(FVector(800.0f, 390.0f, NearFloorZ));
 	SinkingMove->StartSprint(); SinkingMove->UpdateCharacterStateBeforeMovement(0.016f);
 	TestTrue(TEXT("Sinking test enters wall run"), SinkingMove->IsWallRunning());
 	const float StartX = Sinking->GetActorLocation().X;
 	for (int32 Index = 0; Index < 12 && SinkingMove->IsWallRunning(); ++Index) { SinkingMove->Velocity.Z = -120.0f; SinkingMove->PhysCustom(0.016f, 0); }
+	TestTrue(TEXT("It ended at the floor, not at the end of the wall"), Sinking->GetActorLocation().X < 1100.0f);
 	TestFalse(TEXT("Reaching the floor ends the wall run"), SinkingMove->IsWallRunning());
 	TestTrue(TEXT("The run moved along the wall until then"), Sinking->GetActorLocation().X > StartX);
 	return true;
