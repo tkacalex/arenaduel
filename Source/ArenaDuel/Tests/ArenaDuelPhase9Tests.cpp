@@ -20,6 +20,7 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
 #include "EngineUtils.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/PlayerController.h"
 
@@ -138,6 +139,11 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 			.ThenServer(TEXT("Attacker looks level along its own facing"), [this](FArenaDuelPhase9State& State)
 			{
 				AArenaDuelCharacter* Attacker = PawnForSlot(State.World, 0);
+				AArenaDuelCharacter* Target = PawnForSlot(State.World, 1);
+				// The test world has no floor. Both are held in place in the air, away from anything.
+				Attacker->GetCharacterMovement()->DisableMovement();
+				Target->GetCharacterMovement()->DisableMovement();
+				Attacker->SetActorLocation(FVector(0.0f, 0.0f, 600.0f), false, nullptr, ETeleportType::TeleportPhysics);
 				Attacker->GetController()->SetControlRotation(FRotator(0.0f, Attacker->GetActorRotation().Yaw, 0.0f));
 				Attacker->GetWeaponComponent()->SelectSlot(EArenaDuelLoadoutSlot::Knife);
 				if (Attacker->GetWeaponComponent()->GetActiveSlot() != EArenaDuelLoadoutSlot::Knife) TestRunner->AddError(TEXT("The attacker does not hold the knife"));
