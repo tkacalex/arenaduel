@@ -286,6 +286,9 @@ public:
 	void RequestReloadForTests();
 	/** Tests: the trigger as the server receives it from a remote owner. */
 	void SetFireHeldForTests(bool bHeld, float OwnerCrouchEaseAge, float OwnerSlideEaseAge);
+	/** Tests: the eye hint for one shot of the burst as the server receives it. */
+	void EyeEaseHintForTests(uint8 BurstShotIndex, float OwnerCrouchEaseAge, float OwnerSlideEaseAge);
+	uint8 GetServerBurstShotIndex() const { return ServerBurstShotIndex; }
 	/** Tests: what the server's fire timer calls. */
 	void FireAuthoritativeForTests();
 	/** Tests: take rounds out of the magazine in the hands without firing. */
@@ -400,9 +403,9 @@ public:
 protected:
 	UFUNCTION(Server, Reliable)
 	void ServerSetFireHeld(bool bHeld, float OwnerCrouchEaseAge, float OwnerSlideEaseAge);
-	/** While the owner's eye eases and it shows shots: how far along the eye is, sent with a shown shot. Taken like the hint that comes with the press. */
+	/** While the owner's eye eases and it shows shots: how far along the eye was at the shown shot with this number in the burst (0 is the first). The server uses it for its own shot with that number, within the same limits as the hint that comes with the press. */
 	UFUNCTION(Server, Unreliable)
-	void ServerEyeEaseHint(float OwnerCrouchEaseAge, float OwnerSlideEaseAge);
+	void ServerEyeEaseHint(uint8 BurstShotIndex, float OwnerCrouchEaseAge, float OwnerSlideEaseAge);
 
 	UFUNCTION(Server, Reliable)
 	void ServerSetAiming(bool bAimingState);
@@ -589,6 +592,12 @@ protected:
 	int32 OwnerConfirmedMagazine = -1;
 	int32 OwnerConfirmedMagazineWeapon = -1;
 	double LastShownShotWorldTime = -100.0;
+	/** Owner: number of the next shown shot in the running burst. Server: number of the next real shot in it. The two count the same shots. */
+	uint8 OwnerBurstShotIndex = 0;
+	uint8 ServerBurstShotIndex = 0;
+	struct FEyeHint { uint8 Index = 0; float CrouchAge = 1000.0f; float SlideAge = 1000.0f; bool bValid = false; };
+	/** Server: what the owner said about its eye for the shots of the running burst that are still to come. */
+	FEyeHint ServerEyeHints[8];
 	/** Development: the eye of each shown shot that waits for its confirmation, to pair it with the server's shot of that sequence number. */
 	TArray<float> ShownShotEyeLog;
 	void StopShownFireForReload();

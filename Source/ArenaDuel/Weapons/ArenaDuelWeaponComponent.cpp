@@ -514,6 +514,7 @@ void UArenaDuelWeaponComponent::StartFire()
 	if (GetWorld() && GetWorld()->GetTimeSeconds() - LastShownShotWorldTime > 1.0) { OwnerUnconfirmedShots = 0; ShownShotEyeLog.Reset(); }
 	if (bReloading || (GetOwnerPredictedMagazine() <= 0 && !HasInfiniteAmmoForDevelopment()) || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	bFireHeld = true;
+	OwnerBurstShotIndex = 0;
 	if (AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled() && GetWorld())
 	{
 		// Pressed inside the switch time: the server holds the shot back until the item is ready, so the shown
@@ -776,6 +777,8 @@ void UArenaDuelWeaponComponent::StartAuthoritativeFire()
 	if (bServerFireHeld) return;
 	if (!CanBeginAuthoritativeFire())
 	{
+		ServerBurstShotIndex = 0;
+		for (FEyeHint& Hint : ServerEyeHints) Hint.bValid = false;
 		// Only the switch time stands in the way and the trigger is held: fire as soon as it is over. A switch,
 		// a release, a reload or the end of the round clears the wish before that (StopAuthoritativeFire).
 		if (bServerFireWanted && IsAuthoritativeFireAllowedOnceReady())
@@ -786,6 +789,8 @@ void UArenaDuelWeaponComponent::StartAuthoritativeFire()
 		return;
 	}
 	bServerFireHeld = true;
+	ServerBurstShotIndex = 0;
+	for (FEyeHint& Hint : ServerEyeHints) Hint.bValid = false;
 	if (!GetCurrentDefinition().bAutomatic) { FireAuthoritative(); return; }
 	// An automatic weapon fires on a schedule of due times, one interval apart (NextAllowedFireServerTimes).
 	// A press starts a new schedule now, unless the last shot's interval is still running: then the first shot
@@ -914,6 +919,13 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 	// altogether, which is how the configured rate was missed before. What a frame longer than
 	// AutomaticFireCatchUpSeconds would owe is not made up for.
 	NextAllowedFireServerTimes[DefinitionIndex] = (Definition.bAutomatic ? FMath::Max(NextAllowedFireServerTimes[DefinitionIndex], ServerTime - static_cast<double>(AutomaticFireCatchUpSeconds)) : ServerTime) + ShotInterval;
+	// What the owner said about its eye at this very shot of the burst, if it said anything: taken within limits.
+	if (FEyeHint& Hint = ServerEyeHints[ServerBurstShotIndex % UE_ARRAY_COUNT(ServerEyeHints)]; Hint.bValid && Hint.Index == ServerBurstShotIndex)
+	{
+		Hint.bValid = false;
+		if (AArenaDuelCharacter* Shooter = Cast<AArenaDuelCharacter>(GetOwner())) Shooter->ApplyOwnerEyeEaseHint(Hint.CrouchAge, Hint.SlideAge);
+	}
+	++ServerBurstShotIndex;
 	const FVector Origin = Character->GetPawnViewLocation();
 	const FVector Direction = Controller->GetControlRotation().Vector();
 #if !UE_BUILD_SHIPPING
@@ -1087,8 +1099,10 @@ void UArenaDuelWeaponComponent::LocalCosmeticShot()
 		if (ShownShotEyeLog.Num() > 64) ShownShotEyeLog.RemoveAt(0);
 		// The eye began to ease while the trigger was already held (a crouch in the middle of a burst): no press
 		// carries the hint, so the shown shots do, for as long as the ease lasts.
-		if (Owning->GetCrouchEaseAge() < 0.6f || Owning->GetSlideEaseAge() < 0.6f) ServerEyeEaseHint(Owning->GetCrouchEaseAge(), Owning->GetSlideEaseAge());
+		// The first shot of a burst has its hint in the press.
+		if (OwnerBurstShotIndex > 0 && (Owning->GetCrouchEaseAge() < 0.6f || Owning->GetSlideEaseAge() < 0.6f)) ServerEyeEaseHint(OwnerBurstShotIndex, Owning->GetCrouchEaseAge(), Owning->GetSlideEaseAge());
 	}
+	++OwnerBurstShotIndex;
 #if !UE_BUILD_SHIPPING
 	if (const AArenaDuelCharacter* Shooter = Cast<AArenaDuelCharacter>(GetOwner()); Shooter && CVarShotLog.GetValueOnGameThread() != 0)
 		UE_LOG(LogArenaDuel, Log, TEXT("ShotLog shown %s t=%.3f magazine=%d eye=%.1f ease=%.1f crouched=%d since_switch=%.3f crouch_age=%.3f slide_age=%.3f wall=%.3f"), *GetNameSafe(GetOwner()), LastCosmeticShotWorldTime, GetCurrentMagazineAmmo(), Shooter->GetPawnViewLocation().Z - Shooter->GetActorLocation().Z, Shooter->GetEyeEaseOffset(), Shooter->bIsCrouched ? 1 : 0, LastCosmeticShotWorldTime - (LocalSwitchReadyWorldTime - SwitchSeconds), Shooter->GetCrouchEaseAge(), Shooter->GetSlideEaseAge(), FPlatformTime::Seconds());
@@ -1552,10 +1566,21 @@ void UArenaDuelWeaponComponent::StopShownFireForReload()
 	}
 }
 
-void UArenaDuelWeaponComponent::ServerEyeEaseHint_Implementation(float OwnerCrouchEaseAge, float OwnerSlideEaseAge)
+void UArenaDuelWeaponComponent::ServerEyeEaseHint_Implementation(uint8 BurstShotIndex, float OwnerCrouchEaseAge, float OwnerSlideEaseAge)
 {
-	if (AArenaDuelCharacter* Shooter = Cast<AArenaDuelCharacter>(GetOwner()); Shooter && bServerFireHeld) Shooter->ApplyOwnerEyeEaseHint(OwnerCrouchEaseAge, OwnerSlideEaseAge);
+	// Kept until the server fires its own shot with that number. The owner's shown shots and the server's real
+	// ones are the same shots, but the server's schedule runs behind the owner's by however long the press took
+	// to arrive, which is not how long a crouch takes: only the number says which eye belongs to which shot.
+	// A hint for a shot that has left already, or that is too far ahead to belong to this burst, is dropped.
+	const uint8 Ahead = static_cast<uint8>(BurstShotIndex - ServerBurstShotIndex);
+	if (!bServerFireHeld || Ahead >= UE_ARRAY_COUNT(ServerEyeHints)) return;
+	FEyeHint& Slot = ServerEyeHints[BurstShotIndex % UE_ARRAY_COUNT(ServerEyeHints)];
+	Slot.Index = BurstShotIndex;
+	Slot.CrouchAge = OwnerCrouchEaseAge;
+	Slot.SlideAge = OwnerSlideEaseAge;
+	Slot.bValid = true;
 }
+void UArenaDuelWeaponComponent::EyeEaseHintForTests(uint8 BurstShotIndex, float OwnerCrouchEaseAge, float OwnerSlideEaseAge) { ServerEyeEaseHint_Implementation(BurstShotIndex, OwnerCrouchEaseAge, OwnerSlideEaseAge); }
 
 void UArenaDuelWeaponComponent::ClientShotConfirmation_Implementation(int32 Sequence, EArenaDuelShotResult Result, float Distance, int32 PelletsHit, int32 HeadPellets, int32 MagazineAfter)
 {
