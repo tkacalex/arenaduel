@@ -133,8 +133,9 @@ void UArenaDuelUpgradeWidget::BuildTree()
 		FrameSlot->SetSize(FVector2D(CardWidth, CardHeight));
 		Card.Name = UpgradeText(WidgetTree, RootCanvas, TEXT(""), 24, UpgradeAccent, FVector2D(X, -128.0f), FVector2D(CardWidth - 30.0f, 34.0f), TEXT("Bold"));
 		Card.Effect = UpgradeText(WidgetTree, RootCanvas, TEXT(""), 14, UpgradePrimary, FVector2D(X, -70.0f), FVector2D(CardWidth - 40.0f, 64.0f));
-		Card.Level = UpgradeText(WidgetTree, RootCanvas, TEXT(""), 16, UpgradePrimary, FVector2D(X, -6.0f), FVector2D(CardWidth - 40.0f, 26.0f), TEXT("Bold"));
-		Card.Next = UpgradeText(WidgetTree, RootCanvas, TEXT(""), 14, UpgradeSecondary, FVector2D(X, 44.0f), FVector2D(CardWidth - 40.0f, 60.0f));
+		// Two lines: the level, and under it what the player has from it.
+		Card.Level = UpgradeText(WidgetTree, RootCanvas, TEXT(""), 16, UpgradePrimary, FVector2D(X, -8.0f), FVector2D(CardWidth - 40.0f, 48.0f), TEXT("Bold"));
+		Card.Next = UpgradeText(WidgetTree, RootCanvas, TEXT(""), 14, UpgradeSecondary, FVector2D(X, 62.0f), FVector2D(CardWidth - 40.0f, 44.0f));
 		Card.Button = WidgetTree->ConstructWidget<UButton>();
 		Card.Button->SetBackgroundColor(FLinearColor(0.10f, 0.30f, 0.40f, 1.0f));
 		UCanvasPanelSlot* ButtonSlot = RootCanvas->AddChildToCanvas(Card.Button);
@@ -207,7 +208,7 @@ void UArenaDuelUpgradeWidget::Refresh()
 		const bool bMaxed = Level >= MaxLevel;
 		SetUpgradeText(Card.Name, GetUpgradeName(Kind));
 		SetUpgradeText(Card.Effect, DescribeEffect(Kind, Step));
-		SetUpgradeText(Card.Level, FString::Printf(TEXT("LEVEL %d / %d   -   %s"), Level, MaxLevel, *DescribeLevel(Kind, Step, Level)));
+		SetUpgradeText(Card.Level, FString::Printf(TEXT("LEVEL %d / %d\n%s"), Level, MaxLevel, *DescribeLevel(Kind, Step, Level)));
 		SetUpgradeText(Card.Next, bMaxed ? FString(TEXT("Fully upgraded. Nothing more to gain here.")) : FString::Printf(TEXT("Next level %d: %s"), Level + 1, *DescribeLevel(Kind, Step, Level + 1)));
 		SetUpgradeText(Card.ButtonLabel, bMaxed ? FString(TEXT("MAXED")) : bChosen ? FString(TEXT("LOCKED IN")) : FString::Printf(TEXT("CHOOSE  [%d]"), Index + 1));
 		const bool bEnabled = !bMaxed && !bChosen;
