@@ -804,7 +804,8 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 			const AArenaDuelCharacter* Pawn = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
 			return Pawn ? Pawn->GetWeaponComponent() : nullptr;
 		};
-		const int32 WeaponIndex = ArenaDuelPhase9FireRate::AutomaticWeapons().Num() > 0 ? ArenaDuelPhase9FireRate::AutomaticWeapons().Last() : 0;
+		int32 WeaponIndex = 0;
+		for (int32 Index = 0; Index < GetDefault<UArenaDuelWeaponComponent>()->GetWeaponDefinitionCount(); ++Index) if (GetDefault<UArenaDuelWeaponComponent>()->GetWeaponDefinition(Index)->bAutomatic) WeaponIndex = Index;
 		Network
 			.UntilServer(TEXT("Both duel players have pawns"), [](FArenaDuelPhase9State& State) { return PawnForSlot(State.World, 0) && PawnForSlot(State.World, 1); }, FTimespan::FromSeconds(10.0))
 			.ThenServer(TEXT("Start a round"), [](FArenaDuelPhase9State& State) { StartMatch(State.World); })
