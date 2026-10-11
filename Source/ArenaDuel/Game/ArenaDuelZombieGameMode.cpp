@@ -48,7 +48,7 @@ namespace
 		FConsoleCommandDelegate::CreateLambda([]()
 		{
 			TArray<FString> Paths;
-			for (const TCHAR* Sound : { TEXT("S_FlashBang"), TEXT("S_FlashBounce"), TEXT("S_FlashPin"), TEXT("S_FlashRing"), TEXT("S_KnifeHit"), TEXT("S_KnifeStab"), TEXT("S_KnifeSwing"), TEXT("S_SurvivalAmbience"), TEXT("S_SurvivalWaveStart"), TEXT("S_ZombieAttack"), TEXT("S_ZombieDeath"), TEXT("S_ZombieGrowl"), TEXT("S_ZombieHit") })
+			for (const TCHAR* Sound : { TEXT("S_HitHead"), TEXT("S_HitBody"), TEXT("S_FlashBang"), TEXT("S_FlashBounce"), TEXT("S_FlashPin"), TEXT("S_FlashRing"), TEXT("S_KnifeHit"), TEXT("S_KnifeStab"), TEXT("S_KnifeSwing"), TEXT("S_SurvivalAmbience"), TEXT("S_SurvivalWaveStart"), TEXT("S_ZombieAttack"), TEXT("S_ZombieDeath"), TEXT("S_ZombieGrowl"), TEXT("S_ZombieHit") })
 				Paths.Add(FString::Printf(TEXT("/Game/ArenaDuel/Audio/%s.%s"), Sound, Sound));
 			for (const FArenaDuelZombieTypeConfig& Config : GetDefault<AArenaDuelZombieGameMode>()->GetTypeConfigs()) { Paths.Add(Config.MeshPath); Paths.Add(Config.MaterialPath); }
 			for (const TCHAR* Clip : { TEXT("Shamble"), TEXT("Charge"), TEXT("Slam"), TEXT("DeathBack"), TEXT("DeathFront") }) Paths.Add(FString::Printf(TEXT("/Game/ArenaDuel/Characters/Zombies/A_Zombie_%s.A_Zombie_%s"), Clip, Clip));

@@ -180,3 +180,16 @@ The asset setup commands that re-save `BP_ArenaDuelCharacter` are no longer part
 Holding the trigger used to let the viewmodel kick build up to three single-shot kicks: the weapon ended up 15 cm back in the screen and 4.5 degrees up. The build-up now stops at `MaxSustainedKick` 1.35, and a unit of kick moves the weapon `KickPushback` 3.4 cm and `KickPitch` 1.1 degrees (before: 5 cm and 1.5 degrees), so sustained fire holds the weapon about 4.6 cm back and 1.5 degrees up. A single shot kicks about a third less than before. This is the weapon on screen only: where the shots go, the camera recoil (`RecoilVertical`, `RecoilHorizontal`), spread and the recovery are unchanged.
 
 Not checked in a play session.
+
+## Hit confirmation (2026-10-11)
+
+When the server confirms that a shot or a knife stroke of the local player met a body, the HUD shows it at the crosshair (`UArenaDuelHUDWidget::ShowHitMarker`):
+
+| Hit | Marker | Word | Sound | Stays |
+| --- | --- | --- | --- | --- |
+| Body or limb | four white ticks around the crosshair | none | `S_HitBody`, a dull short tick | 0.22 s |
+| Head | the same ticks in red-gold, arriving at 2.4 times the size and settling at 1.5 times | `HEADSHOT` under the crosshair | `S_HitHead`, a bright metallic ring | 0.55 s |
+
+It is shown only to the shooter, comes from the server's result (`GetLastShotResult`, which on a client arrives with the shot confirmation), and applies to players and survival enemies alike. A shotgun blast with at least one pellet in the head counts as a head shot. The sounds are played without a place in the world and are made by `Tools/Editor/SetupHitSounds.py`.
+
+Checked: the marker's size and duration for both kinds and the HUD's state after each (`ArenaDuel.Phase5`), 118 of 118 tests of the whole run. Not checked: nobody has seen the marker in a running game or heard either sound.
