@@ -119,7 +119,7 @@ protected:
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
 	int32 RoundWins = 0;
 
-	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Upgrades")
+	UPROPERTY(Replicated, VisibleInstanceOnly, Category="Upgrades")
 	uint8 UpgradeLevels[ArenaDuelUpgrades::KindCount] = {};
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Upgrades")
