@@ -17,6 +17,9 @@
 #include "Engine/Font.h"
 #include "GameFramework/PlayerController.h"
 #include "../Game/ArenaDuelGameState.h"
+#include "../Weapons/ArenaDuelItemMeshes.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
 #include "../Player/ArenaDuelPlayerState.h"
 
 namespace
@@ -80,8 +83,9 @@ bool UArenaDuelHUDWidget::Initialize()
 	BuildWidgetTree();
 	const bool bHasExpectedTree = WidgetTree->RootWidget == RootCanvas
 		&& RootCanvas
-		&& RootCanvas->GetChildrenCount() == 8
+		&& RootCanvas->GetChildrenCount() == 9
 		&& RootCanvas->HasChild(OvertimeLabel)
+		&& RootCanvas->HasChild(HitMarkerRoot)
 		&& RootCanvas->HasChild(HealthPanelRoot)
 		&& RootCanvas->HasChild(WeaponPanelRoot)
 		&& RootCanvas->HasChild(AbilityRoots.IsValidIndex(0) ? AbilityRoots[0] : nullptr)
@@ -91,6 +95,59 @@ bool UArenaDuelHUDWidget::Initialize()
 		&& RootCanvas->HasChild(MatchResultRoot);
 	ensureMsgf(bHasExpectedTree, TEXT("ArenaDuel HUD native widget tree is incomplete"));
 	return true;
+}
+
+void UArenaDuelHUDWidget::ComputeHitMarker(bool bHead, float Age, float& OutOpacity, float& OutScale)
+{
+	const float Seconds = GetHitMarkerSeconds(bHead);
+	if (Age < 0.0f || Age >= Seconds) { OutOpacity = 0.0f; OutScale = 1.0f; return; }
+	const float T = Age / Seconds;
+	// Fully there for the first third, then gone by the end.
+	OutOpacity = FMath::Clamp((1.0f - T) / 0.66f, 0.0f, 1.0f);
+	// A head shot arrives large and settles at one and a half times the plain marker within a tenth of a second.
+	OutScale = bHead ? 1.5f + 0.9f * FMath::Square(FMath::Clamp(1.0f - Age / 0.1f, 0.0f, 1.0f)) : 1.0f;
+}
+
+void UArenaDuelHUDWidget::ShowHitMarker(bool bHead, bool bWithSound)
+{
+	if (!HitMarkerRoot) return;
+	bHitMarkerHead = bHead;
+	HitMarkerStartSeconds = FPlatformTime::Seconds();
+	const FLinearColor Colour = bHead ? FLinearColor(1.0f, 0.30f, 0.12f, 1.0f) : Primary;
+	for (UBorder* Tick : HitMarkerTicks) if (Tick) Tick->SetBrushColor(Colour);
+	if (HeadshotLabel) HeadshotLabel->SetVisibility(bHead ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	HitMarkerRoot->SetRenderOpacity(1.0f);
+	HitMarkerRoot->SetVisibility(ESlateVisibility::HitTestInvisible);
+	// Heard only by the shooter and not placed in the world: a bright ring for the head, a dull tick otherwise.
+	if (bWithSound) if (USoundBase* Sound = ArenaDuelItemMeshes::Sound(bHead ? TEXT("S_HitHead") : TEXT("S_HitBody"))) UGameplayStatics::PlaySound2D(this, Sound, bHead ? 0.9f : 0.5f);
+}
+
+void UArenaDuelHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+	if (!HitMarkerRoot) return;
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwningPlayerPawn());
+	const UArenaDuelWeaponComponent* Weapon = Character ? Character->GetWeaponComponent() : nullptr;
+	if (Weapon != HitMarkerWeapon.Get())
+	{
+		// A new pawn: what its weapon has counted so far is not news.
+		HitMarkerWeapon = Weapon;
+		LastHitSequence = Weapon ? Weapon->GetLastShotSequence() : INDEX_NONE;
+	}
+	else if (Weapon && Weapon->GetLastShotSequence() != LastHitSequence)
+	{
+		// The server has confirmed another shot or knife stroke of this player (on a client the confirmation
+		// arrives as a message). Only what met a body is shown.
+		LastHitSequence = Weapon->GetLastShotSequence();
+		const EArenaDuelShotResult Result = Weapon->GetLastShotResult();
+		if (Result == EArenaDuelShotResult::Head || Result == EArenaDuelShotResult::Body || Result == EArenaDuelShotResult::Limb) ShowHitMarker(Result == EArenaDuelShotResult::Head, true);
+	}
+	if (HitMarkerRoot->GetVisibility() == ESlateVisibility::Collapsed) return;
+	float Opacity = 0.0f, Scale = 1.0f;
+	ComputeHitMarker(bHitMarkerHead, static_cast<float>(FPlatformTime::Seconds() - HitMarkerStartSeconds), Opacity, Scale);
+	if (Opacity <= 0.0f) { HitMarkerRoot->SetVisibility(ESlateVisibility::Collapsed); return; }
+	HitMarkerRoot->SetRenderOpacity(Opacity);
+	HitMarkerRoot->SetRenderScale(FVector2D(Scale, Scale));
 }
 
 void UArenaDuelHUDWidget::NativeConstruct()
@@ -178,6 +235,32 @@ void UArenaDuelHUDWidget::BuildWidgetTree()
 	// Announces overtime in the middle of the upper screen for a few seconds; the header keeps saying it afterwards.
 	OvertimeLabel = Text(WidgetTree, TEXT("OVERTIME  -  NEXT KILL WINS"), 30, HUDDanger); OvertimeLabel->SetJustification(ETextJustify::Center); OvertimeLabel->SetVisibility(ESlateVisibility::Collapsed); RootCanvas->AddChild(OvertimeLabel); PlaceFixed(OvertimeLabel, FVector2D(0.5f,0.0f), FVector2D(0,96), FVector2D(620,44), FVector2D(0.5f,0.0f));
 	DefeatedLabel = Text(WidgetTree, TEXT("DEFEATED"), 46, HUDDanger); DefeatedLabel->SetJustification(ETextJustify::Center); DefeatedLabel->SetVisibility(ESlateVisibility::Collapsed); DefeatedRoot = DefeatedLabel; RootCanvas->AddChild(DefeatedLabel); PlaceFixed(DefeatedLabel, FVector2D(0.5f,0.5f), FVector2D(0,0), FVector2D(340,64), FVector2D(0.5f,0.5f));
+
+	// Hit confirmation, in the middle of the screen: four short ticks around the crosshair that appear when the
+	// server confirms a hit, white for body and limbs. A head shot is red-gold, larger, stays longer and has
+	// its word under it, so there is no doubt about what the shot did.
+	HitMarkerRoot = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("HitMarkerRoot"));
+	HitMarkerRoot->SetVisibility(ESlateVisibility::Collapsed);
+	RootCanvas->AddChild(HitMarkerRoot);
+	PlaceFixed(HitMarkerRoot, FVector2D(0.5f,0.5f), FVector2D::ZeroVector, FVector2D(220,140), FVector2D(0.5f,0.5f));
+	HitMarkerRoot->SetRenderTransformPivot(FVector2D(0.5f, 50.0f / 140.0f));
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		// One tick in each diagonal, pointing at the middle, with a gap so the crosshair stays free.
+		const float SignX = Index % 2 == 0 ? -1.0f : 1.0f, SignY = Index < 2 ? -1.0f : 1.0f;
+		UBorder* Tick = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		Tick->SetBrushColor(Primary);
+		HitMarkerRoot->AddChild(Tick);
+		PlaceFixed(Tick, FVector2D(0,0), FVector2D(110.0f + SignX * 15.0f, 50.0f + SignY * 15.0f), FVector2D(4,16), FVector2D(0.5f,0.5f));
+		Tick->SetRenderTransformAngle(SignX * SignY > 0.0f ? -45.0f : 45.0f);
+		HitMarkerTicks.Add(Tick);
+	}
+	HeadshotLabel = Text(WidgetTree, TEXT("HEADSHOT"), 20, FLinearColor(1.0f, 0.36f, 0.16f, 1.0f));
+	HeadshotLabel->SetJustification(ETextJustify::Center);
+	HeadshotLabel->SetShadowOffset(FVector2D(1.5f, 1.5f));
+	HeadshotLabel->SetShadowColorAndOpacity(FLinearColor(0.0f, 0.0f, 0.0f, 0.8f));
+	HitMarkerRoot->AddChild(HeadshotLabel);
+	PlaceFixed(HeadshotLabel, FVector2D(0,0), FVector2D(110,104), FVector2D(220,30), FVector2D(0.5f,0.5f));
 
 	UOverlay* MatchResult = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass(), TEXT("MatchResultRoot"));
 	MatchResultRoot = MatchResult;

@@ -34,7 +34,7 @@ bool FArenaDuelNativeHUDWidgetTreeTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestEqual(TEXT("Root canvas contains eight expected top-level widgets, the overtime announcement among them"), RootCanvas->GetChildrenCount(), 8);
+	TestEqual(TEXT("Root canvas contains nine expected top-level widgets, the overtime announcement and the hit marker among them"), RootCanvas->GetChildrenCount(), 9);
 	TestTrue(TEXT("Health panel is present"), Cast<UOverlay>(RootCanvas->GetChildAt(0)) != nullptr);
 	TestTrue(TEXT("Weapon panel is present"), Cast<UOverlay>(RootCanvas->GetChildAt(1)) != nullptr);
 	TestTrue(TEXT("Both ability slots are present"), Cast<UOverlay>(RootCanvas->GetChildAt(2)) && Cast<UOverlay>(RootCanvas->GetChildAt(3)));
@@ -43,7 +43,25 @@ bool FArenaDuelNativeHUDWidgetTreeTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Match result layer is present"), RootCanvas->GetChildAt(6) != nullptr);
 
 	TestFalse(TEXT("Repeated initialization does not rebuild the widget tree"), HUD->Initialize());
-	TestEqual(TEXT("Root child count remains stable after repeated initialization"), RootCanvas->GetChildrenCount(), 8);
+	TestEqual(TEXT("Root child count remains stable after repeated initialization"), RootCanvas->GetChildrenCount(), 9);
+	// Hit confirmation: hidden until a hit, a head shot larger and longer than a body hit and with its word.
+	TestFalse(TEXT("No hit marker before a hit"), HUD->IsHitMarkerShown());
+	float BodyOpacity = 0.0f, BodyScale = 0.0f, HeadOpacity = 0.0f, HeadScale = 0.0f;
+	UArenaDuelHUDWidget::ComputeHitMarker(false, 0.0f, BodyOpacity, BodyScale);
+	UArenaDuelHUDWidget::ComputeHitMarker(true, 0.0f, HeadOpacity, HeadScale);
+	TestTrue(TEXT("Both markers start fully visible"), BodyOpacity >= 0.99f && HeadOpacity >= 0.99f);
+	TestTrue(TEXT("A head shot arrives clearly larger than a body hit"), HeadScale > BodyScale * 2.0f);
+	UArenaDuelHUDWidget::ComputeHitMarker(true, 0.2f, HeadOpacity, HeadScale);
+	TestTrue(TEXT("A head shot settles at one and a half times the plain marker"), FMath::IsNearlyEqual(HeadScale, 1.5f, 0.01f) && HeadOpacity > 0.9f);
+	UArenaDuelHUDWidget::ComputeHitMarker(false, 0.3f, BodyOpacity, BodyScale);
+	UArenaDuelHUDWidget::ComputeHitMarker(true, 0.3f, HeadOpacity, HeadScale);
+	TestTrue(TEXT("A head shot is still shown when a body hit has gone"), BodyOpacity <= 0.0f && HeadOpacity > 0.3f);
+	UArenaDuelHUDWidget::ComputeHitMarker(true, UArenaDuelHUDWidget::GetHitMarkerSeconds(true), HeadOpacity, HeadScale);
+	TestTrue(TEXT("And gone after its own time"), HeadOpacity <= 0.0f);
+	HUD->ShowHitMarker(false, false);
+	TestTrue(TEXT("A body hit shows the marker without the head shot word"), HUD->IsHitMarkerShown() && !HUD->IsHeadshotShown());
+	HUD->ShowHitMarker(true, false);
+	TestTrue(TEXT("A head shot shows the marker as a head shot"), HUD->IsHitMarkerShown() && HUD->IsHeadshotShown());
 	return true;
 }
 

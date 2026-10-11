@@ -24,6 +24,15 @@ public:
 	virtual bool Initialize() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+
+	/** How a confirmed hit is shown at the crosshair, Age seconds after it: opacity 0 to 1 and size (1 is the plain marker). A head shot is larger, lasts longer and punches in. */
+	static void ComputeHitMarker(bool bHead, float Age, float& OutOpacity, float& OutScale);
+	static float GetHitMarkerSeconds(bool bHead) { return bHead ? 0.55f : 0.22f; }
+	bool IsHitMarkerShown() const { return HitMarkerRoot && HitMarkerRoot->GetVisibility() != ESlateVisibility::Collapsed; }
+	bool IsHeadshotShown() const { return IsHitMarkerShown() && bHitMarkerHead; }
+	/** Shows the marker as a confirmed hit would. Called from the tick when the weapon reports a new hit; public for tests. */
+	void ShowHitMarker(bool bHead, bool bWithSound);
 
 	UFUNCTION(BlueprintCallable) void SetMatchHeaderVisible(bool bVisible);
 	UFUNCTION(BlueprintCallable) void SetPlayerNames(const FText& LeftName, const FText& RightName);
@@ -83,6 +92,14 @@ protected:
 	bool bLastRoundInProgress = false;
 	bool bLastMatchComplete = false;
 	UPROPERTY() TObjectPtr<UTextBlock> OvertimeLabel;
+	// Hit confirmation at the crosshair: four ticks, and a word for a head shot.
+	UPROPERTY() TObjectPtr<class UCanvasPanel> HitMarkerRoot;
+	UPROPERTY() TArray<TObjectPtr<UBorder>> HitMarkerTicks;
+	UPROPERTY() TObjectPtr<UTextBlock> HeadshotLabel;
+	TWeakObjectPtr<const class UArenaDuelWeaponComponent> HitMarkerWeapon;
+	int32 LastHitSequence = INDEX_NONE;
+	double HitMarkerStartSeconds = -100.0;
+	bool bHitMarkerHead = false;
 	FString LastRoundTimerText;
 	bool bWardenAbilityPalette = false;
 	bool bRiftAbilityPalette = false;
