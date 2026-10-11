@@ -38,6 +38,23 @@ public:
 	int32 GetMatchWinnerSlot() const { return MatchWinnerSlot; }
 	void SetRoundState(int32 NewRoundNumber, bool bNewRoundInProgress, int32 NewLastRoundWinnerSlot);
 	void SetMatchComplete(bool bNewMatchComplete, int32 NewMatchWinnerSlot);
+
+	// Round clock. The server publishes when the regular round ends; every machine derives the remaining
+	// time from that and the synchronised server time, so nothing local (a menu, a hitch) can stop it.
+	/** True while a round with a time limit is running, overtime included. */
+	bool HasRoundTimer() const { return IsRoundInProgress() && (RoundEndServerTime > 0.0f || bOvertime); }
+	/** True once the limit has passed with both players alive: the next kill decides the round. */
+	bool IsOvertime() const { return IsRoundInProgress() && bOvertime; }
+	float GetRoundEndServerTime() const { return RoundEndServerTime; }
+	float GetOvertimeStartServerTime() const { return OvertimeStartServerTime; }
+	/** Seconds left of the regular round; zero in overtime and when no clock runs. */
+	float GetRoundSecondsRemaining() const;
+	/** Minutes and seconds, rounded up so the clock shows 0:01 until the limit is really reached. */
+	static FString FormatRoundClock(float Seconds);
+	/** Server only. Starts the clock of the running round. */
+	void SetRoundClock(float EndServerTime);
+	/** Server only. The limit has passed and nobody has won. */
+	void BeginOvertime();
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
@@ -64,6 +81,18 @@ protected:
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
 	int32 MatchWinnerSlot = INDEX_NONE;
+
+	/** Server time at which the regular round ends; zero when no clock runs. */
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
+	float RoundEndServerTime = 0.0f;
+
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Match")
+	bool bOvertime = false;
+
+	UPROPERTY(Replicated)
+	float OvertimeStartServerTime = 0.0f;
+
+	void ClearRoundClock();
 
 	UFUNCTION()
 	void OnRep_RoundInProgress();

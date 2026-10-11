@@ -20,6 +20,8 @@ void AArenaDuelGameState::SetRoundState(int32 NewRoundNumber, bool bNewRoundInPr
 	if (!HasAuthority()) return;
 	RoundNumber = FMath::Max(1, NewRoundNumber);
 	bRoundInProgress = bNewRoundInProgress;
+	// A clock never survives a change of round state; the game mode starts a new one for a new round.
+	ClearRoundClock();
 	LastRoundWinnerSlot = NewLastRoundWinnerSlot;
 	SetMatchPhase(bNewRoundInProgress ? EArenaDuelMatchPhase::InRound : EArenaDuelMatchPhase::RoundBreak);
 	OnRep_RoundInProgress();
@@ -33,8 +35,45 @@ void AArenaDuelGameState::SetMatchPhase(EArenaDuelMatchPhase NewPhase, float End
 	bRoundInProgress = NewPhase == EArenaDuelMatchPhase::InRound;
 	CountdownEndServerTime = NewPhase == EArenaDuelMatchPhase::Countdown ? EndServerTime : 0.0f;
 	if (NewPhase != EArenaDuelMatchPhase::CharacterSelect) CharacterAutoReadyEndServerTime = 0.0f;
+	if (NewPhase != EArenaDuelMatchPhase::InRound) ClearRoundClock();
 	OnRep_MatchPhase();
 	ForceNetUpdate();
+}
+
+void AArenaDuelGameState::ClearRoundClock()
+{
+	RoundEndServerTime = 0.0f;
+	bOvertime = false;
+	OvertimeStartServerTime = 0.0f;
+}
+
+void AArenaDuelGameState::SetRoundClock(float EndServerTime)
+{
+	if (!HasAuthority() || !IsRoundInProgress()) return;
+	RoundEndServerTime = FMath::Max(0.0f, EndServerTime);
+	bOvertime = false;
+	OvertimeStartServerTime = 0.0f;
+	ForceNetUpdate();
+}
+
+void AArenaDuelGameState::BeginOvertime()
+{
+	if (!HasAuthority() || !IsRoundInProgress() || bOvertime) return;
+	bOvertime = true;
+	OvertimeStartServerTime = GetServerWorldTimeSeconds();
+	ForceNetUpdate();
+}
+
+float AArenaDuelGameState::GetRoundSecondsRemaining() const
+{
+	if (!IsRoundInProgress() || bOvertime || RoundEndServerTime <= 0.0f) return 0.0f;
+	return FMath::Max(0.0f, RoundEndServerTime - static_cast<float>(GetServerWorldTimeSeconds()));
+}
+
+FString AArenaDuelGameState::FormatRoundClock(float Seconds)
+{
+	const int32 Whole = FMath::Max(0, FMath::CeilToInt(Seconds - KINDA_SMALL_NUMBER));
+	return FString::Printf(TEXT("%d:%02d"), Whole / 60, Whole % 60);
 }
 
 void AArenaDuelGameState::SetCharacterAutoReadyEndServerTime(float EndServerTime)
@@ -68,6 +107,9 @@ void AArenaDuelGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	DOREPLIFETIME(AArenaDuelGameState, MatchPhase);
 	DOREPLIFETIME(AArenaDuelGameState, CountdownEndServerTime);
 	DOREPLIFETIME(AArenaDuelGameState, CharacterAutoReadyEndServerTime);
+	DOREPLIFETIME(AArenaDuelGameState, RoundEndServerTime);
+	DOREPLIFETIME(AArenaDuelGameState, bOvertime);
+	DOREPLIFETIME(AArenaDuelGameState, OvertimeStartServerTime);
 }
 
 void AArenaDuelGameState::OnRep_RoundInProgress()

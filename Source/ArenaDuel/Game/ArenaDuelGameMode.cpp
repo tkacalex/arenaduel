@@ -207,8 +207,56 @@ void AArenaDuelGameMode::StartSelectedMatch()
 	for (APlayerState* Player : State->PlayerArray)
 		if (AArenaDuelPlayerState* DuelPlayer = Cast<AArenaDuelPlayerState>(Player)) DuelPlayer->SetCharacterReadyAuthoritatively(false);
 	State->SetMatchComplete(false, INDEX_NONE);
-	State->SetRoundState(1, true, INDEX_NONE);
+	BeginRound(1, INDEX_NONE);
 	RestartDuelPlayers();
+}
+
+void AArenaDuelGameMode::BeginRound(int32 RoundNumber, int32 LastWinnerSlot)
+{
+	AArenaDuelGameState* State = GetGameState<AArenaDuelGameState>();
+	if (!HasAuthority() || !State || !GetWorld()) return;
+	// A new serial retires whatever belonged to the round before: its time limit and its evaluation.
+	++RoundSerial;
+	GetWorldTimerManager().ClearTimer(RoundTimeLimitTimer);
+	State->SetRoundState(RoundNumber, true, LastWinnerSlot);
+	if (!UsesRoundTimer() || RoundDurationSeconds <= 0.0f) return;
+	State->SetRoundClock(static_cast<float>(State->GetServerWorldTimeSeconds()) + RoundDurationSeconds);
+	GetWorldTimerManager().SetTimer(RoundTimeLimitTimer, FTimerDelegate::CreateUObject(this, &AArenaDuelGameMode::HandleRoundTimeExpired, RoundSerial), RoundDurationSeconds, false);
+}
+
+void AArenaDuelGameMode::HandleRoundTimeExpired(int32 ForRoundSerial)
+{
+	AArenaDuelGameState* State = GetGameState<AArenaDuelGameState>();
+	// A limit that belongs to an earlier round, or to a round that has already been decided, does nothing.
+	if (!HasAuthority() || !State || ForRoundSerial != RoundSerial || bRoundRestartPending || !State->IsRoundInProgress() || State->IsOvertime()) return;
+	TArray<AArenaDuelPlayerState*> Living;
+	for (uint8 DuelSlot = 0; DuelSlot < 2; ++DuelSlot)
+	{
+		AArenaDuelPlayerState* Player = FindPlayerStateByDuelSlot(DuelSlot);
+		const APlayerController* Controller = Player ? Cast<APlayerController>(Player->GetOwner()) : nullptr;
+		const AArenaDuelCharacter* Character = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
+		if (Character && !Character->IsDead()) Living.Add(Player);
+	}
+	// Interim rule: with both alive nothing is taken or changed, the round simply goes on until the next kill.
+	if (Living.Num() >= 2) State->BeginOvertime();
+	else EndRoundForDevelopment(Living.Num() == 1 ? Living[0] : nullptr);
+}
+
+bool AArenaDuelGameMode::IsRoundTimeLimitPending() const
+{
+	return GetWorld() && GetWorldTimerManager().IsTimerActive(RoundTimeLimitTimer);
+}
+
+void AArenaDuelGameMode::SetRoundTimingForTests(float InRoundDurationSeconds, float InRoundBreakSeconds, float InMatchResultSeconds)
+{
+	RoundDurationSeconds = FMath::Max(0.0f, InRoundDurationSeconds);
+	RoundBreakSeconds = FMath::Max(0.1f, InRoundBreakSeconds);
+	MatchResultSeconds = FMath::Max(0.1f, InMatchResultSeconds);
+}
+
+void AArenaDuelGameMode::ExpireRoundTimeForTests(bool bStale)
+{
+	HandleRoundTimeExpired(bStale ? RoundSerial - 1 : RoundSerial);
 }
 
 void AArenaDuelGameMode::HandlePlayerDeath(AArenaDuelCharacter* DeadCharacter)
@@ -252,6 +300,11 @@ void AArenaDuelGameMode::EndRoundForDevelopment(AArenaDuelPlayerState* WinningPl
 	if (!HasAuthority() || bRoundRestartPending) return;
 	AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>();
 	if (!ArenaGameState || !ArenaGameState->IsRoundInProgress()) return;
+	// One evaluation per started round, whatever asks for it: a death, the time limit, the admin menu.
+	if (EvaluatedRoundSerial == RoundSerial) return;
+	EvaluatedRoundSerial = RoundSerial;
+	++RoundsEvaluated;
+	if (GetWorld()) GetWorldTimerManager().ClearTimer(RoundTimeLimitTimer);
 	AArenaDuelVeilWall::DestroyAllForRound(GetWorld());
 	AArenaDuelArcBarrier::DestroyAllForRound(GetWorld());
 	AArenaDuelPhaseGateVisual::DestroyAllForRound(GetWorld());
@@ -271,16 +324,16 @@ void AArenaDuelGameMode::EndRoundForDevelopment(AArenaDuelPlayerState* WinningPl
 	}
 	bRoundRestartPending = true;
 
-	const bool bMatchComplete = WinningPlayerState && WinningPlayerState->GetRoundWins() >= 5;
+	const bool bMatchComplete = WinningPlayerState && WinningPlayerState->GetRoundWins() >= RoundWinsToWinMatch;
 	if (bMatchComplete)
 	{
 		ArenaGameState->SetMatchComplete(true, WinnerSlot);
 		ArenaGameState->SetMatchPhase(EArenaDuelMatchPhase::MatchResult);
-		if (GetWorld()) GetWorldTimerManager().SetTimer(MatchResetTimer, this, &AArenaDuelGameMode::ResetMatchAndRestartPlayers, 5.0f, false);
+		if (GetWorld()) GetWorldTimerManager().SetTimer(MatchResetTimer, this, &AArenaDuelGameMode::ResetMatchAndRestartPlayers, MatchResultSeconds, false);
 	}
 	else if (GetWorld())
 	{
-		GetWorldTimerManager().SetTimer(RoundRestartTimer, this, &AArenaDuelGameMode::StartNextRound, 3.0f, false);
+		GetWorldTimerManager().SetTimer(RoundRestartTimer, this, &AArenaDuelGameMode::StartNextRound, RoundBreakSeconds, false);
 	}
 }
 
@@ -292,7 +345,7 @@ void AArenaDuelGameMode::AdminRestartRound()
 	if (AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>())
 	{
 		ArenaGameState->SetMatchComplete(false, INDEX_NONE);
-		ArenaGameState->SetRoundState(ArenaGameState->GetRoundNumber(), true, INDEX_NONE);
+		BeginRound(ArenaGameState->GetRoundNumber(), INDEX_NONE);
 		RestartDuelPlayers();
 	}
 }
@@ -305,7 +358,7 @@ void AArenaDuelGameMode::AdminAdvanceRound()
 	if (AArenaDuelGameState* ArenaGameState = GetGameState<AArenaDuelGameState>())
 	{
 		ArenaGameState->SetMatchComplete(false, INDEX_NONE);
-		ArenaGameState->SetRoundState(ArenaGameState->GetRoundNumber() + 1, true, INDEX_NONE);
+		BeginRound(ArenaGameState->GetRoundNumber() + 1, INDEX_NONE);
 		RestartDuelPlayers();
 	}
 }
@@ -334,7 +387,7 @@ void AArenaDuelGameMode::AdminResetMatch()
 			}
 		}
 		ArenaGameState->SetMatchComplete(false, INDEX_NONE);
-		ArenaGameState->SetRoundState(1, true, INDEX_NONE);
+		BeginRound(1, INDEX_NONE);
 		RestartDuelPlayers();
 	}
 }
@@ -347,14 +400,14 @@ void AArenaDuelGameMode::StartNextRound()
 	for (APlayerState* PlayerState : ArenaGameState->PlayerArray)
 	{
 		const AArenaDuelPlayerState* ArenaPlayerState = Cast<AArenaDuelPlayerState>(PlayerState);
-		if (ArenaPlayerState && ArenaPlayerState->GetRoundWins() >= 5)
+		if (ArenaPlayerState && ArenaPlayerState->GetRoundWins() >= RoundWinsToWinMatch)
 		{
 			bRoundRestartPending = false;
 			return;
 		}
 	}
 
-	ArenaGameState->SetRoundState(ArenaGameState->GetRoundNumber() + 1, true, ArenaGameState->GetLastRoundWinnerSlot());
+	BeginRound(ArenaGameState->GetRoundNumber() + 1, ArenaGameState->GetLastRoundWinnerSlot());
 	RestartDuelPlayers();
 	bRoundRestartPending = false;
 }
@@ -363,6 +416,7 @@ void AArenaDuelGameMode::ClearPendingRoundAndMatchTimers()
 {
 	GetWorldTimerManager().ClearTimer(RoundRestartTimer);
 	GetWorldTimerManager().ClearTimer(MatchResetTimer);
+	GetWorldTimerManager().ClearTimer(RoundTimeLimitTimer);
 	GetWorldTimerManager().ClearTimer(CharacterCountdownTimer);
 	GetWorldTimerManager().ClearTimer(CharacterAutoReadyTimer);
 }

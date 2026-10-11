@@ -82,6 +82,8 @@ protected:
 	int32 LastRoundNumber = INDEX_NONE;
 	bool bLastRoundInProgress = false;
 	bool bLastMatchComplete = false;
+	UPROPERTY() TObjectPtr<UTextBlock> OvertimeLabel;
+	FString LastRoundTimerText;
 	bool bWardenAbilityPalette = false;
 	bool bRiftAbilityPalette = false;
 	int32 LastHealthBand = INDEX_NONE;

@@ -174,6 +174,8 @@ void UArenaDuelHUDWidget::BuildWidgetTree()
 		UBorder* RightIndicator = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass()); RightIndicator->SetBrushColor(IndicatorEmpty); MatchHeaderContentCanvas->AddChild(RightIndicator); PlaceFixed(RightIndicator, FVector2D(0,0), FVector2D(478 + Index * 14,34), FVector2D(8,8), FVector2D(0,0)); RightRoundIndicators.Add(RightIndicator);
 	}
 
+	// Announces overtime in the middle of the upper screen for a few seconds; the header keeps saying it afterwards.
+	OvertimeLabel = Text(WidgetTree, TEXT("OVERTIME  -  NEXT KILL WINS"), 30, HUDDanger); OvertimeLabel->SetJustification(ETextJustify::Center); OvertimeLabel->SetVisibility(ESlateVisibility::Collapsed); RootCanvas->AddChild(OvertimeLabel); PlaceFixed(OvertimeLabel, FVector2D(0.5f,0.0f), FVector2D(0,96), FVector2D(620,44), FVector2D(0.5f,0.0f));
 	DefeatedLabel = Text(WidgetTree, TEXT("DEFEATED"), 46, HUDDanger); DefeatedLabel->SetJustification(ETextJustify::Center); DefeatedLabel->SetVisibility(ESlateVisibility::Collapsed); DefeatedRoot = DefeatedLabel; RootCanvas->AddChild(DefeatedLabel); PlaceFixed(DefeatedLabel, FVector2D(0.5f,0.5f), FVector2D(0,0), FVector2D(340,64), FVector2D(0.5f,0.5f));
 
 	UOverlay* MatchResult = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass(), TEXT("MatchResultRoot"));
@@ -336,12 +338,27 @@ void UArenaDuelHUDWidget::RefreshMatchData()
 
 	const int32 RoundNumber = GameState->GetRoundNumber();
 	const bool bRoundInProgress = GameState->IsRoundInProgress();
-	if (RoundNumber != LastRoundNumber || bRoundInProgress != bLastRoundInProgress || bMatchComplete != bLastMatchComplete)
+	// The clock is derived from the replicated end time and the synchronised server time on every machine.
+	// A mode without a round clock (survival) keeps the plain round label.
+	const bool bOvertime = GameState->IsOvertime();
+	const bool bClock = bRoundInProgress && !bOvertime && GameState->HasRoundTimer();
+	const float SecondsLeft = bClock ? GameState->GetRoundSecondsRemaining() : 0.0f;
+	const FString TimerText = bMatchComplete ? FString(TEXT("MATCH OVER")) : !bRoundInProgress ? FString(TEXT("ROUND END")) : bOvertime ? FString(TEXT("OVERTIME"))
+		: bClock ? FString::Printf(TEXT("R%d   %s"), RoundNumber, *AArenaDuelGameState::FormatRoundClock(SecondsLeft)) : FString::Printf(TEXT("ROUND %d"), RoundNumber);
+	if (TimerText != LastRoundTimerText)
 	{
-		SetRoundTimer(FText::FromString(bMatchComplete ? TEXT("MATCH OVER") : bRoundInProgress ? FString::Printf(TEXT("ROUND %d"), RoundNumber) : TEXT("ROUND END")));
+		SetRoundTimer(FText::FromString(TimerText));
+		if (TimerLabel) TimerLabel->SetColorAndOpacity(bOvertime || (bClock && SecondsLeft <= 10.0f) ? HUDDanger : Primary);
+		LastRoundTimerText = TimerText;
 		LastRoundNumber = RoundNumber;
 		bLastRoundInProgress = bRoundInProgress;
 		bLastMatchComplete = bMatchComplete;
+	}
+	if (OvertimeLabel)
+	{
+		const bool bAnnounce = bOvertime && GameState->GetServerWorldTimeSeconds() - GameState->GetOvertimeStartServerTime() < 4.0;
+		const ESlateVisibility Wanted = bAnnounce ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
+		if (OvertimeLabel->GetVisibility() != Wanted) OvertimeLabel->SetVisibility(Wanted);
 	}
 }
 

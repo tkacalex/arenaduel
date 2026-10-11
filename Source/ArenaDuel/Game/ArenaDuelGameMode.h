@@ -33,7 +33,40 @@ public:
 	void AdminResetMatch();
 	AArenaDuelPlayerState* FindPlayerStateByDuelSlot(uint8 DuelSlot) const;
 
+	/** The duel has a round clock. Modes built on the duel classes that have no timed rounds say no. */
+	virtual bool UsesRoundTimer() const { return true; }
+	float GetRoundDurationSeconds() const { return RoundDurationSeconds; }
+	int32 GetRoundWinsToWinMatch() const { return RoundWinsToWinMatch; }
+	/** How many rounds have been decided since this game mode began. A round is decided once. */
+	int32 GetRoundsEvaluated() const { return RoundsEvaluated; }
+	/** True while the server's time limit for the running round is pending. */
+	bool IsRoundTimeLimitPending() const;
+	/** Shorter times for automated tests; the rules stay the same. */
+	void SetRoundTimingForTests(float InRoundDurationSeconds, float InRoundBreakSeconds, float InMatchResultSeconds);
+	/** What the time limit does when it fires, callable at a chosen moment. bStale pretends the timer belonged to an earlier round. */
+	void ExpireRoundTimeForTests(bool bStale = false);
+
 protected:
+	/** Length of a regular round. At the limit with both players alive, overtime begins and the next kill decides. */
+	UPROPERTY(EditDefaultsOnly, Category="Round", meta=(ClampMin="0"))
+	float RoundDurationSeconds = 90.0f;
+	/** Pause between two rounds, in which only the winner may move. */
+	UPROPERTY(EditDefaultsOnly, Category="Round", meta=(ClampMin="0.1"))
+	float RoundBreakSeconds = 3.0f;
+	/** How long the match result stays before the return to character selection. */
+	UPROPERTY(EditDefaultsOnly, Category="Round", meta=(ClampMin="0.1"))
+	float MatchResultSeconds = 5.0f;
+	UPROPERTY(EditDefaultsOnly, Category="Round", meta=(ClampMin="1"))
+	int32 RoundWinsToWinMatch = 5;
+
+	/** Starts round RoundNumber: round state, a fresh serial and, for a timed mode, the clock. */
+	void BeginRound(int32 RoundNumber, int32 LastWinnerSlot);
+	void HandleRoundTimeExpired(int32 ForRoundSerial);
+	FTimerHandle RoundTimeLimitTimer;
+	// Every started round gets a serial. A time limit and an evaluation only count for the serial they belong to.
+	int32 RoundSerial = 0;
+	int32 EvaluatedRoundSerial = INDEX_NONE;
+	int32 RoundsEvaluated = 0;
 	void StartNextRound();
 	void RestartDuelPlayers();
 	void ResetMatchAndRestartPlayers();
