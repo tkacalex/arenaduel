@@ -108,6 +108,8 @@ void UArenaDuelHUDWidget::ComputeHitMarker(bool bHead, float Age, float& OutOpac
 	OutScale = bHead ? 1.5f + 0.9f * FMath::Square(FMath::Clamp(1.0f - Age / 0.1f, 0.0f, 1.0f)) : 1.0f;
 }
 
+bool UArenaDuelHUDWidget::IsHitMarkerShown() const { return HitMarkerRoot && HitMarkerRoot->GetVisibility() != ESlateVisibility::Collapsed; }
+
 void UArenaDuelHUDWidget::ShowHitMarker(bool bHead, bool bWithSound)
 {
 	if (!HitMarkerRoot) return;

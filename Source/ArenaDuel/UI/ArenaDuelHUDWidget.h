@@ -29,7 +29,7 @@ public:
 	/** How a confirmed hit is shown at the crosshair, Age seconds after it: opacity 0 to 1 and size (1 is the plain marker). A head shot is larger, lasts longer and punches in. */
 	static void ComputeHitMarker(bool bHead, float Age, float& OutOpacity, float& OutScale);
 	static float GetHitMarkerSeconds(bool bHead) { return bHead ? 0.55f : 0.22f; }
-	bool IsHitMarkerShown() const { return HitMarkerRoot && HitMarkerRoot->GetVisibility() != ESlateVisibility::Collapsed; }
+	bool IsHitMarkerShown() const;
 	bool IsHeadshotShown() const { return IsHitMarkerShown() && bHitMarkerHead; }
 	/** Shows the marker as a confirmed hit would. Called from the tick when the weapon reports a new hit; public for tests. */
 	void ShowHitMarker(bool bHead, bool bWithSound);
