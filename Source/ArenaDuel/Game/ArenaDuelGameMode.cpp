@@ -22,6 +22,8 @@
 namespace
 {
 	constexpr float CharacterAutoReadyDelaySeconds = 12.0f;
+	// 0 falls back to the plain round break after every round. For tests of that break and for comparison in play tests.
+	TAutoConsoleVariable<int32> CVarUpgradesEnabled(TEXT("ArenaDuel.Upgrades.Enabled"), 1, TEXT("Server: 1 offers match upgrades after a decided round, 0 uses the plain round break"));
 
 #if !UE_BUILD_SHIPPING
 	// Round flow from the console, on the server, for checks with two players: no need to wait out 90 seconds.
@@ -372,7 +374,7 @@ void AArenaDuelGameMode::EndRoundForDevelopment(AArenaDuelPlayerState* WinningPl
 	else if (GetWorld())
 	{
 		// A decided round is followed by the upgrade selection; a round without a winner by the plain break.
-		if (WinningPlayerState && UsesMatchUpgrades()) BeginUpgradeSelection();
+		if (WinningPlayerState && UsesMatchUpgrades() && CVarUpgradesEnabled.GetValueOnGameThread() != 0) BeginUpgradeSelection();
 		else GetWorldTimerManager().SetTimer(RoundRestartTimer, this, &AArenaDuelGameMode::StartNextRound, RoundBreakSeconds, false);
 	}
 }

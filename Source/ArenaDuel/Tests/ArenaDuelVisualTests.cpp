@@ -1,6 +1,7 @@
 #if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS
 
 #include "CQTest.h"
+#include "ArenaDuelTestUpgrades.h"
 #include "Components/PIENetworkComponent.h"
 #include "Misc/AutomationTest.h"
 #include "ArenaDuel/Characters/ArenaDuelCharacter.h"
@@ -121,8 +122,14 @@ struct FArenaDuelVisualNetworkState : FBasePIENetworkComponentState
 NETWORK_TEST_CLASS(FArenaDuelVisualNetworkSmoke, "ArenaDuel.Visuals.Network")
 {
 	FPIENetworkComponent<FArenaDuelVisualNetworkState> Network{TestRunner, TestCommandBuilder, bInitializing};
+	AFTER_EACH()
+	{
+		SetMatchUpgradesForTests(true);
+	}
+
 	BEFORE_EACH()
 	{
+		SetMatchUpgradesForTests(false);
 		auto* Mode = LoadClass<AGameModeBase>(nullptr, TEXT("/Game/ArenaDuel/Game/BP_ArenaDuelGameMode.BP_ArenaDuelGameMode_C"));
 		FNetworkComponentBuilder<FArenaDuelVisualNetworkState>().WithClients(1).AsListenServer().WithGameMode(Mode).Build(Network);
 	}

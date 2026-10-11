@@ -1,6 +1,7 @@
 #if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS
 
 #include "CQTest.h"
+#include "ArenaDuelTestUpgrades.h"
 #include "Components/PIENetworkComponent.h"
 #include "Misc/AutomationTest.h"
 #include "ArenaDuel/UI/ArenaDuelCharacterSelectWidget.h"
@@ -66,8 +67,14 @@ namespace ArenaDuelSelectTests
 NETWORK_TEST_CLASS(FArenaDuelCharacterSelectNetworkTest, "ArenaDuel.CharacterSelect.Network")
 {
 	FPIENetworkComponent<FArenaDuelSelectNetworkState> Network{TestRunner, TestCommandBuilder, bInitializing};
+	AFTER_EACH()
+	{
+		SetMatchUpgradesForTests(true);
+	}
+
 	BEFORE_EACH()
 	{
+		SetMatchUpgradesForTests(false);
 		UClass* Mode = LoadClass<AGameModeBase>(nullptr, TEXT("/Game/ArenaDuel/Game/BP_ArenaDuelGameMode.BP_ArenaDuelGameMode_C"));
 		FNetworkComponentBuilder<FArenaDuelSelectNetworkState>().WithClients(1).AsListenServer().WithGameMode(Mode).Build(Network);
 	}

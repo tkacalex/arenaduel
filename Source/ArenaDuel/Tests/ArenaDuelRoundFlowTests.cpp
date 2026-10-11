@@ -3,6 +3,7 @@
 #if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS
 
 #include "CQTest.h"
+#include "ArenaDuelTestUpgrades.h"
 #include "Components/PIENetworkComponent.h"
 #include "Misc/AutomationTest.h"
 #include "Tests/AutomationEditorCommon.h"
@@ -83,6 +84,7 @@ NETWORK_TEST_CLASS(FArenaDuelRoundFlowNetworkTest, "ArenaDuel.Phase8.RoundFlow")
 
 	BEFORE_EACH()
 	{
+		SetMatchUpgradesForTests(true);
 		UClass* GameModeClass = LoadClass<AGameModeBase>(nullptr, ArenaDuelRoundFlowTests::GameModeClassPath);
 		FNetworkComponentBuilder<FArenaDuelRoundFlowState>()
 			.WithClients(1)

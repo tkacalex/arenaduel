@@ -3,6 +3,7 @@
 #if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS
 
 #include "CQTest.h"
+#include "ArenaDuelTestUpgrades.h"
 #include "Components/PIENetworkComponent.h"
 #include "Tests/AutomationEditorCommon.h"
 
@@ -92,8 +93,14 @@ NETWORK_TEST_CLASS(FArenaDuelAdminNetworkTest, "ArenaDuel.Admin.Network")
 {
 	FPIENetworkComponent<FArenaDuelAdminNetworkState> Network{ TestRunner, TestCommandBuilder, bInitializing };
 
+	AFTER_EACH()
+	{
+		SetMatchUpgradesForTests(true);
+	}
+
 	BEFORE_EACH()
 	{
+		SetMatchUpgradesForTests(false);
 		UClass* GameModeClass = LoadClass<AGameModeBase>(nullptr, ArenaDuelAdminAutomation::GameModeClassPath);
 		FNetworkComponentBuilder<FArenaDuelAdminNetworkState>()
 			.WithClients(1)

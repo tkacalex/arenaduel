@@ -1,6 +1,7 @@
 #if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS
 
 #include "CQTest.h"
+#include "ArenaDuelTestUpgrades.h"
 #include "Components/PIENetworkComponent.h"
 #include "Misc/AutomationTest.h"
 #include "ArenaDuel/Abilities/ArenaDuelGA_RiftGrapple.h"
@@ -103,8 +104,14 @@ struct FArenaDuelRiftNetworkState : public FBasePIENetworkComponentState
 NETWORK_TEST_CLASS(FArenaDuelRiftNetworkSmoke, "ArenaDuel.Rift.Network")
 {
 	FPIENetworkComponent<FArenaDuelRiftNetworkState> Network{TestRunner, TestCommandBuilder, bInitializing};
+	AFTER_EACH()
+	{
+		SetMatchUpgradesForTests(true);
+	}
+
 	BEFORE_EACH()
 	{
+		SetMatchUpgradesForTests(false);
 		UClass* Mode = LoadClass<AGameModeBase>(nullptr, TEXT("/Game/ArenaDuel/Game/BP_ArenaDuelGameMode.BP_ArenaDuelGameMode_C"));
 		FNetworkComponentBuilder<FArenaDuelRiftNetworkState>().WithClients(1).AsListenServer().WithGameMode(Mode).Build(Network);
 	}
