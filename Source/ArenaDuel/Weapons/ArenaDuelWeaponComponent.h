@@ -284,6 +284,8 @@ public:
 	const FArenaDuelKnifeDefinition& GetKnifeDefinition() const { return Knife; }
 	/** Tests: the reload request as the server receives it, without the checks Reload() makes on the owner. */
 	void RequestReloadForTests();
+	/** Tests: the trigger as the server receives it from a remote owner. */
+	void SetFireHeldForTests(bool bHeld, float OwnerCrouchEaseAge, float OwnerSlideEaseAge);
 	/** Tests: what the server's fire timer calls. */
 	void FireAuthoritativeForTests();
 	/** Tests: take rounds out of the magazine in the hands without firing. */
@@ -374,7 +376,7 @@ public:
 
 protected:
 	UFUNCTION(Server, Reliable)
-	void ServerSetFireHeld(bool bHeld);
+	void ServerSetFireHeld(bool bHeld, float OwnerCrouchEaseAge, float OwnerSlideEaseAge);
 
 	UFUNCTION(Server, Reliable)
 	void ServerSetAiming(bool bAimingState);

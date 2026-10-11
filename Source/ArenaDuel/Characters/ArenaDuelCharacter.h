@@ -83,6 +83,11 @@ public:
 	/** Seconds since the eye last began to ease after a crouch or a stand-up, and since the last slide start or end. */
 	float GetCrouchEaseAge() const;
 	float GetSlideEaseAge() const;
+	/** Server, for a remote player's pawn: what the owner says about how far along its eye is, taken within limits. */
+	void ApplyOwnerEyeEaseHint(float OwnerCrouchAge, float OwnerSlideAge);
+	float GetCrouchEaseHint() const { return CrouchEaseHint; }
+	float GetSlideEaseHint() const { return SlideEaseHint; }
+	float GetEyeEaseHintMaxSeconds() const { return EyeEaseHintMaxSeconds; }
 	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode = 0) override;
 
 	/** Extra field of view at full slide, in degrees. Local presentation only. */
@@ -259,6 +264,11 @@ protected:
 	float SlideCameraBlend = 0.0f;
 	double SlideBlendTime = 0.0;
 	bool bSlideBlendTarget = false;
+	// Server: how far the clock of the running ease is moved towards the owner's (ApplyOwnerEyeEaseHint).
+	float CrouchEaseHint = 0.0f;
+	float SlideEaseHint = 0.0f;
+	/** Server: the most the owner's word may move the clock of the eye's easing, in seconds either way. */
+	UPROPERTY(EditDefaultsOnly, Category = "Presentation", meta = (ClampMin = "0", ClampMax = "0.25")) float EyeEaseHintMaxSeconds = 0.1f;
 	float SlideCameraRoll = 0.0f;
 	FVector CameraBaseRelativeLocation = FVector(0.0f, 0.0f, 64.0f);
 	FVector LivingMeshRelativeLocation = FVector::ZeroVector;

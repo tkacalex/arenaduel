@@ -169,20 +169,39 @@ FVector AArenaDuelCharacter::GetPawnViewLocation() const
 float AArenaDuelCharacter::GetCrouchEyeOffsetNow() const
 {
 	// What is left of the last crouch or stand-up step: it decays towards zero, the same on any frame rate.
-	const double Age = GetWorld() ? FMath::Max(0.0, GetWorld()->GetTimeSeconds() - CrouchEyeTime) : 1000.0;
+	const double Age = GetWorld() ? FMath::Max(0.0, GetWorld()->GetTimeSeconds() - CrouchEyeTime + CrouchEaseHint) : 1000.0;
 	const float Left = CrouchEyeOffset * FMath::Exp(-CrouchCameraInterpSpeed * static_cast<float>(Age));
 	return FMath::Abs(Left) < 0.01f ? 0.0f : Left;
 }
 
 float AArenaDuelCharacter::GetSlideCameraBlend() const
 {
-	const double Age = GetWorld() ? FMath::Max(0.0, GetWorld()->GetTimeSeconds() - SlideBlendTime) : 1000.0;
+	const double Age = GetWorld() ? FMath::Max(0.0, GetWorld()->GetTimeSeconds() - SlideBlendTime + SlideEaseHint) : 1000.0;
 	const float Target = bSlideBlendTarget ? 1.0f : 0.0f;
 	return Target + (SlideCameraBlend - Target) * FMath::Exp(-SlideCameraInterpSpeed * static_cast<float>(Age));
 }
 
 float AArenaDuelCharacter::GetCrouchEaseAge() const { return GetWorld() ? static_cast<float>(FMath::Max(0.0, GetWorld()->GetTimeSeconds() - CrouchEyeTime)) : 0.0f; }
 float AArenaDuelCharacter::GetSlideEaseAge() const { return GetWorld() ? static_cast<float>(FMath::Max(0.0, GetWorld()->GetTimeSeconds() - SlideBlendTime)) : 0.0f; }
+
+void AArenaDuelCharacter::ApplyOwnerEyeEaseHint(float OwnerCrouchAge, float OwnerSlideAge)
+{
+	// The owner's eye and the server's follow the same curve from the same event, but the event reaches the
+	// server a little later or earlier than the trigger does, by a few frames that differ from press to press.
+	// With the press the owner says how far along its own eye is. The server does not take that as the truth:
+	// it moves its own clock for the running ease towards it by at most EyeEaseHintMaxSeconds, and only while
+	// both of them are in the ease at all. So the shot leaves from where the shooter's picture is taken, and
+	// the most a made-up value can gain is a height the eye really passes through, held a tenth of a second.
+	if (!HasAuthority() || IsLocallyControlled()) return;
+	const float Limit = FMath::Max(EyeEaseHintMaxSeconds, 0.0f);
+	const auto Hint = [Limit](float OwnerAge, float ServerAge)
+	{
+		const bool bBothEasing = FMath::IsFinite(OwnerAge) && OwnerAge >= 0.0f && OwnerAge < 1.0f && ServerAge < 1.0f;
+		return bBothEasing ? FMath::Clamp(OwnerAge - ServerAge, -Limit, Limit) : 0.0f;
+	};
+	CrouchEaseHint = Hint(OwnerCrouchAge, GetCrouchEaseAge());
+	SlideEaseHint = Hint(OwnerSlideAge, GetSlideEaseAge());
+}
 
 float AArenaDuelCharacter::GetEyeEaseOffset() const
 {
@@ -193,6 +212,8 @@ void AArenaDuelCharacter::StepCrouchEye(float Step)
 {
 	CrouchEyeOffset = GetCrouchEyeOffsetNow() + Step;
 	CrouchEyeTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	// A new ease starts on the server's own clock; a hint belongs to the ease it was given for.
+	CrouchEaseHint = 0.0f;
 #if !UE_BUILD_SHIPPING
 	if (const IConsoleVariable* ShotLog = IConsoleManager::Get().FindConsoleVariable(TEXT("ArenaDuel.Dev.ShotLog")); ShotLog && ShotLog->GetInt() != 0)
 		UE_LOG(LogArenaDuel, Log, TEXT("ShotLog eye %s step=%.1f wall=%.3f %s"), *GetNameSafe(this), Step, FPlatformTime::Seconds(), HasAuthority() ? TEXT("server") : TEXT("owner"));
@@ -209,6 +230,7 @@ void AArenaDuelCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, 
 	{
 		SlideCameraBlend = GetSlideCameraBlend();
 		SlideBlendTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+		SlideEaseHint = 0.0f;
 		bSlideBlendTarget = bSliding;
 #if !UE_BUILD_SHIPPING
 		if (const IConsoleVariable* ShotLog = IConsoleManager::Get().FindConsoleVariable(TEXT("ArenaDuel.Dev.ShotLog")); ShotLog && ShotLog->GetInt() != 0 && (IsLocallyControlled() || HasAuthority()))

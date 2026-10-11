@@ -502,7 +502,10 @@ void UArenaDuelWeaponComponent::StartFire()
 		if (Wait > 0.0f) GetWorld()->GetTimerManager().SetTimer(LocalCosmeticFireTimerHandle, this, &UArenaDuelWeaponComponent::BeginLocalCosmeticFire, Wait, false);
 		else BeginLocalCosmeticFire();
 	}
-	if (GetOwnerRole() == ROLE_Authority) ServerSetFireHeld_Implementation(true); else ServerSetFireHeld(true);
+	// With the press the owner says how far along its eye's easing is (see AArenaDuelCharacter::ApplyOwnerEyeEaseHint).
+	const AArenaDuelCharacter* Presser = Cast<AArenaDuelCharacter>(GetOwner());
+	const float CrouchAge = Presser ? Presser->GetCrouchEaseAge() : 1000.0f, SlideAge = Presser ? Presser->GetSlideEaseAge() : 1000.0f;
+	if (GetOwnerRole() == ROLE_Authority) ServerSetFireHeld_Implementation(true, CrouchAge, SlideAge); else ServerSetFireHeld(true, CrouchAge, SlideAge);
 }
 void UArenaDuelWeaponComponent::BeginLocalCosmeticFire()
 {
@@ -711,9 +714,10 @@ void UArenaDuelWeaponComponent::ServerSetAiming_Implementation(bool bAimingState
 		bAiming = true;
 	}
 }
-void UArenaDuelWeaponComponent::ServerSetFireHeld_Implementation(bool bHeld)
+void UArenaDuelWeaponComponent::ServerSetFireHeld_Implementation(bool bHeld, float OwnerCrouchEaseAge, float OwnerSlideEaseAge)
 {
 	if (!bHeld || !IsRoundInProgress()) { StopAuthoritativeFire(); return; }
+	if (AArenaDuelCharacter* Shooter = Cast<AArenaDuelCharacter>(GetOwner())) Shooter->ApplyOwnerEyeEaseHint(OwnerCrouchEaseAge, OwnerSlideEaseAge);
 	bServerFireWanted = true;
 	StartAuthoritativeFire();
 }
@@ -830,7 +834,7 @@ void UArenaDuelWeaponComponent::CancelLocalAndServerFire(bool bClearLocalRecoil)
 		if (GetWorld()) GetWorld()->GetTimerManager().SetTimer(LocalCosmeticRecoveryTimerHandle, this, &UArenaDuelWeaponComponent::RecoverCosmeticKick, 0.02f, true);
 	}
 	if (GetOwnerRole() == ROLE_Authority) StopAuthoritativeFire();
-	else ServerSetFireHeld(false);
+	else ServerSetFireHeld(false, 1000.0f, 1000.0f);
 }
 void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 {
@@ -851,6 +855,7 @@ void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 }
 void UArenaDuelWeaponComponent::RequestReloadForTests() { ServerRequestReload_Implementation(); }
 void UArenaDuelWeaponComponent::FireAuthoritativeForTests() { FireAuthoritative(); }
+void UArenaDuelWeaponComponent::SetFireHeldForTests(bool bHeld, float OwnerCrouchEaseAge, float OwnerSlideEaseAge) { ServerSetFireHeld_Implementation(bHeld, OwnerCrouchEaseAge, OwnerSlideEaseAge); }
 void UArenaDuelWeaponComponent::ConsumeAmmoForTests(int32 Rounds)
 {
 	if (FArenaDuelWeaponRuntimeState* State = GetOwnerRole() == ROLE_Authority ? GetMutableCurrentRuntimeState() : nullptr) State->MagazineAmmo = FMath::Max(0, State->MagazineAmmo - FMath::Max(Rounds, 0));
