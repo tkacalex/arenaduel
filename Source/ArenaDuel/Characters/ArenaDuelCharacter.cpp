@@ -2,6 +2,7 @@
 
 #include "ArenaDuelCharacter.h"
 #include "../Weapons/ArenaDuelItemMeshes.h"
+#include "HAL/IConsoleManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundBase.h"
 #include "ArenaDuelCharacterMovementComponent.h"
@@ -180,6 +181,9 @@ float AArenaDuelCharacter::GetSlideCameraBlend() const
 	return Target + (SlideCameraBlend - Target) * FMath::Exp(-SlideCameraInterpSpeed * static_cast<float>(Age));
 }
 
+float AArenaDuelCharacter::GetCrouchEaseAge() const { return GetWorld() ? static_cast<float>(FMath::Max(0.0, GetWorld()->GetTimeSeconds() - CrouchEyeTime)) : 0.0f; }
+float AArenaDuelCharacter::GetSlideEaseAge() const { return GetWorld() ? static_cast<float>(FMath::Max(0.0, GetWorld()->GetTimeSeconds() - SlideBlendTime)) : 0.0f; }
+
 float AArenaDuelCharacter::GetEyeEaseOffset() const
 {
 	return GetCrouchEyeOffsetNow() - SlideCameraExtraDrop * GetSlideCameraBlend();
@@ -189,6 +193,10 @@ void AArenaDuelCharacter::StepCrouchEye(float Step)
 {
 	CrouchEyeOffset = GetCrouchEyeOffsetNow() + Step;
 	CrouchEyeTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+#if !UE_BUILD_SHIPPING
+	if (const IConsoleVariable* ShotLog = IConsoleManager::Get().FindConsoleVariable(TEXT("ArenaDuel.Dev.ShotLog")); ShotLog && ShotLog->GetInt() != 0)
+		UE_LOG(LogArenaDuel, Log, TEXT("ShotLog eye %s step=%.1f wall=%.3f %s"), *GetNameSafe(this), Step, FPlatformTime::Seconds(), HasAuthority() ? TEXT("server") : TEXT("owner"));
+#endif
 }
 
 void AArenaDuelCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)
@@ -202,6 +210,10 @@ void AArenaDuelCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, 
 		SlideCameraBlend = GetSlideCameraBlend();
 		SlideBlendTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
 		bSlideBlendTarget = bSliding;
+#if !UE_BUILD_SHIPPING
+		if (const IConsoleVariable* ShotLog = IConsoleManager::Get().FindConsoleVariable(TEXT("ArenaDuel.Dev.ShotLog")); ShotLog && ShotLog->GetInt() != 0 && (IsLocallyControlled() || HasAuthority()))
+			UE_LOG(LogArenaDuel, Log, TEXT("ShotLog eye %s slide=%d wall=%.3f %s"), *GetNameSafe(this), bSliding ? 1 : 0, FPlatformTime::Seconds(), HasAuthority() ? TEXT("server") : TEXT("owner"));
+#endif
 	}
 }
 

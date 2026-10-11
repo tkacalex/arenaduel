@@ -372,6 +372,7 @@ protected:
 	float TimeSinceLanded = 1000.0f;
 	float SpeedAllowance = 0.0f;
 	bool bDevHopWasOn = false;
+	bool bDevRunWasOn = false;
 	float DevStrafeSide = 1.0f;
 	bool bDevFirstJumpDone = false;
 	/** Owner only: jump at the start of the next step, set by a landing with jump held or buffered. */

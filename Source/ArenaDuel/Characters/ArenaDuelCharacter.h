@@ -80,6 +80,9 @@ public:
 	float GetSlideCameraBlend() const;
 	/** How far the eye is from where it settles while it eases after a crouch, a stand-up or a slide change. */
 	float GetEyeEaseOffset() const;
+	/** Seconds since the eye last began to ease after a crouch or a stand-up, and since the last slide start or end. */
+	float GetCrouchEaseAge() const;
+	float GetSlideEaseAge() const;
 	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode = 0) override;
 
 	/** Extra field of view at full slide, in degrees. Local presentation only. */

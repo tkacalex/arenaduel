@@ -123,6 +123,16 @@ namespace
 			if (!Pawn || Args.Num() == 0) return;
 			if (FCString::Atoi(*Args[0]) != 0) Pawn->Crouch(); else Pawn->UnCrouch();
 		}));
+	// ArenaDuel.Dev.Slide 1|0: the local player presses or lets go of the slide key (with ArenaDuel.Dev.Run 1 for the speed a slide needs).
+	FAutoConsoleCommandWithWorldAndArgs CmdSlide(TEXT("ArenaDuel.Dev.Slide"), TEXT("Press (1) or let go of (0) the slide key for the local player"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+			const AArenaDuelCharacter* Pawn = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
+			UArenaDuelCharacterMovementComponent* Movement = Pawn ? Pawn->GetArenaDuelMovementComponent() : nullptr;
+			if (!Movement || Args.Num() == 0) return;
+			if (FCString::Atoi(*Args[0]) != 0) Movement->StartSlide(); else Movement->ReleaseSlideInput();
+		}));
 	// ArenaDuel.Dev.ShotLog 1: one log line for every real shot on the server and every shown shot on the owner,
 	// with the time, the magazine and the height the shot starts from, to compare the two sides of a connection.
 	TAutoConsoleVariable<int32> CVarShotLog(TEXT("ArenaDuel.Dev.ShotLog"), 0, TEXT("1: log every real and every shown shot"));
@@ -879,7 +889,7 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 	const FVector Origin = Character->GetPawnViewLocation();
 	const FVector Direction = Controller->GetControlRotation().Vector();
 #if !UE_BUILD_SHIPPING
-	if (CVarShotLog.GetValueOnGameThread() != 0) UE_LOG(LogArenaDuel, Log, TEXT("ShotLog real %s t=%.3f magazine=%d eye=%.1f ease=%.1f crouched=%d since_switch=%.3f"), *GetNameSafe(GetOwner()), ServerTime, State->MagazineAmmo, Origin.Z - Character->GetActorLocation().Z, Character->GetEyeEaseOffset(), Character->bIsCrouched ? 1 : 0, ServerTime - (EquipmentReadyServerTime - SwitchSeconds));
+	if (CVarShotLog.GetValueOnGameThread() != 0) UE_LOG(LogArenaDuel, Log, TEXT("ShotLog real %s t=%.3f magazine=%d eye=%.1f ease=%.1f crouched=%d since_switch=%.3f crouch_age=%.3f slide_age=%.3f wall=%.3f"), *GetNameSafe(GetOwner()), ServerTime, State->MagazineAmmo, Origin.Z - Character->GetActorLocation().Z, Character->GetEyeEaseOffset(), Character->bIsCrouched ? 1 : 0, ServerTime - (EquipmentReadyServerTime - SwitchSeconds), Character->GetCrouchEaseAge(), Character->GetSlideEaseAge(), FPlatformTime::Seconds());
 #endif
 	FRandomStream Random(++LastShotSequence);
 	int32 BodyPellets = 0, HeadPellets = 0, LimbPellets = 0, WorldPellets = 0;
@@ -1040,7 +1050,7 @@ void UArenaDuelWeaponComponent::LocalCosmeticShot()
 	PartShotWorldTime = LastCosmeticShotWorldTime;
 #if !UE_BUILD_SHIPPING
 	if (const AArenaDuelCharacter* Shooter = Cast<AArenaDuelCharacter>(GetOwner()); Shooter && CVarShotLog.GetValueOnGameThread() != 0)
-		UE_LOG(LogArenaDuel, Log, TEXT("ShotLog shown %s t=%.3f magazine=%d eye=%.1f ease=%.1f crouched=%d since_switch=%.3f"), *GetNameSafe(GetOwner()), LastCosmeticShotWorldTime, GetCurrentMagazineAmmo(), Shooter->GetPawnViewLocation().Z - Shooter->GetActorLocation().Z, Shooter->GetEyeEaseOffset(), Shooter->bIsCrouched ? 1 : 0, LastCosmeticShotWorldTime - (LocalSwitchReadyWorldTime - SwitchSeconds));
+		UE_LOG(LogArenaDuel, Log, TEXT("ShotLog shown %s t=%.3f magazine=%d eye=%.1f ease=%.1f crouched=%d since_switch=%.3f crouch_age=%.3f slide_age=%.3f wall=%.3f"), *GetNameSafe(GetOwner()), LastCosmeticShotWorldTime, GetCurrentMagazineAmmo(), Shooter->GetPawnViewLocation().Z - Shooter->GetActorLocation().Z, Shooter->GetEyeEaseOffset(), Shooter->bIsCrouched ? 1 : 0, LastCosmeticShotWorldTime - (LocalSwitchReadyWorldTime - SwitchSeconds), Shooter->GetCrouchEaseAge(), Shooter->GetSlideEaseAge(), FPlatformTime::Seconds());
 #endif
 	if (const FArenaDuelWeaponDefinition& Fired = GetCurrentDefinition(); Fired.bHasScope && ScopeLevel > 0 && Fired.ScopeRezoomSeconds > 0.0f && GetWorld())
 	{

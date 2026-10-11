@@ -114,6 +114,8 @@ namespace
 	// controlled pawn in the process, so in a two player PIE session host and client both hop.
 	// ArenaDuel.Dev.Hop 1: sprint forward with jump held. ArenaDuel.Dev.Strafe 1: in the air, strafe right at the best angle instead.
 	TAutoConsoleVariable<int32> CVarDevHop(TEXT("ArenaDuel.Dev.Hop"), 0, TEXT("Development: sprint forward and hold jump on local pawns"));
+	// ArenaDuel.Dev.Run 1: sprint forward on local pawns, feet on the ground, for scripted slides.
+	TAutoConsoleVariable<int32> CVarDevRun(TEXT("ArenaDuel.Dev.Run"), 0, TEXT("Development: sprint forward on local pawns"));
 	TAutoConsoleVariable<int32> CVarDevStrafe(TEXT("ArenaDuel.Dev.Strafe"), 0, TEXT("Development: with Dev.Hop, air strafe right at the best angle"));
 }
 #endif
@@ -737,6 +739,8 @@ void UArenaDuelCharacterMovementComponent::TickComponent(float DeltaSeconds, ELe
 #if !UE_BUILD_SHIPPING
 	if (AArenaDuelCharacter* DevCharacter = Cast<AArenaDuelCharacter>(CharacterOwner); DevCharacter && DevCharacter->IsLocallyControlled() && !DevCharacter->IsDead())
 	{
+		if (CVarDevRun.GetValueOnGameThread() != 0) { bWantsSprint = true; bDevRunWasOn = true; DevCharacter->AddMovementInput(DevCharacter->GetActorForwardVector(), 1.0f); }
+		else if (bDevRunWasOn) { bDevRunWasOn = false; bWantsSprint = false; }
 		const bool bDevHop = CVarDevHop.GetValueOnGameThread() != 0;
 		if (bDevHop && !bDevHopWasOn) bDevFirstJumpDone = false;
 		if (bDevHop)
