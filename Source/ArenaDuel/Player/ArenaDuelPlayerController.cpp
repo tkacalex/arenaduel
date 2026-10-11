@@ -207,8 +207,12 @@ void AArenaDuelPlayerController::RefreshMatchPresentation()
 	else
 	{
 		if (CharacterSelectWidget) CharacterSelectWidget->RemoveFromParent();
-		bShowMouseCursor = false;
-		SetInputMode(FInputModeGameOnly());
+		// The upgrade selection may have opened in this same refresh; then the cursor is its to keep.
+		if (!bUpgradeSelectOpen)
+		{
+			bShowMouseCursor = false;
+			SetInputMode(FInputModeGameOnly());
+		}
 	}
 	bCharacterSelectOpen = bShow;
 }
