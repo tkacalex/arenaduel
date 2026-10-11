@@ -41,12 +41,12 @@ namespace
 		return Block;
 	}
 
-	void SetTextIfChanged(UTextBlock* Block, const FString& Value)
+	void SetUpgradeText(UTextBlock* Block, const FString& Value)
 	{
 		if (Block && Block->GetText().ToString() != Value) Block->SetText(FText::FromString(Value));
 	}
 
-	FString Percent(float Share)
+	FString UpgradePercent(float Share)
 	{
 		return FString::Printf(TEXT("%d %%"), FMath::RoundToInt(Share * 100.0f));
 	}
@@ -67,9 +67,9 @@ FString UArenaDuelUpgradeWidget::DescribeEffect(EArenaDuelUpgrade Kind, float St
 {
 	switch (Kind)
 	{
-	case EArenaDuelUpgrade::Reserve: return FString::Printf(TEXT("+%s reserve ammunition per level. Magazine size stays the same."), *Percent(StepPerLevel));
-	case EArenaDuelUpgrade::Reload: return FString::Printf(TEXT("%s shorter reload per level."), *Percent(StepPerLevel));
-	case EArenaDuelUpgrade::Ability: return FString::Printf(TEXT("%s shorter ability cooldowns per level."), *Percent(StepPerLevel));
+	case EArenaDuelUpgrade::Reserve: return FString::Printf(TEXT("+%s reserve ammunition per level. Magazine size stays the same."), *UpgradePercent(StepPerLevel));
+	case EArenaDuelUpgrade::Reload: return FString::Printf(TEXT("%s shorter reload per level."), *UpgradePercent(StepPerLevel));
+	case EArenaDuelUpgrade::Ability: return FString::Printf(TEXT("%s shorter ability cooldowns per level."), *UpgradePercent(StepPerLevel));
 	default: return FString();
 	}
 }
@@ -77,7 +77,7 @@ FString UArenaDuelUpgradeWidget::DescribeEffect(EArenaDuelUpgrade Kind, float St
 FString UArenaDuelUpgradeWidget::DescribeLevel(EArenaDuelUpgrade Kind, float StepPerLevel, int32 Level)
 {
 	if (Level <= 0) return TEXT("no bonus");
-	const FString Total = Percent(StepPerLevel * static_cast<float>(Level));
+	const FString Total = UpgradePercent(StepPerLevel * static_cast<float>(Level));
 	switch (Kind)
 	{
 	case EArenaDuelUpgrade::Reserve: return FString::Printf(TEXT("+%s reserve"), *Total);
@@ -205,11 +205,11 @@ void UArenaDuelUpgradeWidget::Refresh()
 		const int32 Level = Player->GetUpgradeLevel(Kind);
 		const float Step = Player->GetUpgradeStep(Kind);
 		const bool bMaxed = Level >= MaxLevel;
-		SetTextIfChanged(Card.Name, GetUpgradeName(Kind));
-		SetTextIfChanged(Card.Effect, DescribeEffect(Kind, Step));
-		SetTextIfChanged(Card.Level, FString::Printf(TEXT("LEVEL %d / %d   -   %s"), Level, MaxLevel, *DescribeLevel(Kind, Step, Level)));
-		SetTextIfChanged(Card.Next, bMaxed ? FString(TEXT("Fully upgraded. Nothing more to gain here.")) : FString::Printf(TEXT("Next level %d: %s"), Level + 1, *DescribeLevel(Kind, Step, Level + 1)));
-		SetTextIfChanged(Card.ButtonLabel, bMaxed ? FString(TEXT("MAXED")) : bChosen ? FString(TEXT("LOCKED IN")) : FString::Printf(TEXT("CHOOSE  [%d]"), Index + 1));
+		SetUpgradeText(Card.Name, GetUpgradeName(Kind));
+		SetUpgradeText(Card.Effect, DescribeEffect(Kind, Step));
+		SetUpgradeText(Card.Level, FString::Printf(TEXT("LEVEL %d / %d   -   %s"), Level, MaxLevel, *DescribeLevel(Kind, Step, Level)));
+		SetUpgradeText(Card.Next, bMaxed ? FString(TEXT("Fully upgraded. Nothing more to gain here.")) : FString::Printf(TEXT("Next level %d: %s"), Level + 1, *DescribeLevel(Kind, Step, Level + 1)));
+		SetUpgradeText(Card.ButtonLabel, bMaxed ? FString(TEXT("MAXED")) : bChosen ? FString(TEXT("LOCKED IN")) : FString::Printf(TEXT("CHOOSE  [%d]"), Index + 1));
 		const bool bEnabled = !bMaxed && !bChosen;
 		if (Card.Button->GetIsEnabled() != bEnabled) Card.Button->SetIsEnabled(bEnabled);
 		const FLinearColor Fill = bMaxed ? UpgradeCardClosed : UpgradeCardFill;
@@ -217,7 +217,7 @@ void UArenaDuelUpgradeWidget::Refresh()
 		const FLinearColor NameColor = bMaxed ? UpgradeMuted : UpgradeAccent;
 		if (Card.Name->GetColorAndOpacity().GetSpecifiedColor() != NameColor) Card.Name->SetColorAndOpacity(NameColor);
 	}
-	SetTextIfChanged(Title, bChosen ? FString(TEXT("UPGRADE TAKEN")) : FString(TEXT("CHOOSE AN UPGRADE")));
-	SetTextIfChanged(Timer, FString::Printf(TEXT("Next round in %d s at the latest"), FMath::CeilToInt(State->GetUpgradeSelectSecondsRemaining())));
-	SetTextIfChanged(Status, bChosen ? FString(TEXT("Waiting for the other player...")) : FString(TEXT("Both players choose one. No choice in time: the lowest of your upgrades is raised.")));
+	SetUpgradeText(Title, bChosen ? FString(TEXT("UPGRADE TAKEN")) : FString(TEXT("CHOOSE AN UPGRADE")));
+	SetUpgradeText(Timer, FString::Printf(TEXT("Next round in %d s at the latest"), FMath::CeilToInt(State->GetUpgradeSelectSecondsRemaining())));
+	SetUpgradeText(Status, bChosen ? FString(TEXT("Waiting for the other player...")) : FString(TEXT("Both players choose one. No choice in time: the lowest of your upgrades is raised.")));
 }
