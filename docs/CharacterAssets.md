@@ -92,3 +92,7 @@ Note on re-running `SetupZombieAssets.py`: it re-imports the bodies, which drops
 | `A_Zombie_DeathBack`, `A_Zombie_DeathFront` | a body shot on a zombie that is not running: it buckles for 0.3 s the way the shot pushed it, then the ragdoll takes over. A head shot and a runner at speed still drop at once | created, imported, wired; seen in the game as stills; the hand-over to the ragdoll not judged |
 
 `ArenaDuel.Zombie.PreviewClip` (1 charge, 2 slam, 3 and 4 the falls) with `ArenaDuel.Zombie.PreviewTime` holds every living zombie at a frame of a clip. Test: `ArenaDuel.Survival.ZombieClips`.
+
+## Hit reaction: a jolt, not a fold (2026-10-11)
+
+Shot above the hips, a zombie used to fold far backwards: the flinch clip was blended in at half weight, which pulled the stooped body upright and threw it back with the clip's full lean. The flinch is now the clip's motion relative to its own first frame, added to the posture, with at most five degrees per joint, and the arms keep reaching through it. The backward death clip sags at the knees instead of bending the trunk back before the ragdoll takes over. Seen in a run under automatic fire: bodies stay stooped and upright while hit. Not judged: the look in motion.

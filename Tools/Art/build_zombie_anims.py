@@ -13,6 +13,7 @@ whatever points up forward and whatever hangs down backward.
   into a crouch; the hands land on frame 14, which is where the game expects the impact (42 %).
 - A_Zombie_DeathBack and A_Zombie_DeathFront, 20 frames each: the knees give and the body goes over
   backwards, or folds forward. The game plays the first third and lets the ragdoll take the rest.
+  In that third the trunk stays close to upright; it is the legs that fail.
 
 Output: A_Zombie_<Clip>.fbx and zombie_anims.blend.
 """
@@ -145,7 +146,8 @@ def slam(frame, frames):
 
 
 def death_back(frame, frames):
-    buckle = {'pelvis': {'x': -22.0}, 'spine_02': {'x': -24.0, 'z': 8.0}, 'spine_04': {'x': -14.0}, 'neck_01': {'x': -10.0}, 'head': {'x': -22.0, 'y': 10.0},
+    # The knees go first and the trunk only sags; a body that folds backwards at the waist reads as broken.
+    buckle = {'pelvis': {'x': -8.0}, 'spine_02': {'x': -5.0, 'z': 6.0}, 'spine_04': {'x': -3.0}, 'neck_01': {'x': -3.0}, 'head': {'x': -6.0, 'y': 10.0},
               'upperarm_l': {'x': 14.0, 'y': 26.0}, 'upperarm_r': {'x': 30.0, 'y': -34.0}, 'lowerarm_l': {'x': -30.0}, 'lowerarm_r': {'x': -46.0},
               'thigh_l': {'x': -34.0}, 'thigh_r': {'x': -14.0}, 'calf_l': {'x': 66.0}, 'calf_r': {'x': 58.0}, 'foot_l': {'x': -10.0}, 'foot_r': {'x': 10.0}}
     floor = {'pelvis': {'x': -78.0}, 'spine_02': {'x': -12.0}, 'spine_04': {'x': -6.0}, 'head': {'x': -10.0, 'y': 18.0},
