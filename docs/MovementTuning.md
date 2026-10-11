@@ -114,3 +114,13 @@ Ground speeds, slide, bunnyhop, vault and mantle are unchanged. What changed is 
 Tests: `ArenaDuel.Phase4.WallKick` (kick without a wall run, speed kept, stamina, the cooldown, the same wall refused, no wall and the ground) and `ArenaDuel.Phase4.WallMomentum` (entry speed kept, rising entry, wall jump keeping its speed, chain cap) next to the existing wall run and wall jump tests, which pass unchanged; the whole movement, hop, slide and ability suites pass (48 tests), the network wall run and wall jump among them.
 
 Not checked: none of this has been played by hand. One attempt with real input did not reach the game window. The kick is covered at component level only, not in a network test (it travels the same way a wall jump does). How it feels, whether 1550 is too fast for the map and whether three kicks are too many are questions for a play test.
+
+## Wall runs that let go (2026-10-11)
+
+Reported: while sprinting the player got stuck on walls now and then. Found in the wall run:
+
+- A run moved with a plain sweep and no answer to a hit. Sinking to the floor, or meeting a pillar, a crate or a corner, it stayed pressed against it in place until its three seconds or the stamina ran out. Now the floor or anything standing in the way ends the run (falling then lands or slides past), and any other contact is slid along.
+- A run started on any pass beside a wall in the air at sprint speed, also at the very end of a sprint jump or stepping off a kerb. Now it does not start on the way down with less than `WallRunMinGroundClearance` (45 cm) of air under the feet, not when running straight at the wall, and not while steering away from it.
+- Holding the movement input away from the wall lets go of a running wall run.
+
+All three depend only on position, velocity and the held input of the move, so the owner and the server decide the same. Test: `ArenaDuel.Phase4.WallRunNoStick`. Not played by hand.
