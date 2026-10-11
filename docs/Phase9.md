@@ -221,6 +221,42 @@ A head shot feedback was added to the HUD earlier that day (`docs/Loadout.md`, "
 
 Tests and the packaged check are listed in `docs/Loadout.md`. Whole run, filter `ArenaDuel`: 119 of 119 passed, working tree clean. Not done: looking at the marker in a running game (hip fire, scope, different resolutions) and listening to the sounds; a listening list is in `docs/Loadout.md`.
 
+### Phase 9C.3: what the owner shows against what the server fires (2026-10-11)
+
+Measured between two separate game processes without windows, the client with 100 ms simulated latency and 2 % packet loss, playing a fixed sequence by itself (`ArenaDuel.Dev.After`), both sides logging every real and every shown shot (`ArenaDuel.Dev.ShotLog 1`). The same shots are paired by their sequence numbers: the server logs the number of each real shot, and the owner logs, when the confirmation of a number arrives, the eye it had at the shown shot that confirmation answers.
+
+**1. The end of a magazine.** Reproduced first on the build as it was, with the trigger held for 6.5 s on a magazine of 32:
+
+| | Real shots | Shown shots |
+| --- | --- | --- |
+| Before: the magazine | 32 | 34 |
+| Before: after the reload the server started, trigger never let go | 0 | 36 |
+| Before: the whole sequence | 86 | 127 |
+| Now: the magazine | 32 | 32 |
+| Now: after the reload | 0 | 0 |
+| Now: the whole sequence | 86 | 87 |
+
+Two causes. The owner showed a shot whenever the *replicated* magazine count was above zero, and that count arrives after the shots it describes; under latency it showed up to two shots the magazine no longer held. And nothing ended the owner's shown fire when the server started a reload for an empty magazine: the server's fire ends there and needs a new press, but the owner's repeating timer went on and, once the reload was over, kicked the weapon for as long as the trigger stayed down without a single shot leaving.
+
+Now the confirmation of every shot says how many rounds are left after it, and the owner keeps count of the shots it has shown and not heard back about. A shot is shown only while what was last confirmed, less what is still unconfirmed, is above zero (`GetOwnerPredictedMagazine`). The end of a reload makes the replicated count the truth again. A reload the server starts ends the owner's shown fire, on a client and on the host alike. The rule itself is unchanged: after an automatic reload the trigger has to be pressed again.
+
+What is left, 86 to 87: one shown shot at the edge of a very short burst (0.3 s), where the release reaches the server one shot sooner than the owner's timer stops. Not corrected; it is one kick without a shot at most, and no ammunition or damage is involved.
+
+**2. The shot origin while the eye eases.** The hint that came with the press could not help a crouch in the middle of a held burst (there is no new press), and the pairs by sequence number showed more: the server's schedule of shots runs behind the owner's by however long the press took to arrive, and a crouch takes a different time to arrive. Measured, the same shot was fired up to 60 ms further into the ease on one side than on the other.
+
+| Paired by sequence number, 25 shots fired while the eye eased | Largest difference | Median | Within 2 cm |
+| --- | --- | --- | --- |
+| Before (hint with the press only) | 32.1 cm | 1.1 cm | 15 of 25 |
+| Now (hint per shot of the burst) | 0.5 cm | 0.0 cm | 25 of 25 |
+
+Before, the first shots after a crouch during held fire: 23.0 cm on the server against 48.0 for the owner, then 12.6 against 19.4; after a stand-up 15.9 against 48.0 below; into a slide 13.3 against 27.1. Now the same three places read 31.5 and 31.5, 32.4 and 32.4, 28.5 and 28.5.
+
+Now, while its eye eases, the owner sends with each shown shot the number of that shot in the burst and how far along its eye was. The server keeps that for its own shot with the same number and applies it when that shot leaves, with the limits that were there already: its own clock is moved by at most a tenth of a second, only while both sides are in an ease, never from a value that is negative or not a number. A hint for a shot that has left, for one more than eight ahead, or without a held trigger is dropped. The server still computes the origin itself; nothing the client sends is taken as a position.
+
+Limits: the message is unreliable, so a lost one leaves that shot on the server's own clock (with 2 % loss none of the 25 was off by more than 0.5 cm in this run, but one can be). Knife and flashbang carry no hint. A difference in when a shot is *fired* remains, by a frame on each side; it does not show in the eye any more because the hint is about the eye at the shot, not about the time.
+
+Tests: `ArenaDuel.Phase9.Combat.OwnerShowsNoShotBeyondTheMagazineAndStopsWithTheServersReload` (a client with 100 ms simulated latency holds the trigger on five rounds: five shown shots, the shown fire ends with the server's reload, nothing more is shown after it although the trigger was never let go, the owner's assumed magazine equals the real one again, and the server fired five; then the hint for the next shot of a burst is kept until that shot leaves and used by it, and hints for a past shot, a far one, or without a held trigger are not kept). Whole run, filter `ArenaDuel`: 120 of 120 passed, working tree clean. No packaging was needed for this.
+
 ## Areas to check
 
 | ID | P | Area | State |
@@ -269,7 +305,7 @@ Nothing in this list has been done; none of it should be read as checked. Phase 
 - A play test of the automatic weapons at their restored rate of fire.
 - Looking at a running game: a knife fight around a corner (E02), a held trigger after a switch seen by both players (E04), the pause menu during a fight (E06), a boss spawn and a rescue in a real wave (E12), a zombie killed while running and while standing (E11), the packaged game on screen.
 - The shipping build beyond "starts and does not crash": menu, map change and both modes need eyes or a build with logging.
-- The owner showing up to two shots more than leave at the end of a magazine under latency; the second shot of a burst during an ease, up to 9 cm off.
+- One shown shot without a real one at the edge of a very short burst under latency (9C.3, measured, not corrected).
 - A dedicated server with two clients (R01), movement under latency and packet loss with forced corrections (R02), skins, scale and late join (R03).
 - Sound (R05): nothing has been listened to. The sessions that did this work cannot hear.
 - Hands, fingers and every weapon action from both views (R06), zombie hit zones, boss clips and the hand-over to the ragdoll on screen (R07), a full match on the reworked arena (R08), load outside the editor (R09).

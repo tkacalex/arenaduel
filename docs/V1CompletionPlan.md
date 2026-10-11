@@ -28,7 +28,7 @@ Do not rebuild these systems just because older roadmap paragraphs describe thei
 | Real match/upgrade balance | Restored RPM changes practical time-to-kill; real ability cooldown/reload comparisons and several upgrade UI cases remain unaccepted. | Gameplay acceptance, not a reason to change values automatically | 8E |
 | Dedicated gameplay and movement | R01/R02 remain open; the source has only Game and Editor targets. | Validation gap; a distributable server is separate work | 9C / 10B |
 | Zombie presentation on late join | Death-data tests exist; mesh/material/scale application and late join remain open under R03. | Validation gap; do not assume a bug without a failing case | 9C |
-| Predicted weapon feedback | Project logs record up to two extra shown shots at magazine end and residual eased-eye differences. | Measured discrepancy, requiring bounded prediction/authority checks | 9C |
+| Predicted weapon feedback | Fixed 2026-10-11 (9C.3): the owner shows no shot the magazine does not hold and stops its shown fire with a reload the server started; eye hints are tied to the shot of the burst. Measured at 100 ms and 2 % loss: 86 real to 87 shown shots, eye within 0.5 cm for all 25 shots fired during an ease. | One shown shot at the edge of a very short burst remains, measured and accepted as a limit; knife and flashbang origins unchecked | 9C |
 | New hit feedback | Fixed in `d9c09ff` (2026-10-11): the legacy Canvas marker is removed, the UMG marker and its pivot are the root's centre, and confirmed hits reach the HUD as sequenced events that survive several results before one frame. | Code and automated tests done; rendered views at more than one resolution and listening are open | 9D.1 |
 | Impact decals | E16 remains open: world-hit classification and moving/disappearing surfaces. | Existing code finding | 9D.1 |
 | Hands, weapons, zombie motion and arena | R06/R07/R08 still lack complete visual acceptance in both views. | Acceptance gap; no compulsory animation-system rewrite | 9D.2 / 9D.3 |
@@ -96,6 +96,8 @@ Do not rebuild these systems just because older roadmap paragraphs describe thei
 **Done when:** the late client converges to a complete correct state without duplicated visuals/actions, stuck menus or score resets from spectators.
 
 ### 9C.3: predicted fire and eye position
+
+Status 2026-10-11: the first, second and fourth points are done with measurements in `docs/Phase9.md` ("Phase 9C.3"). Open from this list: rapid switches under latency, knife and flashbang origins, and shots over and beside narrow cover with changing frame times between separate processes.
 
 - Reconcile locally predicted ammo/action feedback with accepted server shots; test the end of a magazine, auto reload, burst edges and rapid switches.
 - Re-check remaining eased-eye differences, including a crouch during held fire and knife/flashbang origins.
