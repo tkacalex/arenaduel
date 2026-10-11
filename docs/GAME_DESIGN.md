@@ -10,7 +10,7 @@ Competitive one versus one first person fantasy movement shooter.
 2. 90 second standard rounds
 3. Maximum 9 rounds
 4. No respawn during an active round
-5. Future overtime objective when the timer expires
+5. Future overtime objective when the timer expires. Until it exists, the interim rule of `docs/RoundFlow.md` applies: overtime, the next kill decides
 
 ## Core skills
 

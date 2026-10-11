@@ -46,6 +46,17 @@ The public pre-match frontend implements replicated Shadow/Warden/Rift selection
 
 The prototype round loop and selection frontend already exist, but Phase 8 RPG upgrade choices have not started.
 
+### Phase 8A: round flow (done 2026-10-11; Phase 8 stays open)
+
+The 1v1 mode has a complete round flow on the existing selection, ready, countdown, evaluation and match display. See `docs/RoundFlow.md`.
+
+- A regular round lasts 90 seconds. The server starts and ends it and publishes the end time through the GameState; both players derive minutes and seconds from the synchronised server time and see them in the match header.
+- Interim rule at the limit: with both players alive, an announced overtime begins and the next regular kill decides the round. Health, ammunition and positions are kept; nothing else changes. This stands in for the overtime objective of the game design, which is not built.
+- First to five round wins, the pauses and the return to character selection are unchanged. Every round is decided exactly once, whatever asks for it; a time limit only counts for the round it was started for; leaving, a match end and a restart clear the clock.
+- Zombie Survival inherits the duel classes and has no round clock.
+
+Not part of 8A and still open in Phase 8: match upgrades (RPG choices), weapon selection, the real overtime objective, the nine round cap of the game design, ranked rules for a disconnect.
+
 ## Phase 9: Arena, UI, audiovisual polish, and optimization
 
 Shattered Sanctum, competitive UI, audio, VFX, presentation, settings, and performance work.
