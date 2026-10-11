@@ -393,6 +393,20 @@ public:
 	int32 GetConfirmedBodyHits() const { return ConfirmedBodyHits; }
 	/** Tests: a confirmation as it arrives from the server. */
 	void ConfirmShotForTests(int32 Sequence, EArenaDuelShotResult Result);
+	/** Tests: a confirmation of a firearm's shot as it arrives from the server, with everything that says which shot it is about. Delivered late, out of order or not at all, as an unreliable message is. */
+	void DeliverShotConfirmationForTests(int32 Sequence, int32 MagazineAfter, uint8 WeaponIndex, uint8 BurstId, uint8 BurstShotIndex, uint8 RefillSerial);
+	/** Tests: the eye hint for one shot of one burst as the server receives it. */
+	void EyeEaseHintOfBurstForTests(uint8 BurstId, uint8 BurstShotIndex, float OwnerCrouchEaseAge, float OwnerSlideEaseAge);
+	/** Tests: the owner's bookkeeping of a press and of one shown shot, without the trigger and without a word to the server. */
+	void BeginShownBurstForTests();
+	void ShowShotForTests();
+	uint8 GetOwnerBurstId() const { return 0; }
+	uint8 GetServerBurstId() const { return 0; }
+	uint8 GetMagazineRefillSerial() const { return 0; }
+	/** Owner: the number (as GetShownShotCount counted it) of the shown shot the last confirmation was paired with, 0 for none. */
+	int32 GetLastPairedShownShot() const { return LastPairedShownShot; }
+	/** Server: eye hints that were applied to a shot. */
+	int32 GetEyeHintsUsed() const { return EyeHintsUsed; }
 	/** Tests: the item and the use of it as the server receives them from a remote owner. */
 	void SelectSlotForTests(EArenaDuelLoadoutSlot Slot);
 	void UseEquipmentForTests(bool bAlternate);
@@ -601,6 +615,9 @@ protected:
 	FEyeHint ServerEyeHints[8];
 	/** Development: the eye of each shown shot that waits for its confirmation, to pair it with the server's shot of that sequence number. */
 	TArray<float> ShownShotEyeLog;
+	TArray<int32> ShownShotNumberLog;
+	int32 LastPairedShownShot = 0;
+	int32 EyeHintsUsed = 0;
 	void StopShownFireForReload();
 	// Owner: confirmed hits not yet taken by the HUD. Bounded: a HUD that is not drawn loses the oldest ones.
 	TArray<FHitFeedback> PendingHitFeedback;

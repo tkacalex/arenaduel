@@ -511,7 +511,7 @@ void UArenaDuelWeaponComponent::StartFire()
 	if (bFireHeld) return;
 	// A new press starts from what the server has said: shots shown earlier and never confirmed are forgotten once
 	// they are older than any answer could be.
-	if (GetWorld() && GetWorld()->GetTimeSeconds() - LastShownShotWorldTime > 1.0) { OwnerUnconfirmedShots = 0; ShownShotEyeLog.Reset(); }
+	if (GetWorld() && GetWorld()->GetTimeSeconds() - LastShownShotWorldTime > 1.0) { OwnerUnconfirmedShots = 0; ShownShotEyeLog.Reset(); ShownShotNumberLog.Reset(); }
 	if (bReloading || (GetOwnerPredictedMagazine() <= 0 && !HasInfiniteAmmoForDevelopment()) || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	bFireHeld = true;
 	OwnerBurstShotIndex = 0;
@@ -923,6 +923,7 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 	if (FEyeHint& Hint = ServerEyeHints[ServerBurstShotIndex % UE_ARRAY_COUNT(ServerEyeHints)]; Hint.bValid && Hint.Index == ServerBurstShotIndex)
 	{
 		Hint.bValid = false;
+		++EyeHintsUsed;
 		if (AArenaDuelCharacter* Shooter = Cast<AArenaDuelCharacter>(GetOwner())) Shooter->ApplyOwnerEyeEaseHint(Hint.CrouchAge, Hint.SlideAge);
 	}
 	++ServerBurstShotIndex;
@@ -1097,6 +1098,8 @@ void UArenaDuelWeaponComponent::LocalCosmeticShot()
 		if (!HasInfiniteAmmoForDevelopment()) ++OwnerUnconfirmedShots;
 		ShownShotEyeLog.Add(Owning->GetEyeEaseOffset());
 		if (ShownShotEyeLog.Num() > 64) ShownShotEyeLog.RemoveAt(0);
+		ShownShotNumberLog.Add(ShownShotCount);
+		if (ShownShotNumberLog.Num() > 64) ShownShotNumberLog.RemoveAt(0);
 		// The eye began to ease while the trigger was already held (a crouch in the middle of a burst): no press
 		// carries the hint, so the shown shots do, for as long as the ease lasts.
 		// The first shot of a burst has its hint in the press.
@@ -1555,7 +1558,7 @@ void UArenaDuelWeaponComponent::StopShownFireForReload()
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character || !Character->IsLocallyControlled()) return;
 	OwnerUnconfirmedShots = 0;
-	ShownShotEyeLog.Reset();
+	ShownShotEyeLog.Reset(); ShownShotNumberLog.Reset();
 	if (!bFireHeld) return;
 	bFireHeld = false;
 	if (UWorld* World = GetWorld())
@@ -1580,6 +1583,17 @@ void UArenaDuelWeaponComponent::ServerEyeEaseHint_Implementation(uint8 BurstShot
 	Slot.SlideAge = OwnerSlideEaseAge;
 	Slot.bValid = true;
 }
+void UArenaDuelWeaponComponent::EyeEaseHintOfBurstForTests(uint8 BurstId, uint8 BurstShotIndex, float OwnerCrouchEaseAge, float OwnerSlideEaseAge) { ServerEyeEaseHint_Implementation(BurstShotIndex, OwnerCrouchEaseAge, OwnerSlideEaseAge); }
+void UArenaDuelWeaponComponent::DeliverShotConfirmationForTests(int32 Sequence, int32 MagazineAfter, uint8 WeaponIndex, uint8 BurstId, uint8 BurstShotIndex, uint8 RefillSerial) { ClientShotConfirmation_Implementation(Sequence, EArenaDuelShotResult::Miss, 0.0f, 0, 0, MagazineAfter); }
+void UArenaDuelWeaponComponent::BeginShownBurstForTests() { OwnerBurstShotIndex = 0; }
+void UArenaDuelWeaponComponent::ShowShotForTests()
+{
+	++ShownShotCount;
+	++OwnerUnconfirmedShots;
+	ShownShotEyeLog.Add(0.0f);
+	ShownShotNumberLog.Add(ShownShotCount);
+	++OwnerBurstShotIndex;
+}
 void UArenaDuelWeaponComponent::EyeEaseHintForTests(uint8 BurstShotIndex, float OwnerCrouchEaseAge, float OwnerSlideEaseAge) { ServerEyeEaseHint_Implementation(BurstShotIndex, OwnerCrouchEaseAge, OwnerSlideEaseAge); }
 
 void UArenaDuelWeaponComponent::ClientShotConfirmation_Implementation(int32 Sequence, EArenaDuelShotResult Result, float Distance, int32 PelletsHit, int32 HeadPellets, int32 MagazineAfter)
@@ -1594,6 +1608,8 @@ void UArenaDuelWeaponComponent::ClientShotConfirmation_Implementation(int32 Sequ
 		if (CVarShotLog.GetValueOnGameThread() != 0 && ShownShotEyeLog.Num() > 0) UE_LOG(LogArenaDuel, Log, TEXT("ShotLog pair seq=%d shown_ease=%.1f magazine=%d wall=%.3f"), Sequence, ShownShotEyeLog[0], MagazineAfter, FPlatformTime::Seconds());
 #endif
 		if (ShownShotEyeLog.Num() > 0) ShownShotEyeLog.RemoveAt(0);
+		LastPairedShownShot = ShownShotNumberLog.Num() > 0 ? ShownShotNumberLog[0] : 0;
+		if (ShownShotNumberLog.Num() > 0) ShownShotNumberLog.RemoveAt(0);
 	}
 	LastShotSequence = Sequence; LastShotResult = Result; LastShotDistance = Distance; LastPelletsHit = PelletsHit; LastHeadPellets = HeadPellets; LastShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
 	// Every confirmation that met a body becomes one event for the HUD. Reading only the last result would lose

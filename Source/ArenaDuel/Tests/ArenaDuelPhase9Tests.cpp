@@ -109,6 +109,21 @@ namespace ArenaDuelPhase9Tests
 		if (World) for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It) ++Count;
 		return Count;
 	}
+	/** An automatic weapon and any other one, by their places in the definitions. */
+	static int32 AnAutomaticWeapon()
+	{
+		const UArenaDuelWeaponComponent* Defaults = GetDefault<UArenaDuelWeaponComponent>();
+		for (int32 Index = Defaults->GetWeaponDefinitionCount() - 1; Index >= 0; --Index) if (Defaults->GetWeaponDefinition(Index)->bAutomatic) return Index;
+		return 0;
+	}
+	static int32 AnotherWeaponThan(int32 Index) { return Index == 0 ? 1 : 0; }
+	static UArenaDuelWeaponComponent* LocalWeapon(UWorld* World)
+	{
+		const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+		const AArenaDuelCharacter* Pawn = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
+		return Pawn ? Pawn->GetWeaponComponent() : nullptr;
+	}
+
 	static bool BothAliveInRound(UWorld* World)
 	{
 		const AArenaDuelGameState* GameState = World ? World->GetGameState<AArenaDuelGameState>() : nullptr;
@@ -900,6 +915,207 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 				if (Weapon->HasEyeHintForTests(3)) TestRunner->AddError(TEXT("A hint was kept although the trigger is not held"));
 				return true;
 			}, FTimespan::FromSeconds(4.0));
+	}
+
+	// 9C.3, late messages: the confirmation of a shot is unreliable and can arrive after the weapon was changed
+	// or after a reload ended. What it says about the magazine belongs to the weapon and the filling it was
+	// fired from, not to whatever is in the hands when it arrives.
+	TEST_METHOD(LateConfirmationIsNotTakenForAnotherWeaponOrAnotherFilling)
+	{
+		using namespace ArenaDuelPhase9Tests;
+		const int32 FirstWeapon = AnAutomaticWeapon(), OtherWeapon = AnotherWeaponThan(FirstWeapon);
+		Network
+			.UntilServer(TEXT("Both duel players have pawns"), [](FArenaDuelPhase9State& State) { return PawnForSlot(State.World, 0) && PawnForSlot(State.World, 1); }, FTimespan::FromSeconds(10.0))
+			.ThenServer(TEXT("Start a round"), [](FArenaDuelPhase9State& State) { StartMatch(State.World); })
+			.UntilServer(TEXT("Round one runs"), [](FArenaDuelPhase9State& State) { return BothAliveInRound(State.World); }, FTimespan::FromSeconds(6.0))
+			.ThenServer(TEXT("The client's pawn has three rounds left in one weapon and holds another, full one"), [FirstWeapon, OtherWeapon](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 1)->GetWeaponComponent();
+				Weapon->GrantAllWeaponsForDevelopment();
+				Weapon->EquipWeapon(FirstWeapon);
+				Weapon->RefillAllAmmoForDevelopment();
+				Weapon->ConsumeAmmoForTests(Weapon->GetCurrentMagazineAmmo() - 3);
+				Weapon->EquipWeapon(OtherWeapon);
+				Weapon->ClearActionTimesForTests();
+			})
+			.UntilClient(TEXT("Client: it holds the full weapon"), 0, [OtherWeapon](FArenaDuelPhase9State& State)
+			{
+				const UArenaDuelWeaponComponent* Weapon = LocalWeapon(State.World);
+				return Weapon && Weapon->GetEquippedWeaponIndex() == OtherWeapon && Weapon->GetActiveSlot() == EArenaDuelLoadoutSlot::Primary && !Weapon->IsReloading() && Weapon->GetCurrentMagazineAmmo() == Weapon->GetCurrentDefinition().MagazineCapacity;
+			}, FTimespan::FromSeconds(6.0))
+			.ThenClient(TEXT("Client: the confirmation of the other weapon's last shot arrives after the switch"), 0, [this, FirstWeapon](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = LocalWeapon(State.World);
+				State.Serial = Weapon->GetMagazineRefillSerial();
+				State.Sequence = Weapon->GetLastShotSequence();
+				Weapon->DeliverShotConfirmationForTests(State.Sequence + 1, 0, static_cast<uint8>(FirstWeapon), 200, 0, static_cast<uint8>(State.Serial));
+				if (Weapon->GetOwnerPredictedMagazine() != Weapon->GetCurrentMagazineAmmo())
+					TestRunner->AddError(FString::Printf(TEXT("A late confirmation of the other weapon was taken for the one in the hands: %d rounds assumed of %d"), Weapon->GetOwnerPredictedMagazine(), Weapon->GetCurrentMagazineAmmo()));
+			})
+			.ThenServer(TEXT("Server: back to the first weapon, and a reload"), [FirstWeapon](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 1)->GetWeaponComponent();
+				Weapon->EquipWeapon(FirstWeapon);
+				Weapon->ClearActionTimesForTests();
+				Weapon->RequestReloadForTests();
+			})
+			.UntilClient(TEXT("Client: the reload is over and the magazine is full"), 0, [FirstWeapon](FArenaDuelPhase9State& State)
+			{
+				const UArenaDuelWeaponComponent* Weapon = LocalWeapon(State.World);
+				return Weapon && Weapon->GetEquippedWeaponIndex() == FirstWeapon && !Weapon->IsReloading() && Weapon->GetCurrentMagazineAmmo() == Weapon->GetCurrentDefinition().MagazineCapacity;
+			}, FTimespan::FromSeconds(12.0))
+			.ThenClient(TEXT("Client: a confirmation from before the reload arrives after it, and the trigger still works"), 0, [this, FirstWeapon](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = LocalWeapon(State.World);
+				Weapon->ClearActionTimesForTests();
+				Weapon->DeliverShotConfirmationForTests(State.Sequence + 2, 0, static_cast<uint8>(FirstWeapon), 201, 0, static_cast<uint8>(State.Serial));
+				if (Weapon->GetOwnerPredictedMagazine() != Weapon->GetCurrentMagazineAmmo())
+					TestRunner->AddError(FString::Printf(TEXT("A confirmation from before the reload was taken for the filled magazine: %d rounds assumed of %d"), Weapon->GetOwnerPredictedMagazine(), Weapon->GetCurrentMagazineAmmo()));
+				Weapon->StartFire();
+				if (!Weapon->IsLocalFireHeld()) TestRunner->AddError(TEXT("With a full magazine the trigger did nothing after the late confirmation"));
+				Weapon->StopFire();
+				State.Mark = State.World->GetTimeSeconds();
+			})
+			.UntilClient(TEXT("Client: a confirmation of this filling is taken, an older one after it is not"), 0, [this, FirstWeapon](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = LocalWeapon(State.World);
+				// Whatever the short press fired has been answered by now.
+				if (State.World->GetTimeSeconds() - State.Mark < 0.8) return false;
+				const int32 Sequence = FMath::Max(Weapon->GetLastShotSequence(), State.Sequence) + 10;
+				const uint8 Refill = Weapon->GetMagazineRefillSerial();
+				Weapon->DeliverShotConfirmationForTests(Sequence + 2, 7, static_cast<uint8>(FirstWeapon), 202, 1, Refill);
+				if (Weapon->GetOwnerPredictedMagazine() != 7) TestRunner->AddError(FString::Printf(TEXT("A confirmation of the weapon in the hands and its filling was not taken: %d rounds assumed, 7 confirmed"), Weapon->GetOwnerPredictedMagazine()));
+				Weapon->DeliverShotConfirmationForTests(Sequence + 1, 9, static_cast<uint8>(FirstWeapon), 202, 0, Refill);
+				if (Weapon->GetOwnerPredictedMagazine() != 7) TestRunner->AddError(FString::Printf(TEXT("A confirmation of an earlier shot, arriving after a later one, set the magazine back: %d rounds assumed, 7 confirmed last"), Weapon->GetOwnerPredictedMagazine()));
+				return true;
+			}, FTimespan::FromSeconds(4.0));
+	}
+
+	// 9C.3, late messages: an eye hint names the burst it belongs to. One of the burst before is not kept for a
+	// shot of the running one, and a shot whose hint never arrives is fired from the server's own clock.
+	TEST_METHOD(EyeHintOfAnEarlierBurstIsDroppedAndALostHintLeavesItsShotToTheServer)
+	{
+		using namespace ArenaDuelPhase9Tests;
+		const int32 WeaponIndex = AnAutomaticWeapon();
+		Network
+			.UntilServer(TEXT("Both duel players have pawns"), [](FArenaDuelPhase9State& State) { return PawnForSlot(State.World, 0) && PawnForSlot(State.World, 1); }, FTimespan::FromSeconds(10.0))
+			.ThenServer(TEXT("Start a round"), [](FArenaDuelPhase9State& State) { StartMatch(State.World); })
+			.UntilServer(TEXT("Round one runs"), [](FArenaDuelPhase9State& State) { return BothAliveInRound(State.World); }, FTimespan::FromSeconds(6.0))
+			.ThenServer(TEXT("The client's pawn holds an automatic weapon"), [WeaponIndex](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 1)->GetWeaponComponent();
+				Weapon->GrantAllWeaponsForDevelopment();
+				Weapon->EquipWeapon(WeaponIndex);
+				Weapon->RefillAllAmmoForDevelopment();
+				Weapon->ClearActionTimesForTests();
+				State.Mark = State.World->GetTimeSeconds();
+				State.Serial = 0;
+			})
+			.UntilServer(TEXT("Server: a burst, a second one, a hint of the first during the second, and one hint that never arrives"), [this](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 1)->GetWeaponComponent();
+				const double Now = State.World->GetTimeSeconds();
+				if (State.Serial == 0)
+				{
+					if (Now - State.Mark < 0.4) return false;
+					Weapon->SetFireHeldForTests(true, 1000.0f, 1000.0f);
+					if (Weapon->GetServerBurstShotIndex() != 1) { TestRunner->AddError(TEXT("The first shot of the first burst did not leave with the press")); return true; }
+					State.Sequence = Weapon->GetServerBurstId();
+					Weapon->SetFireHeldForTests(false, 1000.0f, 1000.0f);
+					State.Mark = Now;
+					State.Serial = 1;
+					return false;
+				}
+				if (State.Serial == 1)
+				{
+					if (Now - State.Mark < 0.4) return false;
+					Weapon->SetFireHeldForTests(true, 1000.0f, 1000.0f);
+					if (Weapon->GetServerBurstShotIndex() != 1) { TestRunner->AddError(TEXT("The first shot of the second burst did not leave with the press")); return true; }
+					const uint8 Burst = Weapon->GetServerBurstId();
+					if (Burst == static_cast<uint8>(State.Sequence)) TestRunner->AddError(TEXT("Two bursts have the same number"));
+					// Late: sent during the burst before, about its second shot.
+					Weapon->EyeEaseHintOfBurstForTests(static_cast<uint8>(State.Sequence), 1, 0.05f, 1000.0f);
+					if (Weapon->HasEyeHintForTests(1)) TestRunner->AddError(TEXT("A hint of the burst before was kept for a shot of the running one"));
+					// Of this burst: for its second and its fourth shot. The one for the third is lost on the way.
+					Weapon->EyeEaseHintOfBurstForTests(Burst, 1, 0.05f, 1000.0f);
+					Weapon->EyeEaseHintOfBurstForTests(Burst, 3, 0.05f, 1000.0f);
+					if (!Weapon->HasEyeHintForTests(1) || !Weapon->HasEyeHintForTests(3)) TestRunner->AddError(TEXT("A hint of the running burst was not kept"));
+					State.Ammo = Weapon->GetEyeHintsUsed();
+					State.Serial = 2;
+					return false;
+				}
+				if (Weapon->GetServerBurstShotIndex() < 4) return false;
+				if (Weapon->GetEyeHintsUsed() - State.Ammo != 2) TestRunner->AddError(FString::Printf(TEXT("Four shots with hints for two of them: %d hints were used"), Weapon->GetEyeHintsUsed() - State.Ammo));
+				if (Weapon->HasEyeHintForTests(1) || Weapon->HasEyeHintForTests(2) || Weapon->HasEyeHintForTests(3)) TestRunner->AddError(TEXT("A hint is still kept after its shot left"));
+				Weapon->SetFireHeldForTests(false, 1000.0f, 1000.0f);
+				return true;
+			}, FTimespan::FromSeconds(6.0));
+	}
+
+	// 9C.3, pairing: a confirmation names the burst and the shot in it, and is paired with that shown shot. A
+	// shown shot that never left (one too many at the end of a burst) and a confirmation that never arrived must
+	// not shift the pairs after them, or the shot origin would be compared between two different shots.
+	TEST_METHOD(ConfirmationIsPairedWithItsOwnShownShot)
+	{
+		using namespace ArenaDuelPhase9Tests;
+		const int32 WeaponIndex = AnAutomaticWeapon();
+		Network
+			.UntilServer(TEXT("Both duel players have pawns"), [](FArenaDuelPhase9State& State) { return PawnForSlot(State.World, 0) && PawnForSlot(State.World, 1); }, FTimespan::FromSeconds(10.0))
+			.ThenServer(TEXT("Start a round"), [](FArenaDuelPhase9State& State) { StartMatch(State.World); })
+			.UntilServer(TEXT("Round one runs"), [](FArenaDuelPhase9State& State) { return BothAliveInRound(State.World); }, FTimespan::FromSeconds(6.0))
+			.ThenServer(TEXT("The client's pawn holds a full automatic weapon"), [WeaponIndex](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 1)->GetWeaponComponent();
+				Weapon->GrantAllWeaponsForDevelopment();
+				Weapon->EquipWeapon(WeaponIndex);
+				Weapon->RefillAllAmmoForDevelopment();
+			})
+			.UntilClient(TEXT("Client: it holds the weapon"), 0, [WeaponIndex](FArenaDuelPhase9State& State)
+			{
+				const UArenaDuelWeaponComponent* Weapon = LocalWeapon(State.World);
+				return Weapon && Weapon->GetEquippedWeaponIndex() == WeaponIndex && Weapon->GetActiveSlot() == EArenaDuelLoadoutSlot::Primary && !Weapon->IsReloading() && Weapon->GetCurrentMagazineAmmo() == Weapon->GetCurrentDefinition().MagazineCapacity;
+			}, FTimespan::FromSeconds(6.0))
+			.ThenClient(TEXT("Client: shown shots and their confirmations, one shot too many, one confirmation lost, one late"), 0, [this, WeaponIndex](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = LocalWeapon(State.World);
+				const uint8 Index = static_cast<uint8>(WeaponIndex), Refill = Weapon->GetMagazineRefillSerial();
+				const int32 Full = Weapon->GetCurrentMagazineAmmo();
+				int32 Sequence = Weapon->GetLastShotSequence();
+				const auto Expect = [this, Weapon](int32 Shown, int32 Magazine, const TCHAR* What)
+				{
+					if (Weapon->GetLastPairedShownShot() != Shown) TestRunner->AddError(FString::Printf(TEXT("%s: paired with shown shot %d, expected %d"), What, Weapon->GetLastPairedShownShot(), Shown));
+					if (Weapon->GetOwnerPredictedMagazine() != Magazine) TestRunner->AddError(FString::Printf(TEXT("%s: %d rounds assumed, expected %d"), What, Weapon->GetOwnerPredictedMagazine(), Magazine));
+				};
+				// First burst: three shown shots, the server fired two.
+				Weapon->BeginShownBurstForTests();
+				const uint8 First = Weapon->GetOwnerBurstId();
+				Weapon->ShowShotForTests(); const int32 A0 = Weapon->GetShownShotCount();
+				Weapon->ShowShotForTests(); const int32 A1 = Weapon->GetShownShotCount();
+				Weapon->ShowShotForTests();
+				Weapon->DeliverShotConfirmationForTests(++Sequence, Full - 1, Index, First, 0, Refill);
+				Expect(A0, Full - 3, TEXT("First shot of the first burst"));
+				Weapon->DeliverShotConfirmationForTests(++Sequence, Full - 2, Index, First, 1, Refill);
+				Expect(A1, Full - 3, TEXT("Second shot of the first burst"));
+				// Second burst: its first confirmation belongs to its first shown shot, not to the one left over.
+				Weapon->BeginShownBurstForTests();
+				const uint8 Second = Weapon->GetOwnerBurstId();
+				if (Second == First) TestRunner->AddError(TEXT("Two presses have the same burst number"));
+				Weapon->ShowShotForTests(); const int32 B0 = Weapon->GetShownShotCount();
+				Weapon->DeliverShotConfirmationForTests(++Sequence, Full - 3, Index, Second, 0, Refill);
+				Expect(B0, Full - 3, TEXT("First shot of the second burst, after a shown shot that never left"));
+				// The confirmation of the second shot is lost; the third one's is paired with the third.
+				Weapon->ShowShotForTests();
+				Weapon->ShowShotForTests(); const int32 B2 = Weapon->GetShownShotCount();
+				Sequence += 2;
+				Weapon->DeliverShotConfirmationForTests(Sequence, Full - 5, Index, Second, 2, Refill);
+				Expect(B2, Full - 5, TEXT("Third shot of the second burst, after a lost confirmation"));
+				if (Weapon->GetUnconfirmedShownShots() != 0) TestRunner->AddError(FString::Printf(TEXT("%d shown shots still wait for an answer that has been overtaken"), Weapon->GetUnconfirmedShownShots()));
+				// A real shot the owner never showed, and the lost confirmation arriving after all.
+				Weapon->DeliverShotConfirmationForTests(++Sequence, Full - 6, Index, Second, 9, Refill);
+				Expect(0, Full - 6, TEXT("A shot that was never shown"));
+				Weapon->DeliverShotConfirmationForTests(Sequence - 2, Full - 4, Index, Second, 1, Refill);
+				Expect(0, Full - 6, TEXT("A confirmation arriving after a later one"));
+			});
 	}
 
 	// E07: a choice names its selection; one from an earlier selection is refused in a later one.
