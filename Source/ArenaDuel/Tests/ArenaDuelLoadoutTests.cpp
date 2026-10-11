@@ -1,6 +1,9 @@
 #if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS
 
 #include "Misc/AutomationTest.h"
+#include "UObject/UnrealType.h"
+#include "Engine/StaticMesh.h"
+#include "Components/StaticMeshComponent.h"
 #include "ArenaDuel/Characters/ArenaDuelCharacter.h"
 #include "ArenaDuel/Weapons/ArenaDuelFlashbang.h"
 #include "ArenaDuel/Weapons/ArenaDuelWeaponComponent.h"
@@ -128,6 +131,77 @@ bool FArenaDuelCrouchedShotOriginTest::RunTest(const FString& Parameters)
 	Character->RecalculateBaseEyeHeight();
 	TestTrue(TEXT("The engine's eye height drops when crouched"), Character->BaseEyeHeight < CameraHeight - 10.0f);
 	TestTrue(TEXT("Crouched, shots still start at the camera"), FMath::IsNearlyEqual(Character->GetPawnViewLocation().Z - Character->GetActorLocation().Z, CameraHeight, 0.1));
+	return true;
+}
+namespace
+{
+	// The held item is replicated state the server owns; a test sets it the way replication would.
+	void SetReplicatedByte(UObject* Object, const TCHAR* Name, uint8 Value)
+	{
+		if (const FByteProperty* Property = FindFProperty<FByteProperty>(Object->GetClass(), Name)) Property->SetPropertyValue_InContainer(Object, Value);
+	}
+	void SetReplicatedBool(UObject* Object, const TCHAR* Name, bool bValue)
+	{
+		if (const FBoolProperty* Property = FindFProperty<FBoolProperty>(Object->GetClass(), Name)) Property->SetPropertyValue_InContainer(Object, bValue);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelHeldItemPresentationTest, "ArenaDuel.Loadout.HeldItemPresentation", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FArenaDuelHeldItemPresentationTest::RunTest(const FString& Parameters)
+{
+	FAutomationEditorCommonUtils::CreateNewMap();
+	UWorld* World = GEditor ? GEditor->GetEditorWorldContext().World() : nullptr;
+	if (!TestNotNull(TEXT("Test world"), World)) return false;
+	AArenaDuelCharacter* Character = World->SpawnActor<AArenaDuelCharacter>(AArenaDuelCharacter::StaticClass(), FVector(0.0f, 0.0f, 300.0f), FRotator::ZeroRotator);
+	UArenaDuelWeaponComponent* Weapon = Character ? Character->GetWeaponComponent() : nullptr;
+	if (!TestNotNull(TEXT("Weapon component"), Weapon) || !TestNotNull(TEXT("First person weapon mesh"), Weapon->GetFirstPersonWeaponMesh())) return false;
+	const auto Hold = [Weapon](EArenaDuelLoadoutSlot Slot)
+	{
+		SetReplicatedByte(Weapon, TEXT("ActiveSlot"), static_cast<uint8>(Slot));
+		Weapon->NotifyHeldItemChanged();
+	};
+
+	// Regression: after a throw the server puts the firearm back at once, and the throw used to play on with the firearm in hand.
+	Hold(EArenaDuelLoadoutSlot::Flashbang);
+	TestNotNull(TEXT("The grenade is in the hand before the throw"), Weapon->GetFirstPersonWeaponMesh()->GetStaticMesh().Get());
+	Weapon->NotifyEquipmentThrownCosmetic(false);
+	Hold(EArenaDuelLoadoutSlot::Primary);
+	TestTrue(TEXT("The throw is shown"), Weapon->IsShowingThrow());
+	TestTrue(TEXT("While it is shown the hands are not presented with the firearm"), Weapon->GetPresentedSlot() == EArenaDuelLoadoutSlot::Flashbang);
+	TestNull(TEXT("While it is shown the hand is empty"), Weapon->GetFirstPersonWeaponMesh()->GetStaticMesh().Get());
+	TestNull(TEXT("The world body's hand is empty too"), Weapon->GetThirdPersonWeaponMesh()->GetStaticMesh().Get());
+	TestTrue(TEXT("The rule state is untouched: the firearm is the active slot"), Weapon->GetActiveSlot() == EArenaDuelLoadoutSlot::Primary);
+	Weapon->FinishThrowPresentation();
+	TestFalse(TEXT("The throw is over"), Weapon->IsShowingThrow());
+	TestTrue(TEXT("The firearm is presented"), Weapon->GetPresentedSlot() == EArenaDuelLoadoutSlot::Primary);
+	TestNotNull(TEXT("The firearm is in the hand"), Weapon->GetFirstPersonWeaponMesh()->GetStaticMesh().Get());
+	// The other order of arrival: the slot first, the throw after it.
+	Hold(EArenaDuelLoadoutSlot::Flashbang);
+	Hold(EArenaDuelLoadoutSlot::Primary);
+	Weapon->NotifyEquipmentThrownCosmetic(true);
+	TestNull(TEXT("A throw that arrives after the slot change still empties the hand"), Weapon->GetFirstPersonWeaponMesh()->GetStaticMesh().Get());
+	Weapon->FinishThrowPresentation();
+
+	// Regression: a knife swing used to keep moving the viewmodel after a quick change to another item.
+	Hold(EArenaDuelLoadoutSlot::Knife);
+	Weapon->NotifyKnifeSwingCosmetic(false, true);
+	TestTrue(TEXT("The swing is shown with the knife"), Weapon->IsShowingKnifeSwing());
+	Hold(EArenaDuelLoadoutSlot::Primary);
+	TestFalse(TEXT("The swing ends with the knife"), Weapon->IsShowingKnifeSwing());
+	Weapon->NotifyKnifeSwingCosmetic(true, false);
+	TestFalse(TEXT("A swing that arrives after the change is not shown"), Weapon->IsShowingKnifeSwing());
+	Hold(EArenaDuelLoadoutSlot::Knife);
+	TestFalse(TEXT("Coming back to the knife does not replay the old swing"), Weapon->IsShowingKnifeSwing());
+	Hold(EArenaDuelLoadoutSlot::Primary);
+
+	// Regression: on a weapon that is not the local player's the presentation switches itself off when idle,
+	// and a reload that began later did not switch it on again, so the magazine and bolt stood still.
+	Weapon->SetComponentTickEnabled(false);
+	SetReplicatedBool(Weapon, TEXT("bReloading"), true);
+	Weapon->OnRep_Reloading();
+	TestTrue(TEXT("A reload wakes the presentation of an idle weapon"), Weapon->IsComponentTickEnabled());
+	TestTrue(TEXT("The support hand goes with the magazine"), Weapon->DoesSupportHandFollowReload());
+	SetReplicatedBool(Weapon, TEXT("bReloading"), false);
 	return true;
 }
 #endif

@@ -123,7 +123,7 @@ namespace
 				const UCameraComponent* Camera = Character->GetFirstPersonCamera();
 				const FRotator View = Camera ? Camera->GetComponentRotation() : Character->GetViewRotation();
 				const FTransform BodyTransform = Body->GetComponentTransform();
-				const bool bOneHanded = Weapon->GetActiveSlot() != EArenaDuelLoadoutSlot::Primary;
+				const bool bOneHanded = Weapon->GetPresentedSlot() != EArenaDuelLoadoutSlot::Primary;
 				bool bGrip = RightHandIndex != INDEX_NONE && Weapon->GetLeftHandGripWorldLocation(GripWorld, bThirdPersonBody);
 				if (!bGrip && bOneHanded && RightHandIndex != INDEX_NONE)
 				{
@@ -167,7 +167,7 @@ namespace
 			// What the opponent is doing with the weapon and where they look, read from replicated state.
 			bWorldBodyPose = bThirdPersonBody && Character && !Character->IsDead();
 			AimOverlay = Visual ? Visual->GetIdleClip() : nullptr;
-			const bool bAimingBody = bWorldBodyPose && Weapon && Weapon->IsAiming() && Weapon->GetActiveSlot() == EArenaDuelLoadoutSlot::Primary;
+			const bool bAimingBody = bWorldBodyPose && Weapon && Weapon->IsAiming() && Weapon->GetPresentedSlot() == EArenaDuelLoadoutSlot::Primary;
 			AimWeight = (bAimingBody ? 1.0f : 0.0f) + (AimWeight - (bAimingBody ? 1.0f : 0.0f)) * Decay;
 			if (AimOverlay && AimOverlay->GetPlayLength() > 0.0f) AimTime = FMath::Fmod(AimTime + FMath::Max(DeltaSeconds, 0.0f), AimOverlay->GetPlayLength());
 			const float LowTarget = bWorldBodyPose && !bAimingBody && !bReloadingBody ? 1.0f : 0.0f;
@@ -179,24 +179,26 @@ namespace
 			if (bWorldBodyPose && Weapon && Instance->GetWorld())
 			{
 				const float Now = Instance->GetWorld()->GetTimeSeconds();
-				if (const float Length = Weapon->WasKnifeSwingHeavy() ? 0.42f : 0.26f, Age = Now - Weapon->GetKnifeSwingWorldTime(); Age >= 0.0f && Age < Length)
+				if (const float Length = Weapon->WasKnifeSwingHeavy() ? 0.42f : 0.26f, Age = Now - Weapon->GetKnifeSwingWorldTime(); Weapon->IsShowingKnifeSwing())
 				{
 					// A slash comes up and across the body; a stab is drawn back and driven forward.
 					const float T = Age / Length, Arc = FMath::Sin(PI * T);
 					if (Weapon->WasKnifeSwingHeavy()) ActionRaise = T < 0.3f ? -18.0f * FMath::Sin(PI * T / 0.3f) : 62.0f * FMath::Sin(PI * FMath::Clamp((T - 0.3f) / 0.7f, 0.0f, 1.0f));
 					else { ActionRaise = 48.0f * Arc; ActionSweep = FMath::Lerp(-30.0f, 42.0f, T) * Arc; }
 				}
-				if (const float Age = Now - Weapon->GetThrowWorldTime(); Age >= 0.0f && Age < 0.4f)
+				if (const float Age = Now - Weapon->GetThrowWorldTime(); Weapon->IsShowingThrow())
 				{
 					// The arm goes over the shoulder for a long throw and swings low for a short one.
-					const float Arc = FMath::Sin(PI * Age / 0.4f);
+					const float Arc = FMath::Sin(PI * FMath::Clamp(Age / Weapon->GetThrowSeconds(), 0.0f, 1.0f));
 					ActionRaise += (Weapon->WasThrowShort() ? 40.0f : 115.0f) * Arc;
 				}
 			}
 			bFingerPose = Character && !Character->IsDead() && Weapon && (bRigidForearm || bThirdPersonBody);
 			if (bFingerPose)
 			{
-				FingerTarget = FingerPoseFor(Weapon->GetActiveSlot(), Weapon->GetEquippedWeaponIndex());
+				FingerTarget = FingerPoseFor(Weapon->GetPresentedSlot(), Weapon->GetEquippedWeaponIndex());
+				// An empty hand that has just let go of the grenade is open.
+				if (Weapon->IsShowingThrow()) { FingerTarget.RightThumb = -14.0f; FingerTarget.RightFingers = -30.0f; }
 				// During a reload the support hand works the magazine; the clip's own fingers are right for that.
 				if (Weapon->IsReloading()) FingerTarget.LeftThumb = FingerTarget.LeftFingers = 0.0f;
 				const float FingerDecay = FMath::Exp(-16.0f * FMath::Max(DeltaSeconds, 0.0f));
@@ -206,9 +208,10 @@ namespace
 				Fingers.LeftFingers = FingerTarget.LeftFingers + (Fingers.LeftFingers - FingerTarget.LeftFingers) * FingerDecay;
 				const UWorld* World = Instance->GetWorld();
 				const float TriggerAge = World ? World->GetTimeSeconds() - Weapon->GetLastTriggerWorldTime() : 10.0f;
-				TriggerPull = Weapon->GetActiveSlot() == EArenaDuelLoadoutSlot::Primary && TriggerAge >= 0.0f && TriggerAge < 0.12f ? FMath::Sin(PI * TriggerAge / 0.12f) : 0.0f;
+				TriggerPull = Weapon->GetPresentedSlot() == EArenaDuelLoadoutSlot::Primary && TriggerAge >= 0.0f && TriggerAge < 0.12f ? FMath::Sin(PI * TriggerAge / 0.12f) : 0.0f;
 			}
-			const float TargetBlend = bHasLeftGrip && Weapon && !Weapon->IsReloading() ? 1.0f : 0.0f;
+			// In a reload the support hand stays with the weapon when it has a magazine or a pump to work.
+			const float TargetBlend = bHasLeftGrip && Weapon && (!Weapon->IsReloading() || Weapon->DoesSupportHandFollowReload()) ? 1.0f : 0.0f;
 			LeftHandIKBlend = TargetBlend + (LeftHandIKBlend - TargetBlend) * Decay;
 		}
 		virtual bool Evaluate(FPoseContext& Output) override
@@ -521,7 +524,7 @@ void UArenaDuelVisualAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		// with the weapon arm when not. Knife and grenade stay as the hand holds them.
 		if (UStaticMeshComponent* Gun = Held->GetThirdPersonWeaponMesh())
 		{
-			const bool bFirearm = Held->GetActiveSlot() == EArenaDuelLoadoutSlot::Primary;
+			const bool bFirearm = Held->GetPresentedSlot() == EArenaDuelLoadoutSlot::Primary;
 			WorldAimBlend = FMath::FInterpTo(WorldAimBlend, Held->IsAiming() && !Held->IsReloading() ? 1.0f : 0.0f, DeltaSeconds, 12.0f);
 			if (bFirearm)
 			{

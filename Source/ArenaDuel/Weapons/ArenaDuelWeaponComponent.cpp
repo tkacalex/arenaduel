@@ -348,14 +348,26 @@ bool UArenaDuelWeaponComponent::GetLeftHandGripWorldLocation(FVector& OutLocatio
 {
 	const UStaticMeshComponent* Gun = bThirdPerson ? ThirdPersonWeaponMesh.Get() : FirstPersonWeaponMesh.Get();
 	// Flashbang and knife are one-handed.
-	if (!WeaponVisualDefinitions.IsValidIndex(EquippedWeaponIndex) || !Gun || !Gun->GetStaticMesh() || GetActiveSlot() != EArenaDuelLoadoutSlot::Primary) return false;
+	if (!WeaponVisualDefinitions.IsValidIndex(EquippedWeaponIndex) || !Gun || !Gun->GetStaticMesh() || GetPresentedSlot() != EArenaDuelLoadoutSlot::Primary) return false;
 	if (Gun->DoesSocketExist(TEXT("LeftHandGrip")))
 	{
 		OutLocation = Gun->GetSocketLocation(TEXT("LeftHandGrip"));
 	}
 	else
 	{
-		OutLocation = Gun->GetComponentTransform().TransformPosition(WeaponVisualDefinitions[EquippedWeaponIndex].LeftHandGripLocation);
+		// The hand holds what moves: it rides the shotgun's pump, and in a reload it goes to the magazine,
+		// takes it down and brings the new one up before it returns to the handguard.
+		FVector Local = WeaponVisualDefinitions[EquippedWeaponIndex].LeftHandGripLocation;
+		const UStaticMeshComponent* Mag = bThirdPerson ? ThirdPersonMagMesh.Get() : FirstPersonMagMesh.Get();
+		const UStaticMeshComponent* Bolt = bThirdPerson ? ThirdPersonBoltMesh.Get() : FirstPersonBoltMesh.Get();
+		if (Mag && Mag->GetStaticMesh())
+		{
+			const FBoxSphereBounds MagBounds = Mag->GetStaticMesh()->GetBounds();
+			const FVector AtMagazine = MagBounds.Origin + PartMagOffset + FVector(0.0f, Local.Y, -0.55f * MagBounds.BoxExtent.Z);
+			Local = FMath::Lerp(Local, AtMagazine, PartHandToMag);
+		}
+		else if (Bolt && Bolt->GetStaticMesh()) Local += PartBoltOffset;
+		OutLocation = Gun->GetComponentTransform().TransformPosition(Local);
 	}
 	return !OutLocation.ContainsNaN();
 }
@@ -694,6 +706,7 @@ void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 	// A reload lowers the weapon for everyone, also when the server starts it for an empty magazine.
 	bAiming = false;
 	bReloading = true;
+	OnRep_Reloading();
 	FTimerDelegate ReloadDelegate; ReloadDelegate.BindUObject(this, &UArenaDuelWeaponComponent::CompleteReload);
 	GetWorld()->GetTimerManager().SetTimer(ReloadTimerHandle, ReloadDelegate, GetCurrentDefinition().ReloadDuration, false);
 }
@@ -980,7 +993,9 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 	// Flashbang and knife have no authored models yet. They are shown as simple shapes held in the
 	// weapon hand so both players can see what is equipped. Sizes are in centimetres; the first
 	// person arms are drawn smaller than the world body, so the held item is scaled to match.
-	const EArenaDuelLoadoutSlot Slot = GetActiveSlot();
+	const EArenaDuelLoadoutSlot Slot = GetPresentedSlot();
+	// Right after a throw the grenade is gone and the firearm is not up yet: the hand is empty.
+	const bool bEmptyHand = IsShowingThrow();
 	if (Slot != EArenaDuelLoadoutSlot::Primary)
 	{
 		const bool bKnife = Slot == EArenaDuelLoadoutSlot::Knife;
@@ -992,7 +1007,8 @@ void UArenaDuelWeaponComponent::RefreshWeaponVisual()
 		for (UStaticMeshComponent* ItemComponent : { FirstPersonWeaponMesh.Get(), ThirdPersonWeaponMesh.Get() })
 		{
 			const float HandScale = ItemComponent == FirstPersonWeaponMesh.Get() ? 0.6f : 1.0f;
-			if (ItemMesh) ItemComponent->SetStaticMesh(ItemMesh);
+			if (bEmptyHand) ItemComponent->SetStaticMesh(nullptr);
+			else if (ItemMesh) ItemComponent->SetStaticMesh(ItemMesh);
 			ItemComponent->SetRelativeScale3D(ItemScale * HandScale);
 			ItemComponent->SetRelativeLocation(ItemOffset * HandScale);
 			// The modelled items bring their own steel, rubber and paint; whatever the firearm left on the component goes.
@@ -1060,6 +1076,8 @@ void UArenaDuelWeaponComponent::RefreshWeaponParts(const FArenaDuelWeaponVisualD
 		Part->SetVisibility(PartMesh != nullptr && Pair.Value->IsVisible());
 	}
 	bPartsMoved = false;
+	PartMagOffset = PartBoltOffset = FVector::ZeroVector;
+	PartHandToMag = 0.0f;
 }
 bool UArenaDuelWeaponComponent::AreWeaponPartsBusy() const
 {
@@ -1081,6 +1099,7 @@ void UArenaDuelWeaponComponent::TickWeaponParts()
 	FVector MagLocation = FVector::ZeroVector;
 	FRotator MagRotation = FRotator::ZeroRotator;
 	bool bMagInHand = true;
+	float HandToMag = 0.0f;
 	const float PreviewReload = CVarPreviewReload.GetValueOnGameThread();
 	if (bReloading || PreviewReload >= 0.0f)
 	{
@@ -1090,6 +1109,8 @@ void UArenaDuelWeaponComponent::TickWeaponParts()
 		{
 			// The magazine drops out, is away for a moment, a full one comes up, and the bolt is run once.
 			const float Out = FMath::SmoothStep(0.10f, 0.30f, T) - FMath::SmoothStep(0.52f, 0.72f, T);
+			// The hand is at the magazine before it moves and leaves it once it is seated.
+			HandToMag = FMath::SmoothStep(0.0f, 0.09f, T) - FMath::SmoothStep(0.74f, 0.88f, T);
 			MagLocation = FVector(-4.0f * Out, 0.0f, -30.0f * Out);
 			MagRotation = FRotator(-14.0f * Out, 0.0f, 0.0f);
 			bMagInHand = Out < 0.97f;
@@ -1103,6 +1124,8 @@ void UArenaDuelWeaponComponent::TickWeaponParts()
 	}
 	if (const float PreviewBolt = CVarPreviewBolt.GetValueOnGameThread(); PreviewBolt >= 0.0f) Bolt = FMath::Min(PreviewBolt, 1.0f);
 	const FVector BoltLocation(-Visual.BoltTravel * Bolt, 0.0f, 0.0f);
+	PartBoltOffset = BoltLocation;
+	PartMagOffset = MagLocation;
 	for (UStaticMeshComponent* Part : { FirstPersonBoltMesh.Get(), ThirdPersonBoltMesh.Get() }) if (Part) Part->SetRelativeLocation(BoltLocation);
 	for (UStaticMeshComponent* Part : { FirstPersonMagMesh.Get(), ThirdPersonMagMesh.Get() })
 	{
@@ -1111,7 +1134,8 @@ void UArenaDuelWeaponComponent::TickWeaponParts()
 		const USceneComponent* Parent = Part->GetAttachParent();
 		Part->SetVisibility(bMagInHand && Parent && Parent->IsVisible());
 	}
-	bPartsMoved = Bolt > 0.0f || !MagLocation.IsZero();
+	PartHandToMag = HandToMag;
+	bPartsMoved = Bolt > 0.0f || !MagLocation.IsZero() || HandToMag > 0.0f;
 }
 
 void UArenaDuelWeaponComponent::SetUserHipFOV(float NewFOV)
@@ -1258,7 +1282,7 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 	// Equip: the item comes up from below, muzzle first down and rolled, and settles. Both are poses of the
 	// viewmodel root; the arms follow because they are solved to the weapon.
 	const float PreviewCarry = CVarPreviewCarry.GetValueOnGameThread(), PreviewRise = CVarPreviewRise.GetValueOnGameThread();
-	const float Carry = (PreviewCarry >= 0.0f ? FMath::Min(PreviewCarry, 1.0f) : SprintBlend) * (GetActiveSlot() == EArenaDuelLoadoutSlot::Primary ? 1.0f : 0.35f);
+	const float Carry = (PreviewCarry >= 0.0f ? FMath::Min(PreviewCarry, 1.0f) : SprintBlend) * (GetPresentedSlot() == EArenaDuelLoadoutSlot::Primary ? 1.0f : 0.35f);
 	const float Stride = FMath::Sin(BobPhase) * BobBlend * Carry;
 	const float Rise = PreviewRise >= 0.0f ? FMath::Square(FMath::Min(PreviewRise, 1.0f)) : EquipDrop * EquipDrop;
 	const FRotator MotionRotation(SwayPitch - 1.5f * LocalWeaponKick + 9.0f * Carry - 30.0f * Rise,
@@ -1268,7 +1292,8 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 	FVector ActionLocation = FVector::ZeroVector;
 	FRotator ActionRotation = FRotator::ZeroRotator;
 	const float PresentationTime = GetWorld()->GetTimeSeconds();
-	if (const float Length = bKnifeSwingHeavy ? 0.42f : 0.26f, Age = PresentationTime - KnifeSwingStartWorldTime; Age >= 0.0f && Age < Length)
+	// A swing belongs to the knife and a throw to the moment after it; neither outlives a change of the held item.
+	if (const float Length = bKnifeSwingHeavy ? 0.42f : 0.26f, Age = PresentationTime - KnifeSwingStartWorldTime; IsShowingKnifeSwing())
 	{
 		const float T = Age / Length;
 		const float Out = 1.0f - FMath::SmoothStep(0.72f, 1.0f, T);
@@ -1289,10 +1314,10 @@ void UArenaDuelWeaponComponent::TickLocalPresentation(float DeltaSeconds)
 			ActionRotation = FRotator(-4.0f * Arc, FMath::Lerp(10.0f, -30.0f, Sweep), -32.0f * Arc) * Out;
 		}
 	}
-	if (const float Age = PresentationTime - ThrowStartWorldTime; Age >= 0.0f && Age < 0.32f)
+	if (const float Age = PresentationTime - ThrowStartWorldTime; IsShowingThrow())
 	{
 		// Follow-through of a throw: the arm comes over and down. A short throw is an easy underhand flick.
-		const float T = Age / 0.32f, Arc = FMath::Sin(PI * T);
+		const float T = FMath::Clamp(Age / GetThrowSeconds(), 0.0f, 1.0f), Arc = FMath::Sin(PI * T);
 		ActionLocation += bThrowShort ? FVector(8.0f * Arc, 0.0f, 6.0f * Arc) : FVector(12.0f * Arc, 0.0f, FMath::Lerp(8.0f, -12.0f, T) * Arc);
 		ActionRotation += bThrowShort ? FRotator(14.0f * Arc, 0.0f, 0.0f) : FRotator(FMath::Lerp(22.0f, -38.0f, T) * Arc, 0.0f, -6.0f * Arc);
 	}
@@ -1534,13 +1559,89 @@ void UArenaDuelWeaponComponent::MulticastEquipmentThrown_Implementation(bool bSh
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
 	if (!Character || !GetWorld() || GetNetMode() == NM_DedicatedServer) return;
 	if (USoundBase* Pin = ArenaDuelItemMeshes::Sound(TEXT("S_FlashPin"))) UGameplayStatics::PlaySoundAtLocation(this, Pin, Character->GetPawnViewLocation(), Character->IsLocallyControlled() ? 0.7f : 0.9f);
-	// Everyone sees the arm of the world body throw; the rest is the owner's viewmodel.
-	ThrowStartWorldTime = GetWorld()->GetTimeSeconds();
+	NotifyEquipmentThrownCosmetic(bShort);
+}
+
+bool UArenaDuelWeaponComponent::IsShowingThrow() const
+{
+	const UWorld* World = GetWorld();
+	return World && World->GetTimeSeconds() < ThrowPresentationEndWorldTime;
+}
+
+bool UArenaDuelWeaponComponent::IsShowingKnifeSwing() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || GetActiveSlot() != EArenaDuelLoadoutSlot::Knife) return false;
+	const float Age = World->GetTimeSeconds() - KnifeSwingStartWorldTime;
+	return Age >= 0.0f && Age < (bKnifeSwingHeavy ? 0.42f : 0.26f);
+}
+
+bool UArenaDuelWeaponComponent::DoesSupportHandFollowReload() const
+{
+	return GetPresentedSlot() == EArenaDuelLoadoutSlot::Primary && FirstPersonBoltMesh && FirstPersonBoltMesh->GetStaticMesh();
+}
+
+void UArenaDuelWeaponComponent::NotifyEquipmentThrownCosmetic(bool bShort)
+{
+	UWorld* World = GetWorld();
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	if (!World || !Character) return;
+	// The server has already put the firearm back. The hands finish the throw first, with nothing in them,
+	// on the owner's screen and on the world body alike; FinishThrowPresentation then brings the firearm up.
+	ThrowStartWorldTime = World->GetTimeSeconds();
 	bThrowShort = bShort;
+	ThrowPresentationEndWorldTime = ThrowStartWorldTime + GetThrowSeconds();
+	World->GetTimerManager().SetTimer(ThrowPresentationTimerHandle, this, &UArenaDuelWeaponComponent::FinishThrowPresentation, GetThrowSeconds(), false);
+	RefreshWeaponVisual();
 	if (!Character->IsLocallyControlled()) return;
-	// The arm follows through after the release. The throw itself already happened; nothing waits for this.
 	LastCosmeticShotWorldTime = ThrowStartWorldTime;
 	SetComponentTickEnabled(true);
+}
+
+void UArenaDuelWeaponComponent::FinishThrowPresentation()
+{
+	ThrowPresentationEndWorldTime = -10.0f;
+	ThrowStartWorldTime = -10.0f;
+	if (UWorld* World = GetWorld()) World->GetTimerManager().ClearTimer(ThrowPresentationTimerHandle);
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled()) EquipDrop = 1.0f;
+	RefreshWeaponVisual();
+}
+
+void UArenaDuelWeaponComponent::NotifyKnifeSwingCosmetic(bool bHit, bool bHeavy)
+{
+	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
+	// A swing that arrives after its owner has already changed to something else is not shown.
+	if (!Character || !GetWorld() || GetActiveSlot() != EArenaDuelLoadoutSlot::Knife) return;
+	KnifeSwingStartWorldTime = GetWorld()->GetTimeSeconds();
+	bKnifeSwingHeavy = bHeavy;
+	if (!Character->IsLocallyControlled()) return;
+	// The owner's viewmodel: a kick that bites deeper on a hit. Negative kick pushes forward.
+	const float Weight = bHeavy ? 1.8f : 1.0f;
+	LocalWeaponKick = (bHit ? -2.2f : -1.2f) * Weight;
+	VisualYawKick = (bHit ? 1.2f : 0.7f) * Weight;
+	LastCosmeticShotWorldTime = KnifeSwingStartWorldTime;
+	SetComponentTickEnabled(true);
+}
+
+void UArenaDuelWeaponComponent::NotifyHeldItemChanged()
+{
+	// Whatever the knife was doing ends with the knife. The kick it left on the viewmodel goes with it.
+	if (GetActiveSlot() != EArenaDuelLoadoutSlot::Knife && KnifeSwingStartWorldTime > -5.0f)
+	{
+		KnifeSwingStartWorldTime = -10.0f;
+		LocalWeaponKick = 0.0f;
+		VisualYawKick = 0.0f;
+	}
+	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled()) EquipDrop = 1.0f;
+	RefreshWeaponVisual();
+}
+
+void UArenaDuelWeaponComponent::OnRep_Reloading()
+{
+	// The moving parts and the hand on the magazine are driven by this component's tick, which switches itself
+	// off on a weapon that is not the local player's once nothing moves. A reload has to switch it on again,
+	// or someone who fired, waited and then reloaded would be seen reloading a rigid weapon.
+	if (bReloading && GetWorld() && GetNetMode() != NM_DedicatedServer) SetComponentTickEnabled(true);
 }
 
 void UArenaDuelWeaponComponent::MulticastKnifeSwing_Implementation(bool bHit, bool bHeavy)
@@ -1551,20 +1652,10 @@ void UArenaDuelWeaponComponent::MulticastKnifeSwing_Implementation(bool bHit, bo
 	const float Volume = Character->IsLocallyControlled() ? 0.65f : 0.9f;
 	if (USoundBase* Air = ArenaDuelItemMeshes::Sound(bHeavy ? TEXT("S_KnifeStab") : TEXT("S_KnifeSwing"))) UGameplayStatics::PlaySoundAtLocation(this, Air, Character->GetPawnViewLocation(), Volume);
 	if (bHit) if (USoundBase* Thud = ArenaDuelItemMeshes::Sound(TEXT("S_KnifeHit"))) UGameplayStatics::PlaySoundAtLocation(this, Thud, Character->GetPawnViewLocation() + Character->GetControlRotation().Vector() * 80.0f, Volume);
-	// The rest is the owner's viewmodel: the swing itself and a kick that bites deeper on a hit. Negative kick pushes forward.
-	// Everyone sees the arm of the world body swing.
-	KnifeSwingStartWorldTime = GetWorld()->GetTimeSeconds();
-	bKnifeSwingHeavy = bHeavy;
-	if (!Character->IsLocallyControlled()) return;
-	const float Weight = bHeavy ? 1.8f : 1.0f;
-	LocalWeaponKick = (bHit ? -2.2f : -1.2f) * Weight;
-	VisualYawKick = (bHit ? 1.2f : 0.7f) * Weight;
-	LastCosmeticShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
-	SetComponentTickEnabled(true);
+	NotifyKnifeSwingCosmetic(bHit, bHeavy);
 }
 
 void UArenaDuelWeaponComponent::OnRep_EquippedWeapon()
 {
-	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled()) EquipDrop = 1.0f;
-	RefreshWeaponVisual();
+	NotifyHeldItemChanged();
 }

@@ -257,6 +257,24 @@ public:
 	/** Mouse wheel: steps through every usable item, both firearms of a two gun loadout included. */
 	void CycleSlot(int32 Direction);
 	EArenaDuelLoadoutSlot GetActiveSlot() const { return static_cast<EArenaDuelLoadoutSlot>(ActiveSlot); }
+	/**
+	 * What the hands are shown holding. The same as the active slot except right after a throw: the server
+	 * puts the firearm back at once, the hands first finish the throw, empty, and then bring the firearm up.
+	 * Cosmetic; no rule reads it.
+	 */
+	EArenaDuelLoadoutSlot GetPresentedSlot() const { return IsShowingThrow() ? EArenaDuelLoadoutSlot::Flashbang : GetActiveSlot(); }
+	bool IsShowingThrow() const;
+	bool IsShowingKnifeSwing() const;
+	/** The hands' part of a throw takes as long as the switch back to the firearm, so the firearm is up when it can fire. */
+	float GetThrowSeconds() const { return FMath::Max(SwitchSeconds, 0.1f); }
+	/** True when the support hand goes with the magazine or the pump during a reload instead of leaving the weapon to the clip. */
+	bool DoesSupportHandFollowReload() const;
+	/** The cosmetic half of the multicasts and of a change of the held item, callable on their own. */
+	void NotifyEquipmentThrownCosmetic(bool bShort);
+	void NotifyKnifeSwingCosmetic(bool bHit, bool bHeavy);
+	void NotifyHeldItemChanged();
+	void FinishThrowPresentation();
+	UFUNCTION() void OnRep_Reloading();
 	int32 GetFlashbangsRemaining() const { return FlashbangsRemaining; }
 	const TArray<uint8>& GetLoadoutFirearms() const { return LoadoutFirearms; }
 	/** Authority only. Lifts the loadout restriction so admin tools and tests can equip any firearm. */
@@ -384,7 +402,7 @@ protected:
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Weapons")
 	TArray<FArenaDuelWeaponRuntimeState> RuntimeAmmo;
 
-	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Weapons")
+	UPROPERTY(ReplicatedUsing=OnRep_Reloading, VisibleInstanceOnly, BlueprintReadOnly, Category="Weapons")
 	bool bReloading = false;
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Weapons")
@@ -446,6 +464,12 @@ protected:
 	UPROPERTY(Transient) TObjectPtr<UStaticMeshComponent> ThirdPersonBoltMesh;
 	UPROPERTY(Transient) TObjectPtr<UStaticMeshComponent> ThirdPersonMagMesh;
 	float PartShotWorldTime = -10.0f;
+	// Where the parts are right now, in the weapon's own space, and how far the support hand has gone over to the magazine.
+	FVector PartMagOffset = FVector::ZeroVector;
+	FVector PartBoltOffset = FVector::ZeroVector;
+	float PartHandToMag = 0.0f;
+	float ThrowPresentationEndWorldTime = -10.0f;
+	FTimerHandle ThrowPresentationTimerHandle;
 	float PartReloadStartWorldTime = -100.0f;
 	bool bPartReloadSeen = false;
 	bool bPartsMoved = false;
