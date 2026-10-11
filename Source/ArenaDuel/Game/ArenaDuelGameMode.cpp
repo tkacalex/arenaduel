@@ -21,6 +21,21 @@
 namespace
 {
 	constexpr float CharacterAutoReadyDelaySeconds = 12.0f;
+
+#if !UE_BUILD_SHIPPING
+	// Round flow from the console, on the server, for checks with two players: no need to wait out 90 seconds.
+	AArenaDuelGameMode* DuelRules(UWorld* World) { return World ? World->GetAuthGameMode<AArenaDuelGameMode>() : nullptr; }
+	FAutoConsoleCommandWithWorldAndArgs CmdRoundTimeLeft(TEXT("ArenaDuel.Round.TimeLeft"), TEXT("Server: set the regular time left in the running round, in seconds"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			if (AArenaDuelGameMode* Rules = DuelRules(World); Rules && Args.Num() > 0) Rules->SetRoundTimeRemainingForDevelopment(FCString::Atof(*Args[0]));
+		}));
+	FAutoConsoleCommandWithWorldAndArgs CmdRoundKill(TEXT("ArenaDuel.Round.Kill"), TEXT("Server: kill the player in duel slot 0 or 1 through the normal damage path"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			if (AArenaDuelGameMode* Rules = DuelRules(World); Rules && Args.Num() > 0) Rules->KillDuelSlotForDevelopment(static_cast<uint8>(FMath::Clamp(FCString::Atoi(*Args[0]), 0, 1)));
+		}));
+#endif
 }
 
 AArenaDuelGameMode::AArenaDuelGameMode()
@@ -252,6 +267,22 @@ void AArenaDuelGameMode::SetRoundTimingForTests(float InRoundDurationSeconds, fl
 	RoundDurationSeconds = FMath::Max(0.0f, InRoundDurationSeconds);
 	RoundBreakSeconds = FMath::Max(0.1f, InRoundBreakSeconds);
 	MatchResultSeconds = FMath::Max(0.1f, InMatchResultSeconds);
+}
+
+void AArenaDuelGameMode::SetRoundTimeRemainingForDevelopment(float Seconds)
+{
+	AArenaDuelGameState* State = GetGameState<AArenaDuelGameState>();
+	if (!HasAuthority() || !State || !GetWorld() || !UsesRoundTimer() || !State->IsRoundInProgress() || State->IsOvertime() || bRoundRestartPending) return;
+	const float Left = FMath::Max(0.1f, Seconds);
+	State->SetRoundClock(static_cast<float>(State->GetServerWorldTimeSeconds()) + Left);
+	GetWorldTimerManager().SetTimer(RoundTimeLimitTimer, FTimerDelegate::CreateUObject(this, &AArenaDuelGameMode::HandleRoundTimeExpired, RoundSerial), Left, false);
+}
+
+void AArenaDuelGameMode::KillDuelSlotForDevelopment(uint8 DuelSlot)
+{
+	const AArenaDuelPlayerState* Player = FindPlayerStateByDuelSlot(DuelSlot);
+	const APlayerController* Controller = Player ? Cast<APlayerController>(Player->GetOwner()) : nullptr;
+	if (AArenaDuelCharacter* Character = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr; Character && !Character->IsDead()) Character->ApplyServerDamage(100000.0f);
 }
 
 void AArenaDuelGameMode::ExpireRoundTimeForTests(bool bStale)

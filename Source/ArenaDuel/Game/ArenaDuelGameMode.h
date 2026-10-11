@@ -45,6 +45,10 @@ public:
 	void SetRoundTimingForTests(float InRoundDurationSeconds, float InRoundBreakSeconds, float InMatchResultSeconds);
 	/** What the time limit does when it fires, callable at a chosen moment. bStale pretends the timer belonged to an earlier round. */
 	void ExpireRoundTimeForTests(bool bStale = false);
+	/** Development: sets how much regular time the running round has left. Does nothing in overtime or without a clock. */
+	void SetRoundTimeRemainingForDevelopment(float Seconds);
+	/** Development: kills the player in a duel slot through the normal damage path. */
+	void KillDuelSlotForDevelopment(uint8 DuelSlot);
 
 protected:
 	/** Length of a regular round. At the limit with both players alive, overtime begins and the next kill decides. */
