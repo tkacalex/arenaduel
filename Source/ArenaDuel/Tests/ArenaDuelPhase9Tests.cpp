@@ -6,6 +6,7 @@
 // time, the reload request, a third player in the duel, and upgrade requests that name their selection.
 
 #include "CQTest.h"
+#include <limits>
 #include "ArenaDuelTestUpgrades.h"
 #include "Components/PIENetworkComponent.h"
 #include "Misc/AutomationTest.h"
@@ -489,99 +490,108 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 			.UntilServer(TEXT("Both duel players have pawns"), [](FArenaDuelPhase9State& State) { return PawnForSlot(State.World, 0) && PawnForSlot(State.World, 1); }, FTimespan::FromSeconds(10.0))
 			.ThenServer(TEXT("Start a round"), [](FArenaDuelPhase9State& State) { StartMatch(State.World); })
 			.UntilServer(TEXT("Round one runs"), [](FArenaDuelPhase9State& State) { return BothAliveInRound(State.World); }, FTimespan::FromSeconds(6.0))
-			.ThenServer(TEXT("The remote player's pawn stands behind cover as high as its standing eye, less a hand"), [this](FArenaDuelPhase9State& State)
+			.ThenServer(TEXT("Remote player's pawn: what its owner says about the eye is taken within limits"), [this](FArenaDuelPhase9State& State)
 			{
 				AArenaDuelCharacter* Pawn = PawnForSlot(State.World, 1);
 				Pawn->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
 				Pawn->GetCharacterMovement()->GravityScale = 0.0f;
+				Pawn->SetActorLocation(FVector(-3000.0f, 3000.0f, 800.0f), false, nullptr, ETeleportType::TeleportPhysics);
 				Pawn->GetCharacterMovement()->bCrouchMaintainsBaseLocation = true;
+				Pawn->GetCharacterMovement()->bWantsToCrouch = true;
+				Pawn->GetCharacterMovement()->Crouch(false);
+				if (!Pawn->bIsCrouched || Pawn->GetEyeEaseOffset() < 40.0f) { TestRunner->AddError(TEXT("The pawn did not crouch with its eye still up")); return; }
+				const float Limit = Pawn->GetEyeEaseHintMaxSeconds(), Start = Pawn->GetEyeEaseOffset();
+				// The owner says its eye is 40 ms further along: taken as said, and the eye is lower by what 40 ms are worth.
+				Pawn->ApplyOwnerEyeEaseHint(Pawn->GetCrouchEaseAge() + 0.04f, 1000.0f);
+				if (!FMath::IsNearlyEqual(Pawn->GetCrouchEaseHint(), 0.04f, 0.005f)) TestRunner->AddError(FString::Printf(TEXT("A small hint was taken as %.3f s instead of 0.040"), Pawn->GetCrouchEaseHint()));
+				if (!(Pawn->GetEyeEaseOffset() < Start - 10.0f && Pawn->GetEyeEaseOffset() > Start - 25.0f)) TestRunner->AddError(FString::Printf(TEXT("A hint of 40 ms moved the eye from %.1f to %.1f"), Start, Pawn->GetEyeEaseOffset()));
+				// Nearly a second further along: no more than the limit.
+				Pawn->ApplyOwnerEyeEaseHint(0.9f, 1000.0f);
+				if (Pawn->GetCrouchEaseHint() > Limit + 0.001f || Pawn->GetCrouchEaseHint() < Limit - 0.02f) TestRunner->AddError(FString::Printf(TEXT("A large hint moved the clock by %.3f s; the limit is %.3f"), Pawn->GetCrouchEaseHint(), Limit));
+				const float AtLimit = Pawn->GetEyeEaseOffset();
+				if (AtLimit < 5.0f) TestRunner->AddError(TEXT("At the limit the eye is already settled: the limit does not bound anything"));
+				// Not in an ease at all, negative, not a number: nothing.
+				for (const float Nonsense : { 5.0f, -3.0f, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity() })
+				{
+					Pawn->ApplyOwnerEyeEaseHint(Nonsense, Nonsense);
+					if (!FMath::IsNearlyZero(Pawn->GetCrouchEaseHint()) || !FMath::IsNearlyZero(Pawn->GetSlideEaseHint())) TestRunner->AddError(TEXT("A value from outside the ease was taken as a hint"));
+				}
+				if (Pawn->GetEyeEaseOffset() > 48.5f) TestRunner->AddError(TEXT("The eye is above where the ease started"));
+				// A new ease drops what was said about the last one.
+				Pawn->ApplyOwnerEyeEaseHint(Pawn->GetCrouchEaseAge() + 0.05f, 1000.0f);
+				const bool bTaken = FMath::IsNearlyEqual(Pawn->GetCrouchEaseHint(), 0.05f, 0.005f);
+				Pawn->GetCharacterMovement()->bWantsToCrouch = false;
+				Pawn->GetCharacterMovement()->UnCrouch(false);
+				if (!bTaken || !FMath::IsNearlyZero(Pawn->GetCrouchEaseHint())) TestRunner->AddError(TEXT("A hint outlived the ease it was given for"));
+				// The host's own pawn takes no hint: it is its own owner.
+				AArenaDuelCharacter* Host = PawnForSlot(State.World, 0);
+				Host->ApplyOwnerEyeEaseHint(0.05f, 0.05f);
+				if (!FMath::IsNearlyZero(Host->GetCrouchEaseHint()) || !FMath::IsNearlyZero(Host->GetSlideEaseHint())) TestRunner->AddError(TEXT("The host's own pawn took a hint"));
+			})
+			.ThenServer(TEXT("Host's pawn stands behind cover a hand lower than its standing eye"), [this](FArenaDuelPhase9State& State)
+			{
+				AArenaDuelCharacter* Pawn = PawnForSlot(State.World, 0);
+				Pawn->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+				Pawn->GetCharacterMovement()->GravityScale = 0.0f;
 				Pawn->SetActorLocation(FVector(3000.0f, 3000.0f, 800.0f), false, nullptr, ETeleportType::TeleportPhysics);
 				Pawn->GetController()->SetControlRotation(FRotator::ZeroRotator);
+				// The top of the wall is 12 cm below the standing eye: a standing shot passes over it; crouched, the
+				// eye settles 48 cm lower, 36 cm below the top.
 				const float StandingEye = Pawn->GetPawnViewLocation().Z;
-				// The top of the wall is 12 cm below the standing eye: a standing shot passes over it, a crouched one,
-				// 48 cm lower once the eye has settled, does not.
-				AStaticMeshActor* Wall = State.World->SpawnActor<AStaticMeshActor>(FVector(3000.0f + 150.0f, 3000.0f, StandingEye - 12.0f - 100.0f), FRotator::ZeroRotator);
+				AStaticMeshActor* Wall = State.World->SpawnActor<AStaticMeshActor>(FVector(3150.0f, 3000.0f, StandingEye - 12.0f - 100.0f), FRotator::ZeroRotator);
 				Wall->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
 				Wall->GetStaticMeshComponent()->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")));
 				Wall->GetStaticMeshComponent()->SetCollisionProfileName(TEXT("BlockAll"));
 				Wall->SetActorScale3D(FVector(0.2f, 6.0f, 2.0f));
 				State.Wall = Wall;
-				State.Mark = State.World->GetTimeSeconds();
-			})
-			.UntilServer(TEXT("The wall has settled"), [](FArenaDuelPhase9State& State) { return State.World->GetTimeSeconds() - State.Mark > 0.2; }, FTimespan::FromSeconds(3.0))
-			.ThenServer(TEXT("Standing: over the wall. Crouching, in the first moment: still over it, as the eye still is"), [this](FArenaDuelPhase9State& State)
-			{
-				AArenaDuelCharacter* Pawn = PawnForSlot(State.World, 1);
-				UArenaDuelWeaponComponent* Weapon = Pawn->GetWeaponComponent();
-				Weapon->GrantAllWeaponsForDevelopment();
-				Weapon->ClearActionTimesForTests();
-				const auto Shoot = [Weapon]() { const int32 Before = Weapon->GetLastShotSequence(); Weapon->SetFireHeldForTests(true, 1000.0f, 1000.0f); Weapon->SetFireHeldForTests(false, 1000.0f, 1000.0f); return Weapon->GetLastShotSequence() != Before; };
-				if (!Shoot() || Weapon->GetLastShotResult() != EArenaDuelShotResult::Miss) TestRunner->AddError(TEXT("A standing shot did not pass over the cover"));
-				Pawn->GetCharacterMovement()->bWantsToCrouch = true;
-				Pawn->GetCharacterMovement()->Crouch(false);
-				if (!Pawn->bIsCrouched || Pawn->GetEyeEaseOffset() < 40.0f) { TestRunner->AddError(TEXT("The pawn did not crouch with its eye still up")); return; }
+				State.Base = Pawn->GetActorLocation();
 				State.Mark = State.World->GetTimeSeconds();
 				State.Sequence = 0;
 			})
-			.UntilServer(TEXT("One interval later the eye is still above the wall and so is the shot; the owner's word moves the clock a tenth of a second at most"), [this](FArenaDuelPhase9State& State)
+			.UntilServer(TEXT("Standing over the wall; crouching, the shot follows the eye down behind it"), [this](FArenaDuelPhase9State& State)
 			{
-				AArenaDuelCharacter* Pawn = PawnForSlot(State.World, 1);
+				AArenaDuelCharacter* Pawn = PawnForSlot(State.World, 0);
 				UArenaDuelWeaponComponent* Weapon = Pawn->GetWeaponComponent();
 				const double Age = State.World->GetTimeSeconds() - State.Mark;
-				const auto Shoot = [Weapon](float CrouchAge) { const int32 Before = Weapon->GetLastShotSequence(); Weapon->SetFireHeldForTests(true, CrouchAge, 1000.0f); Weapon->SetFireHeldForTests(false, 1000.0f, 1000.0f); return Weapon->GetLastShotSequence() != Before; };
+				const auto Shoot = [Weapon]() { const int32 Before = Weapon->GetLastShotSequence(); Weapon->ClearActionTimesForTests(); Weapon->StartFire(); Weapon->StopFire(); return Weapon->GetLastShotSequence() != Before; };
+				// Held where it was put: the test world has no floor.
 				if (State.Sequence == 0)
 				{
-					// The eye is 12 cm above the top of the wall at rest and 48 cm above that when the crouch begins;
-					// it passes the top when 12 of the 48 are left... it never does: it settles 36 cm below the top.
-					// So early in the ease a shot clears the wall, late it does not.
-					if (Age < 0.11) return false;
+					if (Age < 0.25) return false;
+					Pawn->SetActorLocation(State.Base, false, nullptr, ETeleportType::TeleportPhysics);
+					if (!Shoot() || Weapon->GetLastShotResult() != EArenaDuelShotResult::Miss) TestRunner->AddError(TEXT("A standing shot did not pass over the cover"));
+					Pawn->GetCharacterMovement()->bCrouchMaintainsBaseLocation = true;
+					Pawn->GetCharacterMovement()->bWantsToCrouch = true;
+					Pawn->GetCharacterMovement()->Crouch(false);
+					if (!Pawn->bIsCrouched || Pawn->GetEyeEaseOffset() < 40.0f) { TestRunner->AddError(TEXT("The host pawn did not crouch with its eye still up")); return true; }
+					// In the first moment the eye, and the shot, are where they were.
+					if (!Shoot() || Weapon->GetLastShotResult() != EArenaDuelShotResult::Miss) TestRunner->AddError(TEXT("In the first moment of the crouch the shot did not pass over the cover the eye still looks over"));
+					State.Mark = State.World->GetTimeSeconds();
 					State.Sequence = 1;
-					const float Limit = Pawn->GetEyeEaseHintMaxSeconds();
-					const float ServerAge = Pawn->GetCrouchEaseAge();
-					// The owner says it is 40 ms further: taken as said.
-					Pawn->ApplyOwnerEyeEaseHint(ServerAge + 0.04f, 1000.0f);
-					if (!FMath::IsNearlyEqual(Pawn->GetCrouchEaseHint(), 0.04f, 0.005f)) TestRunner->AddError(FString::Printf(TEXT("A small hint was taken as %.3f s instead of 0.040"), Pawn->GetCrouchEaseHint()));
-					// The owner says it is five seconds further, or nonsense: no more than the limit, or nothing.
-					Pawn->ApplyOwnerEyeEaseHint(0.9f, 1000.0f);
-					if (Pawn->GetCrouchEaseHint() > Limit + 0.001f) TestRunner->AddError(TEXT("A large hint moved the clock further than the limit"));
-					Pawn->ApplyOwnerEyeEaseHint(5.0f, 1000.0f);
-					if (!FMath::IsNearlyZero(Pawn->GetCrouchEaseHint())) TestRunner->AddError(TEXT("A hint from outside the ease was taken"));
-					Pawn->ApplyOwnerEyeEaseHint(-3.0f, 1000.0f);
-					if (!FMath::IsNearlyZero(Pawn->GetCrouchEaseHint())) TestRunner->AddError(TEXT("A negative age was taken as a hint"));
-					Pawn->ApplyOwnerEyeEaseHint(0.0f, 1000.0f);
-					if (Pawn->GetCrouchEaseHint() < -Limit - 0.001f) TestRunner->AddError(TEXT("A hint moved the clock back further than the limit"));
-					// With the clock back as far as it goes the eye is higher, but never above where the crouch began.
-					if (Pawn->GetEyeEaseOffset() > 48.5f) TestRunner->AddError(TEXT("A hint put the eye above where the ease started"));
-					Pawn->ApplyOwnerEyeEaseHint(1000.0f, 1000.0f);
 					return false;
 				}
 				if (State.Sequence == 1)
 				{
-					// 0.11 s into the ease about 13 cm are left: the eye is just above the top of the wall, 12 cm below standing.
+					// Somewhere on the way down: whatever the eye does, the shot does.
+					if (Age < 0.05) return false;
 					State.Sequence = 2;
-					Weapon->ClearActionTimesForTests();
 					const float Left = Pawn->GetEyeEaseOffset();
-					const bool bEyeAbove = Left > 36.0f + 1.0f;
-					if (!Shoot(1000.0f)) { TestRunner->AddError(TEXT("No shot left during the ease")); return true; }
-					const bool bOver = Weapon->GetLastShotResult() == EArenaDuelShotResult::Miss;
-					if (bOver != bEyeAbove) TestRunner->AddError(FString::Printf(TEXT("With %.1f cm of the ease left the shot %s the cover although the eye is %s it"), Left, bOver ? TEXT("passed over") : TEXT("hit"), bEyeAbove ? TEXT("above") : TEXT("below")));
+					const bool bEyeAbove = Left > 36.0f;
+					if (FMath::Abs(Left - 36.0f) > 1.5f)
+					{
+						if (!Shoot()) { TestRunner->AddError(TEXT("No shot left during the ease")); return true; }
+						const bool bOver = Weapon->GetLastShotResult() == EArenaDuelShotResult::Miss;
+						if (bOver != bEyeAbove) TestRunner->AddError(FString::Printf(TEXT("With %.1f cm of the ease left the shot %s the cover although the eye is %s its top"), Left, bOver ? TEXT("passed over") : TEXT("hit"), bEyeAbove ? TEXT("above") : TEXT("below")));
+					}
 					return false;
 				}
 				if (Age < 1.2) return false;
-				Weapon->ClearActionTimesForTests();
-				if (!Shoot(1000.0f) || Weapon->GetLastShotResult() != EArenaDuelShotResult::World) TestRunner->AddError(TEXT("Settled in the crouch, a shot did not hit the cover in front of the eye"));
-				// A new ease drops what was said about the last one.
-				Pawn->ApplyOwnerEyeEaseHint(Pawn->GetCrouchEaseAge(), 1000.0f);
-				Pawn->GetCharacterMovement()->bWantsToCrouch = false;
-				Pawn->GetCharacterMovement()->UnCrouch(false);
-				Pawn->ApplyOwnerEyeEaseHint(Pawn->GetCrouchEaseAge() + 0.05f, 1000.0f);
-				const bool bTaken = FMath::IsNearlyEqual(Pawn->GetCrouchEaseHint(), 0.05f, 0.005f);
-				Pawn->GetCharacterMovement()->bWantsToCrouch = true;
-				Pawn->GetCharacterMovement()->Crouch(false);
-				if (!bTaken || !FMath::IsNearlyZero(Pawn->GetCrouchEaseHint())) TestRunner->AddError(TEXT("A hint outlived the ease it was given for"));
+				if (!Pawn->bIsCrouched) { TestRunner->AddError(TEXT("The host pawn did not stay crouched")); return true; }
+				if (!FMath::IsNearlyZero(Pawn->GetEyeEaseOffset(), 0.05f)) TestRunner->AddError(TEXT("The eye did not settle"));
+				if (!Shoot() || Weapon->GetLastShotResult() != EArenaDuelShotResult::World) TestRunner->AddError(TEXT("Settled in the crouch, a shot did not hit the cover in front of the eye"));
 				if (State.Wall.IsValid()) State.Wall->Destroy();
 				return true;
-			}, FTimespan::FromSeconds(5.0));
+			}, FTimespan::FromSeconds(6.0));
 	}
 
 	// E18: two lethal hits in one frame. The first death decides, in either order, and the round is decided once.
