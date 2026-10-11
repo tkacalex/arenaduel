@@ -509,6 +509,63 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 			});
 	}
 
+	// E04 with latency: a client hears of its own switch later than it asked for it. A trigger pressed in between
+	// goes by the item asked for: after asking for the firearm it holds fire, after asking for the knife it does not.
+	TEST_METHOD(ClientTriggerGoesByTheItemItAskedFor)
+	{
+		using namespace ArenaDuelPhase9Tests;
+		const auto ClientWeapon = [](FArenaDuelPhase9State& State) -> UArenaDuelWeaponComponent*
+		{
+			const APlayerController* Controller = State.World->GetFirstPlayerController();
+			const AArenaDuelCharacter* Pawn = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
+			return Pawn ? Pawn->GetWeaponComponent() : nullptr;
+		};
+		Network
+			.UntilServer(TEXT("Both duel players have pawns"), [](FArenaDuelPhase9State& State) { return PawnForSlot(State.World, 0) && PawnForSlot(State.World, 1); }, FTimespan::FromSeconds(10.0))
+			.ThenServer(TEXT("Start a round"), [](FArenaDuelPhase9State& State) { StartMatch(State.World); })
+			.UntilServer(TEXT("Round one runs"), [](FArenaDuelPhase9State& State) { return BothAliveInRound(State.World); }, FTimespan::FromSeconds(6.0))
+			.UntilClient(TEXT("Client: the round runs here too"), 0, [ClientWeapon](FArenaDuelPhase9State& State)
+			{
+				const AArenaDuelGameState* GameState = State.World->GetGameState<AArenaDuelGameState>();
+				return GameState && GameState->IsRoundInProgress() && ClientWeapon(State) && ClientWeapon(State)->GetActiveSlot() == EArenaDuelLoadoutSlot::Primary;
+			}, FTimespan::FromSeconds(6.0))
+			.ThenClient(TEXT("Client: ask for the knife and press at once"), 0, [this, ClientWeapon](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = ClientWeapon(State);
+				Weapon->SelectSlot(EArenaDuelLoadoutSlot::Knife);
+				if (Weapon->GetActiveSlot() != EArenaDuelLoadoutSlot::Primary) TestRunner->AddError(TEXT("The client already has the server's answer; the case under test needs it pending"));
+				if (Weapon->GetExpectedSlot() != EArenaDuelLoadoutSlot::Knife) TestRunner->AddError(TEXT("The client does not go by the knife it asked for"));
+				Weapon->StartFire();
+				if (Weapon->IsLocalFireHeld()) TestRunner->AddError(TEXT("A press after asking for the knife held the firearm's trigger"));
+			})
+			.UntilClient(TEXT("Client: the knife arrives"), 0, [ClientWeapon](FArenaDuelPhase9State& State) { return ClientWeapon(State)->GetActiveSlot() == EArenaDuelLoadoutSlot::Knife; }, FTimespan::FromSeconds(5.0))
+			.ThenServer(TEXT("Server: note the magazine and let the knife's times pass"), [](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 1)->GetWeaponComponent();
+				State.Ammo = Weapon->GetCurrentMagazineAmmo();
+				Weapon->ClearActionTimesForTests();
+			})
+			.ThenClient(TEXT("Client: ask for the firearm and press at once, while the knife is still shown"), 0, [this, ClientWeapon](FArenaDuelPhase9State& State)
+			{
+				UArenaDuelWeaponComponent* Weapon = ClientWeapon(State);
+				Weapon->SelectSlot(EArenaDuelLoadoutSlot::Primary);
+				if (Weapon->GetActiveSlot() != EArenaDuelLoadoutSlot::Knife) TestRunner->AddError(TEXT("The client already has the server's answer; the case under test needs it pending"));
+				Weapon->StartFire();
+				if (!Weapon->IsLocalFireHeld()) TestRunner->AddError(TEXT("A press right after asking for the firearm was taken for a knife stroke"));
+			})
+			.UntilServer(TEXT("Server: the held trigger fires real shots once the switch time is over"), [](FArenaDuelPhase9State& State)
+			{
+				const UArenaDuelWeaponComponent* Weapon = PawnForSlot(State.World, 1)->GetWeaponComponent();
+				return Weapon->GetActiveSlot() == EArenaDuelLoadoutSlot::Primary && Weapon->GetCurrentMagazineAmmo() < State.Ammo;
+			}, FTimespan::FromSeconds(5.0))
+			.ThenClient(TEXT("Client: let go"), 0, [ClientWeapon](FArenaDuelPhase9State& State) { ClientWeapon(State)->StopFire(); })
+			.UntilClient(TEXT("Client: the answer has arrived and nothing is expected any more"), 0, [ClientWeapon](FArenaDuelPhase9State& State)
+			{
+				const UArenaDuelWeaponComponent* Weapon = ClientWeapon(State);
+				return Weapon->GetActiveSlot() == EArenaDuelLoadoutSlot::Primary && Weapon->GetExpectedSlot() == EArenaDuelLoadoutSlot::Primary && !Weapon->IsLocalFireHeld();
+			}, FTimespan::FromSeconds(5.0));
+	}
+
 	// E07: a choice names its selection; one from an earlier selection is refused in a later one.
 	TEST_METHOD(UpgradeChoiceFromAnEarlierSelectionIsRefused)
 	{
