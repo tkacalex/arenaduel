@@ -211,6 +211,16 @@ The knife met nobody and the flashbang blinded nobody that is on record; hits, d
 
 Whole regression run, filter `ArenaDuel`: 118 of 118 passed. Working tree clean afterwards.
 
+### Phase 9D, first part: hit feedback (2026-10-11)
+
+A head shot feedback was added to the HUD earlier that day (`docs/Loadout.md`, "Hit confirmation"). A review of it found three faults; all three were read in the code first and were there.
+
+1. **Two markers.** The canvas HUD still drew its old marker while the widget showed the new one. The old one is removed; crosshair and scope are untouched.
+2. **Off centre.** The widget's ticks stood around y = 50 in a centred root 140 high, so their middle was 20 units above the screen's middle, and the root scaled about that point. Ticks and pivot are now the root's middle.
+3. **Lost confirmations.** The HUD read only the last sequence number and result once per frame, so of several confirmations between two frames only the last was seen. Confirmed hits are now events on the shooter's weapon, taken once each; a head shot's marker outlasts a following body hit.
+
+Tests and the packaged check are listed in `docs/Loadout.md`. Whole run, filter `ArenaDuel`: 119 of 119 passed, working tree clean. Not done: looking at the marker in a running game (hip fire, scope, different resolutions) and listening to the sounds; a listening list is in `docs/Loadout.md`.
+
 ## Areas to check
 
 | ID | P | Area | State |
@@ -264,4 +274,5 @@ Nothing in this list has been done; none of it should be read as checked. Phase 
 - Sound (R05): nothing has been listened to. The sessions that did this work cannot hear.
 - Hands, fingers and every weapon action from both views (R06), zombie hit zones, boss clips and the hand-over to the ragdoll on screen (R07), a full match on the reworked arena (R08), load outside the editor (R09).
 - Between separate processes (R10): a wrong address or version, the host quitting, a rejoin; choosing each character by hand.
+- The hit marker on screen, in hip fire and through the scope at several resolutions, and its two sounds by ear (listening list in `docs/Loadout.md`).
 - E16, bullet marks from end points only: open (9D).

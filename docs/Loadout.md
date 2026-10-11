@@ -183,13 +183,38 @@ Not checked in a play session.
 
 ## Hit confirmation (2026-10-11)
 
-When the server confirms that a shot or a knife stroke of the local player met a body, the HUD shows it at the crosshair (`UArenaDuelHUDWidget::ShowHitMarker`):
+When the server confirms that a shot or a knife stroke of the local player met a body, the HUD shows it at the crosshair (`UArenaDuelHUDWidget`). It is the only hit marker: the earlier one drawn on the canvas HUD is gone; crosshair, scope picture and the rest of that HUD are as they were.
 
 | Hit | Marker | Word | Sound | Stays |
 | --- | --- | --- | --- | --- |
 | Body or limb | four white ticks around the crosshair | none | `S_HitBody`, a dull short tick | 0.22 s |
 | Head | the same ticks in red-gold, arriving at 2.4 times the size and settling at 1.5 times | `HEADSHOT` under the crosshair | `S_HitHead`, a bright metallic ring | 0.55 s |
 
-It is shown only to the shooter, comes from the server's result (`GetLastShotResult`, which on a client arrives with the shot confirmation), and applies to players and survival enemies alike. A shotgun blast with at least one pellet in the head counts as a head shot. The sounds are played without a place in the world and are made by `Tools/Editor/SetupHitSounds.py`.
+How it works:
 
-Checked: the marker's size and duration for both kinds and the HUD's state after each (`ArenaDuel.Phase5`), 118 of 118 tests of the whole run. Not checked: nobody has seen the marker in a running game or heard either sound.
+- **Events, not the last result.** Every confirmation that met a body becomes one event on the shooter's weapon component (`TakeHitFeedback`), with its sequence number. The HUD takes the waiting events once per frame. A head shot followed by a miss or by a body hit before the HUD draws again is therefore not lost. A sequence number is taken once; an older or repeated confirmation is ignored. A miss and a hit on the world are never events. At most sixteen wait; a HUD that is not drawn loses the oldest.
+- **Only the shooter.** The confirmation is a message to the owning machine, so the events exist there and nowhere else: not on the server's copy of a remote player's weapon, not for the player who was hit.
+- **The stronger mark stays.** While a head shot's marker is up, a body hit does not replace it; marker and word stay until the head shot's own time is over. The body hit still has its own sound.
+- **Sounds.** One of each kind at most for the hits taken in one frame, so several confirmations at once do not stack. Played without a place in the world; made by `Tools/Editor/SetupHitSounds.py`.
+- **Position.** The marker's root is centred on the screen, where the crosshair and the scope are drawn; the ticks stand around the root's own middle and it scales about that middle. Anchors and the engine's DPI scaling keep that true at any resolution; the word is below, inside the same root.
+- **Respawn.** A new pawn has a new weapon: what the old one left on the screen is hidden, and what was confirmed for the new one before the HUD saw it is not shown as news.
+- Players and survival enemies alike. A blast of pellets is one shot and one event, a head shot as soon as one pellet is in the head. The knife counts as a body hit wherever it lands, as before.
+
+Checked by tests: `ArenaDuel.Phase5` (size and duration of both markers; the ticks' middle and the pivot are the root's middle and the word is below; head shot then miss and head shot then body hit before one frame; a later body hit against a running head shot; body hit after the head shot's time; repeated and older confirmations; forty hits for one frame, bounded buffer, one sound of each kind; respawn). `ArenaDuel.Phase9.Combat.ConfirmedHitsReachTheShooterAndOnlyTheShooter`, host and connected client: the client's pawn hits the host's pawn in body and head with each of the four firearms, a zombie in body and head, and the host's head with the knife; the server judges five head and six body hits, the client's machine is told of exactly five and six, and neither the server's copy of that weapon nor the victim's weapon collects anything.
+
+Checked in the packaged Development game (log, no window): both sounds are in the package (`ArenaDuel.Dev.AssetCheck`: 55 paths, 0 missing), and five hand-ins of confirmed hits (`ArenaDuel.Dev.HitFeedback`: three head shots at once, five body hits at once, then one, one, one) asked for five sounds, one per kind and frame.
+
+Not checked: nobody has looked at the marker in a running game, in hip fire or through the scope, at any resolution; nobody has heard either sound.
+
+### Listening test (for a person with headphones)
+
+`ArenaDuel.Dev.HitFeedback 1` gives a head shot's feedback and `ArenaDuel.Dev.HitFeedback 0` a body hit's, in a Development build, without a target.
+
+1. Head shot alone: is it clearly a different sound from the body hit, and pleasant at the tenth repetition?
+2. Body hit alone: audible but unobtrusive? It plays at about half the level of the head shot.
+3. Each of them while holding fire with the SMG and with the Arc Rifle: does the head shot cut through the shots? Does the body tick disappear, or become a rattle at 900 rounds per minute?
+4. Head shot with the DMR and with the shotgun: does it sit on top of the shot or get swallowed by it?
+5. Both within a moment (`ArenaDuel.Dev.HitFeedback 1` then `0`): do they clash?
+6. With master volume at 30 % and at 100 %: still balanced against the weapons?
+7. In survival, with zombie growls, hits and deaths around: can a head shot be told from a zombie's own hit sound?
+8. Any click at the start or the end of either sound, any ringing that lasts too long (the head shot is 0.42 s)?
