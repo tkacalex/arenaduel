@@ -723,7 +723,12 @@ void AArenaDuelZombie::OnRep_Dead()
 	UArenaDuelZombieAnimInstance* Clips = GetMesh() ? Cast<UArenaDuelZombieAnimInstance>(GetMesh()->GetAnimInstance()) : nullptr;
 	const FVector Shot(DeathHitDirection);
 	const bool bForward = Shot.IsNearlyZero() ? (GetUniqueID() & 1) != 0 : FVector::DotProduct(GetActorForwardVector(), Shot) > 0.0f;
-	if (GetNetMode() != NM_DedicatedServer && GetWorld() && Clips && !bDeathHeadshot && FVector(DeathVelocity).Size2D() < 300.0f && Clips->PlayDeath(bForward))
+	// What this machine had when it learned of the death. The server sets all of it in the frame of the death,
+	// before the flag, so it arrives together; kept so that can be checked.
+	DeathVelocityAtNotify = FVector(DeathVelocity);
+	bDeathHeadshotAtNotify = bDeathHeadshot;
+	bDeathNotified = true;
+	if (GetNetMode() != NM_DedicatedServer && GetWorld() && Clips && ShouldBuckleBeforeRagdoll() && Clips->PlayDeath(bForward))
 	{
 		GetWorld()->GetTimerManager().SetTimer(RagdollTimerHandle, this, &AArenaDuelZombie::StartRagdoll, 0.3f, false);
 	}
@@ -732,8 +737,10 @@ void AArenaDuelZombie::OnRep_Dead()
 
 void AArenaDuelZombie::StartRagdoll()
 {
+	bRagdollRequested = true;
 	USkeletalMeshComponent* Body = GetMesh();
 	if (!Body || !Body->GetPhysicsAsset() || GetNetMode() == NM_DedicatedServer) return;
+	bRagdollStarted = true;
 	// The body keeps the speed it had, so a runner tumbles forward and a standing one drops where it stood.
 	const FVector Carried(DeathVelocity);
 	Body->SetCollisionProfileName(TEXT("Ragdoll"));

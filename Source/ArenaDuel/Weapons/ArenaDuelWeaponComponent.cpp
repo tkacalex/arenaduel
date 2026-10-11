@@ -14,6 +14,9 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/DecalComponent.h"
+#include "../ArenaDuel.h"
+#include "Containers/Ticker.h"
+#include "Engine/Engine.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundBase.h"
 #include "HAL/IConsoleManager.h"
@@ -89,6 +92,40 @@ namespace
 			if (Args.Num() > 1) Rotation.Yaw = FCString::Atof(*Args[1]);
 			Controller->SetControlRotation(Rotation);
 		}));
+	// ArenaDuel.Dev.After <seconds> <command...>: run a console command later. It survives the travel to a server,
+	// so a game started from a command line can act out a sequence without anyone at the keyboard.
+	FAutoConsoleCommand CmdAfter(TEXT("ArenaDuel.Dev.After"), TEXT("Run a console command after the given seconds: ArenaDuel.Dev.After 12.5 ArenaDuel.Slot 2"),
+		FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& Args)
+		{
+			if (Args.Num() < 2) return;
+			const float Seconds = FMath::Max(FCString::Atof(*Args[0]), 0.0f);
+			TArray<FString> Rest(Args);
+			Rest.RemoveAt(0);
+			const FString Command = FString::Join(Rest, TEXT(" "));
+			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([Command](float)
+			{
+				if (GEngine)
+				{
+					for (const FWorldContext& Context : GEngine->GetWorldContexts())
+					{
+						if (Context.World() && Context.World()->IsGameWorld()) { GEngine->Exec(Context.World(), *Command); break; }
+					}
+				}
+				return false;
+			}), Seconds);
+		}));
+	// ArenaDuel.Dev.Crouch 1|0: the local player crouches or stands up, as the key does.
+	FAutoConsoleCommandWithWorldAndArgs CmdCrouch(TEXT("ArenaDuel.Dev.Crouch"), TEXT("Crouch (1) or stand up (0) for the local player"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+			ACharacter* Pawn = Controller ? Cast<ACharacter>(Controller->GetPawn()) : nullptr;
+			if (!Pawn || Args.Num() == 0) return;
+			if (FCString::Atoi(*Args[0]) != 0) Pawn->Crouch(); else Pawn->UnCrouch();
+		}));
+	// ArenaDuel.Dev.ShotLog 1: one log line for every real shot on the server and every shown shot on the owner,
+	// with the time, the magazine and the height the shot starts from, to compare the two sides of a connection.
+	TAutoConsoleVariable<int32> CVarShotLog(TEXT("ArenaDuel.Dev.ShotLog"), 0, TEXT("1: log every real and every shown shot"));
 #endif
 	// Exact critically damped step. Its response does not depend on the frame rate.
 	static void StepSpring(float& Position, float& Velocity, float Target, float Response, float DeltaSeconds)
@@ -772,6 +809,10 @@ void UArenaDuelWeaponComponent::ServerRequestReload_Implementation()
 	GetWorld()->GetTimerManager().SetTimer(ReloadTimerHandle, ReloadDelegate, GetReloadDuration(), false);
 }
 void UArenaDuelWeaponComponent::RequestReloadForTests() { ServerRequestReload_Implementation(); }
+void UArenaDuelWeaponComponent::ConsumeAmmoForTests(int32 Rounds)
+{
+	if (FArenaDuelWeaponRuntimeState* State = GetOwnerRole() == ROLE_Authority ? GetMutableCurrentRuntimeState() : nullptr) State->MagazineAmmo = FMath::Max(0, State->MagazineAmmo - FMath::Max(Rounds, 0));
+}
 void UArenaDuelWeaponComponent::ServerRequestEquip_Implementation(int32 Index)
 {
 	const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner());
@@ -799,6 +840,9 @@ void UArenaDuelWeaponComponent::FireAuthoritative()
 	NextAllowedFireServerTimes[DefinitionIndex] = ServerTime + 60.0 / FMath::Max(static_cast<double>(Definition.RoundsPerMinute), 1.0);
 	const FVector Origin = Character->GetPawnViewLocation();
 	const FVector Direction = Controller->GetControlRotation().Vector();
+#if !UE_BUILD_SHIPPING
+	if (CVarShotLog.GetValueOnGameThread() != 0) UE_LOG(LogArenaDuel, Log, TEXT("ShotLog real %s t=%.3f magazine=%d eye=%.1f ease=%.1f crouched=%d since_switch=%.3f"), *GetNameSafe(GetOwner()), ServerTime, State->MagazineAmmo, Origin.Z - Character->GetActorLocation().Z, Character->GetEyeEaseOffset(), Character->bIsCrouched ? 1 : 0, ServerTime - (EquipmentReadyServerTime - SwitchSeconds));
+#endif
 	FRandomStream Random(++LastShotSequence);
 	int32 BodyPellets = 0, HeadPellets = 0, LimbPellets = 0, WorldPellets = 0;
 	TArray<FVector_NetQuantize> TraceEnds;
@@ -956,6 +1000,10 @@ void UArenaDuelWeaponComponent::LocalCosmeticShot()
 	if (!bFireHeld || bReloading || (GetCurrentMagazineAmmo() <= 0 && !HasInfiniteAmmoForDevelopment()) || !WeaponDefinitions.IsValidIndex(EquippedWeaponIndex)) return;
 	LastCosmeticShotWorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
 	PartShotWorldTime = LastCosmeticShotWorldTime;
+#if !UE_BUILD_SHIPPING
+	if (const AArenaDuelCharacter* Shooter = Cast<AArenaDuelCharacter>(GetOwner()); Shooter && CVarShotLog.GetValueOnGameThread() != 0)
+		UE_LOG(LogArenaDuel, Log, TEXT("ShotLog shown %s t=%.3f magazine=%d eye=%.1f ease=%.1f crouched=%d since_switch=%.3f"), *GetNameSafe(GetOwner()), LastCosmeticShotWorldTime, GetCurrentMagazineAmmo(), Shooter->GetPawnViewLocation().Z - Shooter->GetActorLocation().Z, Shooter->GetEyeEaseOffset(), Shooter->bIsCrouched ? 1 : 0, LastCosmeticShotWorldTime - (LocalSwitchReadyWorldTime - SwitchSeconds));
+#endif
 	if (const FArenaDuelWeaponDefinition& Fired = GetCurrentDefinition(); Fired.bHasScope && ScopeLevel > 0 && Fired.ScopeRezoomSeconds > 0.0f && GetWorld())
 	{
 		ScopeSuppressedUntilWorldTime = GetWorld()->GetTimeSeconds() + Fired.ScopeRezoomSeconds;

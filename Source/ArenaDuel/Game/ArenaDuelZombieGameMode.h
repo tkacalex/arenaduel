@@ -32,6 +32,15 @@ public:
 	void EndRunIfNobodyStands(const AController* Leaving);
 	/** Centre of a capsule of this half height standing on the floor under a picked spawn location. */
 	static FVector SpawnCentreForCapsule(const FVector& PickedLocation, float HalfHeight);
+	/** Moves a picked spawn location to where a capsule of this size stands on the floor there; false, and the location untouched, when it does not fit. */
+	static bool FindCapsuleRoomAtSpawn(const UWorld* World, FVector& InOutLocation, float Radius, float HalfHeight, const AActor* Ignore);
+	/** Spawns one enemy of this type at a picked spawn location (96 cm above the floor). Null when the scaled capsule has no room there. */
+	class AArenaDuelZombie* SpawnZombieAt(EArenaDuelZombieType Type, FVector Location, const FRotator& Rotation);
+	/** Moves a stuck enemy to a picked spawn location. False, and nothing counted, when its capsule has no room there. */
+	bool RescueZombieTo(class AArenaDuelZombie* Zombie, FVector Location, const FRotator& Rotation);
+	int32 GetRescuesDone() const { return StatRelocated; }
+	int32 GetRescuesRefused() const { return StatRescueRefused; }
+	int32 GetAmmoCost() const { return AmmoCost; }
 	/** Survival has waves, not timed rounds: the duel's round clock neither runs nor shows here. */
 	virtual bool UsesRoundTimer() const override { return false; }
 	virtual bool UsesMatchUpgrades() const override { return false; }
@@ -132,9 +141,8 @@ protected:
 	void FinishWaveIfDone();
 	/** bRelaxed halves the distance rule; bUnseenOnly refuses points a player can see. */
 	bool PickSpawnLocation(FVector& OutLocation, FRotator& OutRotation, bool bRelaxed = false, bool bUnseenOnly = false);
-	/** Moves a picked spawn location to where a capsule of this size stands on the floor there; false when it does not fit. */
-	bool PlaceCapsuleAtSpawn(FVector& InOutLocation, float Radius, float HalfHeight, const AActor* Ignore) const;
 	int32 StatTightSpawns = 0;
+	int32 StatRescueRefused = 0;
 	bool IsSeenByAnyPlayer(const FVector& Location) const;
 	void DevAutoPlayTick();
 	void SpawnAmmoPickupIfDue();

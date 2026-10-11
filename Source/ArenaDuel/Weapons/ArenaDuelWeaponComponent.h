@@ -282,6 +282,8 @@ public:
 	const FArenaDuelKnifeDefinition& GetKnifeDefinition() const { return Knife; }
 	/** Tests: the reload request as the server receives it, without the checks Reload() makes on the owner. */
 	void RequestReloadForTests();
+	/** Tests: take rounds out of the magazine in the hands without firing. */
+	void ConsumeAmmoForTests(int32 Rounds);
 	/** Tests: forget the running switch and knife times, so the next step of a test starts from a ready item. */
 	void ClearActionTimesForTests() { EquipmentReadyServerTime = 0.0; KnifeReadyServerTime = 0.0; LocalSwitchReadyWorldTime = 0.0; }
 	/** True when the support hand goes with the magazine or the pump during a reload instead of leaving the weapon to the clip. */

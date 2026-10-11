@@ -101,6 +101,17 @@ public:
 	bool IsDead() const { return bDead; }
 
 	FVector GetDeathVelocity() const { return FVector(DeathVelocity); }
+	/** A body shot on a zombie that was not running lets it buckle first; a head shot and a runner at speed drop at once. Decided from the replicated death data, so every machine decides the same. */
+	bool ShouldBuckleBeforeRagdoll() const { return !bDeathHeadshot && FVector(DeathVelocity).Size2D() < 300.0f; }
+	bool IsDeathHeadshot() const { return bDeathHeadshot; }
+	FVector GetDeathHitDirection() const { return FVector(DeathHitDirection); }
+	/** The death data as this machine had it at the moment it was told of the death. */
+	bool WasDeathNotified() const { return bDeathNotified; }
+	FVector GetDeathVelocityAtNotify() const { return DeathVelocityAtNotify; }
+	bool WasDeathHeadshotAtNotify() const { return bDeathHeadshotAtNotify; }
+	/** The hand-over to physics was asked for, and it was started (it is not on a machine without a physics asset for the body, or on a dedicated server). */
+	bool WasRagdollRequested() const { return bRagdollRequested; }
+	bool HasRagdollStarted() const { return bRagdollStarted; }
 	EArenaDuelZombieType GetZombieType() const { return ZombieType; }
 	bool IsBossType() const { return ZombieType == EArenaDuelZombieType::Boss || ZombieType == EArenaDuelZombieType::MiniBoss; }
 	float GetHealthFraction() const { return MaxHealth > 0.0f ? FMath::Clamp(Health / MaxHealth, 0.0f, 1.0f) : 0.0f; }
@@ -166,6 +177,11 @@ protected:
 	UPROPERTY(Replicated) FVector_NetQuantize DeathVelocity;
 	UPROPERTY(Replicated) bool bCharging = false;
 	FTimerHandle RagdollTimerHandle;
+	FVector DeathVelocityAtNotify = FVector::ZeroVector;
+	bool bDeathHeadshotAtNotify = false;
+	bool bDeathNotified = false;
+	bool bRagdollRequested = false;
+	bool bRagdollStarted = false;
 
 	// Server only.
 	FArenaDuelZombieTypeConfig Config;

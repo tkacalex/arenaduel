@@ -16,6 +16,9 @@
 #include "ArenaDuel/Game/ArenaDuelUpgrades.h"
 #include "ArenaDuel/Game/ArenaDuelZombieGameMode.h"
 #include "ArenaDuel/Game/ArenaDuelZombieGameState.h"
+#include "ArenaDuel/Game/ArenaDuelZombieTypes.h"
+#include "ArenaDuel/Characters/ArenaDuelZombie.h"
+#include "Components/CapsuleComponent.h"
 #include "ArenaDuel/Player/ArenaDuelLocalSettings.h"
 #include "ArenaDuel/Player/ArenaDuelPlayerController.h"
 #include "ArenaDuel/UI/ArenaDuelPlayerMenuWidget.h"
@@ -661,6 +664,171 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9SurvivalLeaveTest, "ArenaDuel.Phase9.Survival
 				if (GameState->IsGameOver()) TestRunner->AddError(TEXT("The run ended although the remote player is alive"));
 				GameMode->Logout(Remote);
 				if (!GameState->IsGameOver()) TestRunner->AddError(TEXT("The last living player left and the run did not end"));
+			});
+	}
+
+	// E10: the shop, as the server runs it: full ammunition costs nothing, missing ammunition is paid for once and delivered.
+	TEST_METHOD(ShopChargesForAmmunitionOnlyWhenSomeIsMissing)
+	{
+		Network
+			.UntilServer(TEXT("The run is in a break and the host has a pawn"), [](FArenaDuelPhase9State& State)
+			{
+				const AArenaDuelZombieGameState* GameState = State.World->GetGameState<AArenaDuelZombieGameState>();
+				const APlayerController* Host = State.World->GetFirstPlayerController();
+				return GameState && GameState->IsIntermission() && Host && Cast<AArenaDuelCharacter>(Host->GetPawn());
+			}, FTimespan::FromSeconds(20.0))
+			.ThenServer(TEXT("Buy ammunition full, with rounds missing, again, and without points"), [this](FArenaDuelPhase9State& State)
+			{
+				AArenaDuelZombieGameMode* GameMode = State.World->GetAuthGameMode<AArenaDuelZombieGameMode>();
+				APlayerController* Host = State.World->GetFirstPlayerController();
+				AArenaDuelPlayerState* Player = Host->GetPlayerState<AArenaDuelPlayerState>();
+				UArenaDuelWeaponComponent* Weapon = Cast<AArenaDuelCharacter>(Host->GetPawn())->GetWeaponComponent();
+				const int32 Cost = GameMode->GetPurchaseCost(Host, EArenaDuelSurvivalPurchase::Ammo);
+				if (Cost <= 0) { TestRunner->AddError(TEXT("Ammunition has no price to check")); return; }
+				Player->AddSurvivalPoints(Cost * 3 - Player->GetSurvivalPoints());
+				const int32 Points = Player->GetSurvivalPoints();
+				const int32 Capacity = Weapon->GetCurrentDefinition().MagazineCapacity;
+				if (!Weapon->IsAllAmmoFull() || Weapon->GetCurrentMagazineAmmo() != Capacity) { TestRunner->AddError(TEXT("The pawn does not start fully loaded")); return; }
+				// Full: refused, nothing charged, nothing changed.
+				if (GameMode->TryPurchase(Host, EArenaDuelSurvivalPurchase::Ammo)) TestRunner->AddError(TEXT("Ammunition was sold to a fully loaded player"));
+				if (Player->GetSurvivalPoints() != Points) TestRunner->AddError(FString::Printf(TEXT("Full ammunition cost %d points"), Points - Player->GetSurvivalPoints()));
+				// Five rounds missing: sold, charged once, delivered.
+				Weapon->ConsumeAmmoForTests(5);
+				if (Weapon->GetCurrentMagazineAmmo() != Capacity - 5 || Weapon->IsAllAmmoFull()) { TestRunner->AddError(TEXT("Could not take rounds out of the magazine")); return; }
+				if (!GameMode->TryPurchase(Host, EArenaDuelSurvivalPurchase::Ammo)) TestRunner->AddError(TEXT("Ammunition was refused although rounds were missing"));
+				if (Player->GetSurvivalPoints() != Points - Cost) TestRunner->AddError(FString::Printf(TEXT("The purchase cost %d points instead of %d"), Points - Player->GetSurvivalPoints(), Cost));
+				if (Weapon->GetCurrentMagazineAmmo() != Capacity || !Weapon->IsAllAmmoFull()) TestRunner->AddError(TEXT("The paid ammunition was not delivered"));
+				// Again at once: full, so refused and free.
+				if (GameMode->TryPurchase(Host, EArenaDuelSurvivalPurchase::Ammo) || Player->GetSurvivalPoints() != Points - Cost) TestRunner->AddError(TEXT("A second purchase right after was sold or charged"));
+				// Rounds missing but not enough points: refused, nothing delivered.
+				Weapon->ConsumeAmmoForTests(3);
+				Player->AddSurvivalPoints(Cost - 1 - Player->GetSurvivalPoints());
+				if (GameMode->TryPurchase(Host, EArenaDuelSurvivalPurchase::Ammo) || Player->GetSurvivalPoints() != Cost - 1 || Weapon->GetCurrentMagazineAmmo() != Capacity - 3) TestRunner->AddError(TEXT("A purchase without enough points went through"));
+			});
+	}
+
+	// E11, R03: a zombie killed while running, while standing, and by a head shot. The server keeps the speed it
+	// had, every machine decides clip or ragdoll from the same data, and that data is complete when a client is
+	// told of the death.
+	TEST_METHOD(ZombieDeathDataIsKeptAndTheSameOnServerAndClient)
+	{
+		Network
+			.UntilServer(TEXT("Host and client are in the run"), [](FArenaDuelPhase9State& State)
+			{
+				int32 Players = 0;
+				for (FConstPlayerControllerIterator It = State.World->GetPlayerControllerIterator(); It; ++It) if (It->Get() && It->Get()->GetPawn()) ++Players;
+				return Players == 2;
+			}, FTimespan::FromSeconds(15.0))
+			.ThenServer(TEXT("Three zombies die: running, standing, standing with a head shot"), [this](FArenaDuelPhase9State& State)
+			{
+				AArenaDuelZombieGameMode* GameMode = State.World->GetAuthGameMode<AArenaDuelZombieGameMode>();
+				AController* Killer = State.World->GetFirstPlayerController();
+				struct FCase { FVector Speed; EArenaDuelShotResult Zone; bool bBuckle; };
+				const FCase Cases[] = { { FVector(450.0f, 0.0f, 0.0f), EArenaDuelShotResult::Body, false }, { FVector::ZeroVector, EArenaDuelShotResult::Body, true }, { FVector::ZeroVector, EArenaDuelShotResult::Head, false } };
+				int32 Index = 0;
+				for (const FCase& Case : Cases)
+				{
+					AArenaDuelZombie* Zombie = GameMode->SpawnZombieAt(EArenaDuelZombieType::Normal, FVector(900.0f, -600.0f + 600.0f * Index, 400.0f), FRotator::ZeroRotator);
+					++Index;
+					if (!Zombie) { TestRunner->AddError(TEXT("A zombie could not be spawned for the death check")); continue; }
+					Zombie->GetCharacterMovement()->Velocity = Case.Speed;
+					Zombie->TakeWeaponHit(100000.0f, 1.0f, Case.Zone, Killer, Zombie->GetActorLocation(), FVector(1.0f, 0.0f, 0.0f));
+					if (!Zombie->IsDead()) { TestRunner->AddError(TEXT("The zombie survived the killing hit")); continue; }
+					// The body is stopped by now; what counts is what it had.
+					if (!Zombie->GetDeathVelocity().Equals(Case.Speed, 1.5)) TestRunner->AddError(FString::Printf(TEXT("Case %d: the speed at death was kept as %s"), Index, *Zombie->GetDeathVelocity().ToCompactString()));
+					if (Zombie->ShouldBuckleBeforeRagdoll() != Case.bBuckle) TestRunner->AddError(FString::Printf(TEXT("Case %d: wrong choice between buckling and dropping on the server"), Index));
+					if (!Zombie->WasDeathNotified() || !Zombie->GetDeathVelocityAtNotify().Equals(Case.Speed, 1.5) || Zombie->WasDeathHeadshotAtNotify() != (Case.Zone == EArenaDuelShotResult::Head)) TestRunner->AddError(FString::Printf(TEXT("Case %d: the server's own death handling did not see the death data"), Index));
+					if (!Case.bBuckle && !Zombie->WasRagdollRequested()) TestRunner->AddError(FString::Printf(TEXT("Case %d: a zombie that drops at once was not handed to physics at once"), Index));
+				}
+			})
+			.UntilClient(TEXT("The client has the three deaths with complete data and the same choices"), 0, [this](FArenaDuelPhase9State& State)
+			{
+				int32 Dead = 0, Running = 0, Buckling = 0, Headshots = 0, HandedOver = 0;
+				for (TActorIterator<AArenaDuelZombie> It(State.World); It; ++It)
+				{
+					if (!It->IsDead() || !It->WasDeathNotified()) continue;
+					++Dead;
+					// Complete at the moment of the notification: what the client saw then is what it has now.
+					if (!It->GetDeathVelocityAtNotify().Equals(It->GetDeathVelocity(), 0.01) || It->WasDeathHeadshotAtNotify() != It->IsDeathHeadshot()) TestRunner->AddError(TEXT("A client was told of a death before the death data had arrived"));
+					if (It->GetDeathHitDirection().IsNearlyZero()) TestRunner->AddError(TEXT("A client has a death without the direction of the hit"));
+					if (It->GetDeathVelocityAtNotify().Size2D() > 400.0) { ++Running; if (It->ShouldBuckleBeforeRagdoll()) TestRunner->AddError(TEXT("The client lets a runner at speed buckle")); }
+					else if (It->WasDeathHeadshotAtNotify()) { ++Headshots; if (It->ShouldBuckleBeforeRagdoll()) TestRunner->AddError(TEXT("The client lets a head shot buckle")); }
+					else if (It->ShouldBuckleBeforeRagdoll()) ++Buckling;
+					if (It->WasRagdollRequested()) ++HandedOver;
+				}
+				if (Dead < 3 || HandedOver < 3) return false;
+				if (Running != 1 || Buckling != 1 || Headshots != 1) TestRunner->AddError(FString::Printf(TEXT("The client has %d running, %d buckling and %d head shot deaths instead of one each"), Running, Buckling, Headshots));
+				return true;
+			}, FTimespan::FromSeconds(10.0));
+	}
+
+	// E12: real spawns and rescues of the largest enemy against floor, ceiling, wall and an occupied place.
+	TEST_METHOD(BigEnemiesSpawnAndAreRescuedOnlyWhereTheirCapsuleFits)
+	{
+		Network
+			.UntilServer(TEXT("The run has a host"), [](FArenaDuelPhase9State& State) { return State.World->GetFirstPlayerController() && State.World->GetAuthGameMode<AArenaDuelZombieGameMode>(); }, FTimespan::FromSeconds(15.0))
+			.ThenServer(TEXT("Free place, low ceiling, wall, occupied place"), [this](FArenaDuelPhase9State& State)
+			{
+				AArenaDuelZombieGameMode* GameMode = State.World->GetAuthGameMode<AArenaDuelZombieGameMode>();
+				const int32 BossIndex = static_cast<int32>(EArenaDuelZombieType::Boss);
+				if (!GameMode->GetTypeConfigs().IsValidIndex(BossIndex)) { TestRunner->AddError(TEXT("No boss configuration")); return; }
+				const float Scale = GameMode->GetTypeConfigs()[BossIndex].Scale;
+				const UCapsuleComponent* Template = GetDefault<AArenaDuelZombie>()->GetCapsuleComponent();
+				const float Radius = Template->GetUnscaledCapsuleRadius(), Half = Template->GetUnscaledCapsuleHalfHeight();
+				if (Scale < 1.2f) { TestRunner->AddError(TEXT("The boss is not large enough for this check to mean anything")); return; }
+				UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+				const auto Block = [&State, Cube](const FVector& Centre, const FVector& Size)
+				{
+					AStaticMeshActor* Actor = State.World->SpawnActor<AStaticMeshActor>(Centre, FRotator::ZeroRotator);
+					Actor->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
+					Actor->GetStaticMeshComponent()->SetStaticMesh(Cube);
+					Actor->GetStaticMeshComponent()->SetCollisionProfileName(TEXT("BlockAll"));
+					Actor->SetActorScale3D(Size / 100.0);
+				};
+				// Far from the players, a floor with its top at z = 0, and four places on it 1500 cm apart.
+				const FVector Origin(30000.0f, 0.0f, 0.0f);
+				Block(Origin + FVector(0.0f, 0.0f, -50.0f), FVector(8000.0f, 8000.0f, 100.0f));
+				const auto Place = [&Origin](int32 Index) { return Origin + FVector(-2250.0f + 1500.0f * Index, 0.0f, 96.0f); };   // what PickSpawnLocation answers
+				const FVector Free = Place(0), LowCeiling = Place(1), BesideWall = Place(2), Occupied = Place(3), FreeAgain = Origin + FVector(0.0f, 2500.0f, 96.0f);
+				// A ceiling an ordinary zombie fits under and the boss does not.
+				const float CeilingHeight = 2.0f * Half + 0.5f * (2.0f * Half * Scale - 2.0f * Half);
+				Block(FVector(LowCeiling.X, LowCeiling.Y, CeilingHeight + 50.0f), FVector(600.0f, 600.0f, 100.0f));
+				// A wall whose face is nearer than the boss is wide and farther than an ordinary zombie is.
+				const float WallDistance = 0.5f * (Radius + Radius * Scale);
+				Block(FVector(BesideWall.X + WallDistance + 50.0f, BesideWall.Y, 300.0f), FVector(100.0f, 600.0f, 600.0f));
+				const auto FeetAboveFloor = [](const AArenaDuelZombie* Zombie) { return Zombie->GetActorLocation().Z - Zombie->GetCapsuleComponent()->GetScaledCapsuleHalfHeight(); };
+
+				AArenaDuelZombie* Boss = GameMode->SpawnZombieAt(EArenaDuelZombieType::Boss, Free, FRotator::ZeroRotator);
+				if (!Boss) { TestRunner->AddError(TEXT("The boss did not spawn on a free place")); return; }
+				if (!FMath::IsNearlyEqual(Boss->GetCapsuleComponent()->GetScaledCapsuleHalfHeight(), Half * Scale, 1.0f)) TestRunner->AddError(TEXT("The spawned boss does not have its scaled capsule"));
+				if (FeetAboveFloor(Boss) < 0.0 || FeetAboveFloor(Boss) > 8.0) TestRunner->AddError(FString::Printf(TEXT("The boss's feet are %.1f cm above the floor after the spawn"), FeetAboveFloor(Boss)));
+				if (!FMath::IsNearlyEqual(Boss->GetActorLocation().X, Free.X, 5.0) || !FMath::IsNearlyEqual(Boss->GetActorLocation().Y, Free.Y, 5.0)) TestRunner->AddError(TEXT("The boss did not spawn at the place asked for"));
+
+				if (GameMode->SpawnZombieAt(EArenaDuelZombieType::Boss, LowCeiling, FRotator::ZeroRotator)) TestRunner->AddError(TEXT("The boss spawned under a ceiling lower than itself"));
+				if (GameMode->SpawnZombieAt(EArenaDuelZombieType::Boss, BesideWall, FRotator::ZeroRotator)) TestRunner->AddError(TEXT("The boss spawned with its side in a wall"));
+				AArenaDuelZombie* Sitter = GameMode->SpawnZombieAt(EArenaDuelZombieType::Normal, Occupied, FRotator::ZeroRotator);
+				if (!Sitter) { TestRunner->AddError(TEXT("An ordinary zombie did not spawn on a free place")); return; }
+				if (GameMode->SpawnZombieAt(EArenaDuelZombieType::Boss, Occupied, FRotator::ZeroRotator)) TestRunner->AddError(TEXT("The boss spawned on a place another enemy stands on"));
+				// It is the scaled size that decides: the same two tight places take an ordinary zombie.
+				AArenaDuelZombie* UnderCeiling = GameMode->SpawnZombieAt(EArenaDuelZombieType::Normal, LowCeiling, FRotator::ZeroRotator);
+				AArenaDuelZombie* AtWall = GameMode->SpawnZombieAt(EArenaDuelZombieType::Normal, BesideWall, FRotator::ZeroRotator);
+				if (!UnderCeiling || !AtWall) TestRunner->AddError(TEXT("An ordinary zombie was refused where only the boss is too large"));
+				if (UnderCeiling) UnderCeiling->Destroy();
+				if (AtWall) AtWall->Destroy();
+
+				// Rescue: refused where the boss does not fit, and a refusal moves nothing and counts nothing.
+				const FVector Before = Boss->GetActorLocation();
+				const int32 Done = GameMode->GetRescuesDone(), Refused = GameMode->GetRescuesRefused();
+				if (GameMode->RescueZombieTo(Boss, LowCeiling, FRotator::ZeroRotator)) TestRunner->AddError(TEXT("The boss was rescued to under a low ceiling"));
+				if (GameMode->RescueZombieTo(Boss, BesideWall, FRotator::ZeroRotator)) TestRunner->AddError(TEXT("The boss was rescued into a wall"));
+				if (GameMode->RescueZombieTo(Boss, Occupied, FRotator::ZeroRotator)) TestRunner->AddError(TEXT("The boss was rescued onto another enemy"));
+				if (!Boss->GetActorLocation().Equals(Before, 0.5)) TestRunner->AddError(TEXT("A refused rescue moved the boss"));
+				if (GameMode->GetRescuesDone() != Done || GameMode->GetRescuesRefused() != Refused + 3) TestRunner->AddError(TEXT("Refused rescues were counted as done, or not counted as refused"));
+				if (!GameMode->RescueZombieTo(Boss, FreeAgain, FRotator::ZeroRotator)) { TestRunner->AddError(TEXT("The boss was not rescued to a free place")); return; }
+				if (GameMode->GetRescuesDone() != Done + 1) TestRunner->AddError(TEXT("A rescue that worked was not counted"));
+				if (!FMath::IsNearlyEqual(Boss->GetActorLocation().X, FreeAgain.X, 5.0) || !FMath::IsNearlyEqual(Boss->GetActorLocation().Y, FreeAgain.Y, 5.0)) TestRunner->AddError(TEXT("The rescued boss is not where it was sent"));
+				if (FeetAboveFloor(Boss) < 0.0 || FeetAboveFloor(Boss) > 8.0) TestRunner->AddError(FString::Printf(TEXT("The boss's feet are %.1f cm above the floor after the rescue"), FeetAboveFloor(Boss)));
+				if (Boss->GetSecondsWithoutProgress() > 0.01f) TestRunner->AddError(TEXT("A rescue did not give the boss a fresh start"));
 			});
 	}
 };

@@ -27,6 +27,34 @@ namespace
 		return UPackage::SavePackage(Package, Asset, *Filename, Args);
 	}
 
+	/** The material a slot of a character mesh has to get, by the slot's name; empty for a slot the setup leaves alone. */
+	FString RequiredMaterialPath(FString Slot, const FString& Variant)
+	{
+		// Blender may number a slot (Z_Skin.001); the material is found by the name before the dot.
+		int32 Dot = INDEX_NONE;
+		if (Slot.FindChar(TEXT('.'), Dot)) Slot.LeftInline(Dot);
+		if (Slot.StartsWith(TEXT("FP_"))) return FString::Printf(TEXT("/Game/ArenaDuel/Characters/Common/M_FP%s"), *Slot.RightChop(3));
+		if (Slot.StartsWith(TEXT("Z_Skin"))) return FString::Printf(TEXT("/Game/ArenaDuel/Characters/Zombies/M_ZombieSkin_%s"), *Variant);
+		if (Slot.StartsWith(TEXT("Z_"))) return FString::Printf(TEXT("/Game/ArenaDuel/Characters/Zombies/M_Zombie%s"), *Slot.RightChop(2));
+		return FString();
+	}
+
+	/** Everything that is required and missing for one mesh: the mesh itself, a material for one of the given slots. Loads, never saves. */
+	TArray<FString> FindMissingSetupAssets(const FString& MeshPath, const FString& Variant, const TArray<FName>* SlotsInsteadOfMesh = nullptr)
+	{
+		TArray<FString> Missing;
+		TArray<FName> Slots;
+		if (SlotsInsteadOfMesh) Slots = *SlotsInsteadOfMesh;
+		else if (const USkeletalMesh* Mesh = LoadObject<USkeletalMesh>(nullptr, *MeshPath, nullptr, LOAD_NoWarn | LOAD_Quiet)) { for (const FSkeletalMaterial& Material : Mesh->GetMaterials()) Slots.Add(Material.MaterialSlotName); }
+		else { Missing.Add(FString::Printf(TEXT("Required mesh missing: %s"), *MeshPath)); return Missing; }
+		for (const FName& Slot : Slots)
+		{
+			const FString Path = RequiredMaterialPath(Slot.ToString(), Variant);
+			if (!Path.IsEmpty() && !LoadObject<UMaterialInterface>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet)) Missing.Add(FString::Printf(TEXT("%s: required material missing at %s for slot %s"), *MeshPath, *Path, *Slot.ToString()));
+		}
+		return Missing;
+	}
+
 	bool AssignArmsMeshToCharacterDefaults(USkeletalMesh* Arms)
 	{
 		if (!Arms) return false;
@@ -111,24 +139,20 @@ bool FArenaDuelAssignCharacterMaterials::RunTest(const FString& Parameters)
 {
 	const auto Assign = [this](const FString& MeshPath, const FString& Variant)
 	{
+		// Every mesh named below and every material its slots ask for is required: anything missing fails the
+		// setup for that mesh before a single asset is touched.
+		const TArray<FString> Missing = FindMissingSetupAssets(MeshPath, Variant);
+		for (const FString& Entry : Missing) AddError(Entry);
+		if (Missing.Num() > 0) return;
 		USkeletalMesh* Mesh = LoadObject<USkeletalMesh>(nullptr, *MeshPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
-		// Every mesh named below is required: one that is missing fails the setup instead of being passed over.
-		if (!Mesh) { AddError(FString::Printf(TEXT("Required mesh missing: %s"), *MeshPath)); return; }
 		TArray<FSkeletalMaterial> Materials = Mesh->GetMaterials();
 		int32 Assigned = 0;
 		for (FSkeletalMaterial& Material : Materials)
 		{
-			// Blender may number a slot (Z_Skin.001); the material is found by the name before the dot.
-			FString Slot = Material.MaterialSlotName.ToString();
-			int32 Dot = INDEX_NONE;
-			if (Slot.FindChar(TEXT('.'), Dot)) Slot.LeftInline(Dot);
-			FString Path;
-			if (Slot.StartsWith(TEXT("FP_"))) Path = FString::Printf(TEXT("/Game/ArenaDuel/Characters/Common/M_FP%s"), *Slot.RightChop(3));
-			else if (Slot.StartsWith(TEXT("Z_Skin"))) Path = FString::Printf(TEXT("/Game/ArenaDuel/Characters/Zombies/M_ZombieSkin_%s"), *Variant);
-			else if (Slot.StartsWith(TEXT("Z_"))) Path = FString::Printf(TEXT("/Game/ArenaDuel/Characters/Zombies/M_Zombie%s"), *Slot.RightChop(2));
+			const FString Path = RequiredMaterialPath(Material.MaterialSlotName.ToString(), Variant);
 			if (Path.IsEmpty()) continue;
-			if (UMaterialInterface* Found = LoadObject<UMaterialInterface>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet)) { Material.MaterialInterface = Found; ++Assigned; }
-			else AddError(FString::Printf(TEXT("%s: required material missing at %s for slot %s"), *Mesh->GetName(), *Path, *Slot));
+			Material.MaterialInterface = LoadObject<UMaterialInterface>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet);
+			++Assigned;
 		}
 		Mesh->Modify();
 		Mesh->SetMaterials(Materials);
@@ -146,6 +170,30 @@ bool FArenaDuelAssignCharacterMaterials::RunTest(const FString& Parameters)
 	for (const TCHAR* Variant : { TEXT("Normal"), TEXT("Runner"), TEXT("Armoured"), TEXT("Brute"), TEXT("Abomination") })
 	{
 		Assign(FString::Printf(TEXT("/Game/ArenaDuel/Characters/Zombies/SKM_Zombie_%s"), Variant), Variant);
+	}
+	return !HasAnyErrors();
+}
+
+// Phase 9, E15: the setup's own check, run against assets that do not exist. It loads and never saves, so it is a
+// regular test and touches nothing.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FArenaDuelPhase9AssetSetupMissingTest, "ArenaDuel.Phase9.AssetSetup.MissingAssetsAreErrors", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FArenaDuelPhase9AssetSetupMissingTest::RunTest(const FString& Parameters)
+{
+	const TArray<FString> NoMesh = FindMissingSetupAssets(TEXT("/Game/ArenaDuel/Characters/Zombies/SKM_Zombie_DoesNotExist"), TEXT("Normal"));
+	TestEqual(TEXT("A missing mesh is one error"), NoMesh.Num(), 1);
+	TestTrue(TEXT("The error names the mesh"), NoMesh.Num() == 1 && NoMesh[0].Contains(TEXT("SKM_Zombie_DoesNotExist")) && NoMesh[0].Contains(TEXT("Required mesh missing")));
+	// A mesh whose slots ask for materials that are not there: two of them missing, one slot the setup leaves alone.
+	const TArray<FName> Slots = { FName(TEXT("Z_NoSuchPart")), FName(TEXT("Z_Skin.001")), FName(TEXT("SomethingElse")) };
+	const TArray<FString> NoMaterial = FindMissingSetupAssets(TEXT("/Game/ArenaDuel/Characters/Zombies/SKM_Pretend"), TEXT("NoSuchVariant"), &Slots);
+	TestEqual(TEXT("Every missing material is an error, an unrelated slot is not"), NoMaterial.Num(), 2);
+	TestTrue(TEXT("The errors name the material paths"), NoMaterial.Num() == 2 && NoMaterial[0].Contains(TEXT("/Game/ArenaDuel/Characters/Zombies/M_ZombieNoSuchPart")) && NoMaterial[1].Contains(TEXT("M_ZombieSkin_NoSuchVariant")));
+	TestEqual(TEXT("A numbered slot resolves like its plain name"), RequiredMaterialPath(TEXT("Z_Skin.001"), TEXT("Runner")), FString(TEXT("/Game/ArenaDuel/Characters/Zombies/M_ZombieSkin_Runner")));
+	// The real meshes have everything they need, so the setup would not fail on the project as it is.
+	TestEqual(TEXT("The hands have all their materials"), FindMissingSetupAssets(TEXT("/Game/ArenaDuel/Characters/Common/SKM_ArenaDuelFPHands"), FString()).Num(), 0);
+	for (const TCHAR* Variant : { TEXT("Normal"), TEXT("Runner"), TEXT("Armoured"), TEXT("Brute"), TEXT("Abomination") })
+	{
+		const TArray<FString> Missing = FindMissingSetupAssets(FString::Printf(TEXT("/Game/ArenaDuel/Characters/Zombies/SKM_Zombie_%s"), Variant), Variant);
+		for (const FString& Entry : Missing) AddError(Entry);
 	}
 	return !HasAnyErrors();
 }
