@@ -46,3 +46,7 @@ Three levels each. The effect is additive against the unchanged base value, neve
 Checked with host and client in the editor (2026-10-11): the selection on both screens with the three cards; the client choosing Reload by key and seeing `UPGRADE TAKEN` and `Waiting for the other player...` while the host still chose; the host choosing Supply and round two starting at once with `31 / 141` reserve on the host against `/ 128` on the client; a second selection left untouched, ending on its own after ten seconds with round three; the third selection showing the automatically raised levels on both. Rounds were ended with `ArenaDuel.Round.Kill`.
 
 Not checked in a session: both players choosing the same upgrade (the rule does not distinguish it; the automated tests cover different choices and the automatic pick), a maxed card on screen, the ability cooldown with a real ability press, a real disconnect (closing the client window ends the editor session; covered by the automated test that logs the player out), and how the shorter reload looks next to the base one.
+
+## Selection serial (2026-10-11)
+
+Every selection has a serial (`AArenaDuelGameState::GetUpgradeSelectSerial`) that grows by one each time a selection opens and is never reset. A choice names the serial of the selection it was made in; the server refuses a choice that names any other. A request that arrives late, in a later selection, therefore cannot use up that selection's choice. See `docs/Phase9.md`, E07.

@@ -67,6 +67,13 @@ Still open in Phase 8: more and more varied upgrades (the three are a deliberate
 
 Shattered Sanctum, competitive UI, audio, VFX, presentation, settings, and performance work.
 
+### Phase 9 stabilisation (started 2026-10-11)
+
+A review of commit `64de43e` listed 18 code findings and 10 areas to check. `docs/Phase9.md` tracks every one with its state and evidence.
+
+- 9A, combat and participants (done 2026-10-11): every ray of a knife swing stops at cover; the knife's attack time is separate from the switch time; a trigger held inside the switch time fires when it ends, on both sides; the reload request needs the firearm in the hands; a third player only watches and their leaving does not touch the match; upgrade choices name their selection.
+- Open: 9B input, camera and survival; 9C build, assets and tests; 9D presentation and sound; 9E load and overall acceptance.
+
 ## Phase 10: Online private duel, server, ranked, network hardening, and V1 release
 
 Private duels, dedicated server deployment, ranked and MMR systems, network hardening, and release validation.
