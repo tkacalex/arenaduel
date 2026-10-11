@@ -830,6 +830,8 @@ NETWORK_TEST_CLASS(FArenaDuelPhase9CombatTest, "ArenaDuel.Phase9.Combat")
 				UArenaDuelWeaponComponent* Weapon = ClientWeapon(State);
 				// A tenth of a second each way: the replicated magazine count is then several shots behind.
 				if (GEngine) GEngine->Exec(State.World, TEXT("NetEmulation.PktLag 100"));
+				// The server's switch time was cleared for this test; the owner's own count of it is cleared too, so both start with the press.
+				Weapon->ClearActionTimesForTests();
 				State.Ammo = Weapon->GetShownShotCount();
 				State.Mark = State.World->GetTimeSeconds();
 				Weapon->StartFire();
