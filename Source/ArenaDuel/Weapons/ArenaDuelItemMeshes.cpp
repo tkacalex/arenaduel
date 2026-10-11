@@ -92,7 +92,8 @@ namespace
 		UStaticMesh* Finish(std::initializer_list<FName> Slots)
 		{
 			UStaticMesh* Mesh = NewObject<UStaticMesh>(GetTransientPackage(), NAME_None, RF_Transient);
-			for (const FName Slot : Slots) Mesh->GetStaticMaterials().Add(FStaticMaterial(nullptr, Slot, Slot));
+			// Two arguments: the third, the imported slot name, only exists in editor builds, and this has to compile for the game.
+			for (const FName Slot : Slots) Mesh->GetStaticMaterials().Add(FStaticMaterial(nullptr, Slot));
 			UStaticMesh::FBuildMeshDescriptionsParams Params;
 			Params.bBuildSimpleCollision = false;
 			Params.bFastBuild = true;

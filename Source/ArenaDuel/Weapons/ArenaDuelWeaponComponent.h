@@ -262,6 +262,8 @@ public:
 	/** Mouse wheel: steps through every usable item, both firearms of a two gun loadout included. */
 	void CycleSlot(int32 Direction);
 	EArenaDuelLoadoutSlot GetActiveSlot() const { return static_cast<EArenaDuelLoadoutSlot>(ActiveSlot); }
+	/** The slot the owner acts for: the one it asked for while the server's answer is on its way, otherwise the active one. */
+	EArenaDuelLoadoutSlot GetExpectedSlot() const;
 	/**
 	 * What the hands are shown holding. The same as the active slot except right after a throw: the server
 	 * puts the firearm back at once, the hands first finish the throw, empty, and then bring the firearm up.
@@ -492,8 +494,11 @@ protected:
 	double EquipmentReadyServerTime = 0.0;
 	/** Server: when the knife may strike again. Kept apart from the switch time, so switching away and back cannot shorten it. */
 	double KnifeReadyServerTime = 0.0;
-	/** Owner: the same switch time, counted from when this machine learned of the switch. */
+	/** Owner: the same switch time, counted from its own request, or from when it learned of a switch the server made. */
 	double LocalSwitchReadyWorldTime = 0.0;
+	/** Owner on a client: the slot it asked for and has not heard back about (255: none). */
+	uint8 LocalRequestedSlot = 255;
+	double LocalRequestedSlotWorldTime = 0.0;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Weapons")
 	TObjectPtr<UStaticMeshComponent> FirstPersonWeaponMesh;

@@ -475,7 +475,7 @@ float UArenaDuelWeaponComponent::GetCurrentSpreadDegrees() const
 void UArenaDuelWeaponComponent::StartFire()
 {
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
-	if (GetActiveSlot() != EArenaDuelLoadoutSlot::Primary)
+	if (GetExpectedSlot() != EArenaDuelLoadoutSlot::Primary)
 	{
 		// Flashbang and knife are single actions decided on the server.
 		if (GetOwnerRole() == ROLE_Authority) ServerUseEquipment_Implementation(false); else ServerUseEquipment(false);
@@ -1490,11 +1490,29 @@ void UArenaDuelWeaponComponent::SetActiveSlotAuthoritative(EArenaDuelLoadoutSlot
 	if (AActor* OwnerActor = GetOwner()) OwnerActor->ForceNetUpdate();
 }
 
+EArenaDuelLoadoutSlot UArenaDuelWeaponComponent::GetExpectedSlot() const
+{
+	// With latency the owner hears of its own switch a round trip after asking for it. A trigger pressed in
+	// between belongs to the item that was asked for, not to the one still shown: pressed after a switch to
+	// the firearm it must hold fire, not ask for a knife stroke that the server, already switched, throws away.
+	if (GetOwnerRole() != ROLE_Authority && LocalRequestedSlot <= static_cast<uint8>(EArenaDuelLoadoutSlot::Knife) && GetWorld() && GetWorld()->GetTimeSeconds() - LocalRequestedSlotWorldTime < 1.0)
+		return static_cast<EArenaDuelLoadoutSlot>(LocalRequestedSlot);
+	return GetActiveSlot();
+}
+
 void UArenaDuelWeaponComponent::SelectSlot(EArenaDuelLoadoutSlot Slot)
 {
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
 	CancelLocalAndServerFire(true);
 	SuspendAim();
+	// What the server will do with the request, as far as the owner can tell: it refuses during a reload and
+	// without flashbangs, and a request for the item already held changes nothing unless it swaps firearms.
+	if (GetOwnerRole() != ROLE_Authority && GetWorld() && !bReloading && !(Slot == EArenaDuelLoadoutSlot::Flashbang && FlashbangsRemaining == 0) && (Slot != GetExpectedSlot() || (Slot == EArenaDuelLoadoutSlot::Primary && LoadoutFirearms.Num() > 1)))
+	{
+		LocalRequestedSlot = static_cast<uint8>(Slot);
+		LocalRequestedSlotWorldTime = GetWorld()->GetTimeSeconds();
+		LocalSwitchReadyWorldTime = LocalRequestedSlotWorldTime + SwitchSeconds;
+	}
 	if (GetOwnerRole() == ROLE_Authority) ServerSelectSlot_Implementation(static_cast<uint8>(Slot)); else ServerSelectSlot(static_cast<uint8>(Slot));
 }
 
@@ -1509,6 +1527,8 @@ void UArenaDuelWeaponComponent::CycleSlot(int32 Direction)
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); !Character || Character->IsDead() || !IsRoundInProgress() || IsLocalAdminMenuOpen()) return;
 	CancelLocalAndServerFire(true);
 	SuspendAim();
+	// Which item the wheel lands on is decided on the server; nothing is expected until it answers.
+	LocalRequestedSlot = 255;
 	const int8 Step = Direction < 0 ? -1 : 1;
 	if (GetOwnerRole() == ROLE_Authority) ServerCycleSlot_Implementation(Step); else ServerCycleSlot(Step);
 }
@@ -1738,9 +1758,12 @@ void UArenaDuelWeaponComponent::NotifyHeldItemChanged()
 	if (const AArenaDuelCharacter* Character = Cast<AArenaDuelCharacter>(GetOwner()); Character && Character->IsLocallyControlled())
 	{
 		EquipDrop = 1.0f;
-		// The server lets the new item act SwitchSeconds after the switch; the owner counts the same time from
-		// the moment it learns of it.
-		if (GetWorld()) LocalSwitchReadyWorldTime = GetWorld()->GetTimeSeconds() + SwitchSeconds;
+		// The server lets the new item act SwitchSeconds after the switch. The owner counts the same time from
+		// its own request when this is the answer to one, and from now when the server switched by itself
+		// (after a throw, with the wheel).
+		const bool bAnswerToRequest = LocalRequestedSlot == ActiveSlot;
+		LocalRequestedSlot = 255;
+		if (GetWorld() && !bAnswerToRequest) LocalSwitchReadyWorldTime = GetWorld()->GetTimeSeconds() + SwitchSeconds;
 	}
 	RefreshWeaponVisual();
 }
