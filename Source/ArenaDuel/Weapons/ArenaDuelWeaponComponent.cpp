@@ -129,6 +129,17 @@ namespace
 		{
 			if (AArenaDuelPlayerController* Controller = World ? Cast<AArenaDuelPlayerController>(World->GetFirstPlayerController()) : nullptr; Controller && Args.Num() > 0) Controller->ChooseUpgrade(static_cast<uint8>(FCString::Atoi(*Args[0])));
 		}));
+	// ArenaDuel.Dev.HitFeedback <1 head|0 body> [count]: hand the local player's HUD that many confirmed hits at once, as the server's confirmations would, to see and hear the feedback without a target.
+	FAutoConsoleCommandWithWorldAndArgs CmdHitFeedback(TEXT("ArenaDuel.Dev.HitFeedback"), TEXT("Give the local player confirmed hits: 1 head or 0 body, and how many"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+			const AArenaDuelCharacter* Pawn = Controller ? Cast<AArenaDuelCharacter>(Controller->GetPawn()) : nullptr;
+			UArenaDuelWeaponComponent* Weapon = Pawn ? Pawn->GetWeaponComponent() : nullptr;
+			if (!Weapon || Args.Num() == 0) return;
+			const int32 Count = Args.Num() > 1 ? FMath::Clamp(FCString::Atoi(*Args[1]), 1, 32) : 1;
+			for (int32 Index = 0; Index < Count; ++Index) Weapon->ConfirmShotForTests(Weapon->GetLastShotSequence() + 1, FCString::Atoi(*Args[0]) != 0 ? EArenaDuelShotResult::Head : EArenaDuelShotResult::Body);
+		}));
 	// ArenaDuel.Dev.Slide 1|0: the local player presses or lets go of the slide key (with ArenaDuel.Dev.Run 1 for the speed a slide needs).
 	FAutoConsoleCommandWithWorldAndArgs CmdSlide(TEXT("ArenaDuel.Dev.Slide"), TEXT("Press (1) or let go of (0) the slide key for the local player"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)

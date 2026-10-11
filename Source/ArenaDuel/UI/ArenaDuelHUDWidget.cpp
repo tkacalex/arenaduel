@@ -20,6 +20,8 @@
 #include "../Weapons/ArenaDuelItemMeshes.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundBase.h"
+#include "../ArenaDuel.h"
+#include "HAL/IConsoleManager.h"
 #include "../Player/ArenaDuelPlayerState.h"
 
 namespace
@@ -115,7 +117,12 @@ void UArenaDuelHUDWidget::ShowHitMarker(bool bHead, bool bWithSound)
 	if (!HitMarkerRoot) return;
 	// Heard only by the shooter and not placed in the world: a bright ring for the head, a dull tick otherwise.
 	++(bHead ? HeadSoundsAsked : BodySoundsAsked);
-	if (bWithSound) if (USoundBase* Sound = ArenaDuelItemMeshes::Sound(bHead ? TEXT("S_HitHead") : TEXT("S_HitBody"))) UGameplayStatics::PlaySound2D(this, Sound, bHead ? 0.9f : 0.5f);
+	USoundBase* Sound = bWithSound ? ArenaDuelItemMeshes::Sound(bHead ? TEXT("S_HitHead") : TEXT("S_HitBody")) : nullptr;
+	if (Sound) UGameplayStatics::PlaySound2D(this, Sound, bHead ? 0.9f : 0.5f);
+#if !UE_BUILD_SHIPPING
+	if (const IConsoleVariable* ShotLog = IConsoleManager::Get().FindConsoleVariable(TEXT("ArenaDuel.Dev.ShotLog")); bWithSound && ShotLog && ShotLog->GetInt() != 0)
+		UE_LOG(LogArenaDuel, Log, TEXT("HitFeedback %s, sound %s"), bHead ? TEXT("head") : TEXT("body"), Sound ? TEXT("asked for") : TEXT("MISSING"));
+#endif
 	// A body hit does not take a head shot's marker away: that one stays as it is until its own time is over.
 	const bool bHeadStillShown = IsHitMarkerShown() && bHitMarkerHead && FPlatformTime::Seconds() - HitMarkerStartSeconds < GetHitMarkerSeconds(true);
 	if (!bHead && bHeadStillShown) return;
