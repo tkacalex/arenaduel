@@ -166,7 +166,7 @@ namespace
 			if (HitClip && HitClip->GetPlayLength() > 0.0f)
 			{
 				HitTime += Step * 1.25f;
-				const float Target = HitTime < HitClip->GetPlayLength() - 0.2f ? 0.5f : 0.0f;
+				const float Target = HitTime < HitClip->GetPlayLength() - 0.2f ? 0.7f : 0.0f;
 				HitWeight = Target + (HitWeight - Target) * FMath::Exp(-16.0f * Step);
 				if (HitTime >= HitClip->GetPlayLength() && HitWeight < 0.02f) { HitClip = nullptr; HitWeight = 0.0f; }
 			}
@@ -210,16 +210,33 @@ namespace
 				const FCompactPoseBoneIndex Waist = WaistSkeletonIndex == INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(WaistSkeletonIndex));
 				if (Waist.GetInt() != INDEX_NONE)
 				{
-					FCompactPose FlinchPose;
+					// The flinch is what the clip does relative to its own first frame, added to the zombie's posture.
+					// Blending towards the clip itself pulled the stooped body upright and threw it far back; here
+					// every joint only gets a few degrees, so the body jolts and stays what it was.
+					FCompactPose FlinchPose, StartPose;
 					FlinchPose.SetBoneContainer(&Bones);
-					FBlendedCurve FlinchCurve;
+					StartPose.SetBoneContainer(&Bones);
+					FBlendedCurve FlinchCurve, StartCurve;
 					FlinchCurve.InitFrom(Output.Curve);
-					UE::Anim::FStackAttributeContainer FlinchAttributes;
+					StartCurve.InitFrom(Output.Curve);
+					UE::Anim::FStackAttributeContainer FlinchAttributes, StartAttributes;
 					FAnimationPoseData FlinchData(FlinchPose, FlinchCurve, FlinchAttributes);
+					FAnimationPoseData StartData(StartPose, StartCurve, StartAttributes);
 					HitClip->GetAnimationPose(FlinchData, FAnimExtractContext(static_cast<double>(FMath::Min(HitTime, HitClip->GetPlayLength())), false));
+					HitClip->GetAnimationPose(StartData, FAnimExtractContext(0.0, false));
+					constexpr float MaxJointRadians = 5.0f * PI / 180.0f;
 					for (const FCompactPoseBoneIndex BoneIndex : Output.Pose.ForEachBoneIndex())
 					{
-						if (BoneIndex == Waist || Bones.BoneIsChildOf(BoneIndex, Waist)) Output.Pose[BoneIndex].Blend(Output.Pose[BoneIndex], FlinchPose[BoneIndex], HitWeight);
+						if (BoneIndex != Waist && !Bones.BoneIsChildOf(BoneIndex, Waist)) continue;
+						FQuat Delta = FlinchPose[BoneIndex].GetRotation() * StartPose[BoneIndex].GetRotation().Inverse();
+						Delta.EnforceShortestArcWith(FQuat::Identity);
+						FVector Axis;
+						float Angle;
+						Delta.ToAxisAndAngle(Axis, Angle);
+						if (Axis.IsNearlyZero() || FMath::IsNearlyZero(Angle)) continue;
+						FQuat Turned = FQuat(Axis, FMath::Min(Angle, MaxJointRadians) * HitWeight) * Output.Pose[BoneIndex].GetRotation();
+						Turned.Normalize();
+						if (!Turned.ContainsNaN()) Output.Pose[BoneIndex].SetRotation(Turned);
 					}
 				}
 			}
@@ -250,7 +267,8 @@ namespace
 			};
 			const FCompactPoseBoneIndex Chains[2][3] = { { Find(TEXT("upperarm_l")), Find(TEXT("lowerarm_l")), Find(TEXT("hand_l")) }, { Find(TEXT("upperarm_r")), Find(TEXT("lowerarm_r")), Find(TEXT("hand_r")) } };
 			for (const FCompactPoseBoneIndex (&Chain)[3] : Chains) for (const FCompactPoseBoneIndex Bone : Chain) if (Bone.GetInt() == INDEX_NONE) return bResult;
-			const float ReachWeight = (1.0f - AttackWeight) * (1.0f - HitWeight) * (1.0f - 0.85f * ChargeBlend);
+			// The flinch is only a jolt now; the arms keep reaching through it.
+			const float ReachWeight = (1.0f - AttackWeight) * (1.0f - 0.85f * ChargeBlend);
 			FCSPose<FCompactPose> Pose;
 			Pose.InitPose(Output.Pose);
 			for (int32 Arm = 0; Arm < 2 && ReachWeight > 0.01f; ++Arm)
