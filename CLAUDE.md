@@ -15,6 +15,7 @@ Read `AGENTS.md` first. Its rules (automation priority, Unreal engineering rules
 - Unreal Engine 5.8.3 at `C:\Program Files\Epic Games\UE_5.8`. Do not change the engine association.
 - Editor target: `ArenaDuelEditor` Win64 Development. Build: `Engine\Build\BatchFiles\Build.bat ArenaDuelEditor Win64 Development -Project=<uproject> -WaitMutex`.
 - Live editor access: the `unreal-mcp` server (`ModelContextProtocol` plugin, `http://127.0.0.1:8000/mcp`) while the editor is open. Use `LiveCodingToolset.CompileLiveCoding` for .cpp-only changes. Header or UPROPERTY changes need a full build with the editor closed.
+- Running things on the Windows machine from a cloud session: the `device_bash` shell is a Linux VM and cannot start Windows programs. Type `py "<file>.py"` into the editor console (the `Cmd` box, via `SlateInspectorToolset.Type` on its textbox) to run Python inside the editor; that Python can start Blender headless or other tools with `subprocess`. A full C++ build with the editor closed: a small worker script started from the editor waits for the editor to exit, runs `Build.bat`, writes a log under `Saved/` and opens the editor again.
 - Tests: Unreal automation (CQTest). Runners in `Tools/Tests/RunPhase3Validation.ps1` and `RunPhase4Validation.ps1`. Slide tests: `ArenaDuel.Slide.*`, movement: `ArenaDuel.Phase4.*`.
 
 ## Code layout (C++ module `ArenaDuel`)
@@ -44,7 +45,7 @@ Naming: `BP_` Blueprint, `WBP_` widget Blueprint, `IA_`/`IMC_` input, `M_`/`MI_`
 
 - Engine association, `.uproject` module list, Git LFS settings.
 - Destructive Git operations (hard reset, force push, clean).
-- Approved weapon tuning (FOV, sensitivity, spread, recoil) and test maps used by automation.
+- Approved weapon tuning (FOV, sensitivity, spread, recoil) and test maps used by automation. Recoil was lowered on the owner's request on 2026-10-26 (`docs/Loadout.md`).
 - Never commit `Binaries/`, `Intermediate/`, `Saved/`, `DerivedDataCache/`, `.vs/`.
 
 ## Further docs

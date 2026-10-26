@@ -240,7 +240,7 @@ void UArenaDuelCharacterMovementComponent::CalcVelocity(float DeltaTime, float F
 			// Below this speed the air is steered plainly: accelerate where the input points, up to that speed.
 			// Both rules give nearly the same result where they meet, so there is no jump in behaviour at the
 			// boundary for the owner and the server to disagree about.
-			Steered = (FVector(Velocity.X, Velocity.Y, 0.0) + Acceleration.GetSafeNormal2D() * StrafeAcceleration * DeltaTime).GetClampedToMaxSize(AirLowSpeedControl);
+			Steered = (FVector(Velocity.X, Velocity.Y, 0.0) + Acceleration.GetSafeNormal2D() * AirLowSpeedAccelerate * WalkSpeed * DeltaTime).GetClampedToMaxSize(AirLowSpeedControl);
 		}
 		Velocity.X = Steered.X;
 		Velocity.Y = Steered.Y;
@@ -664,10 +664,11 @@ FVector UArenaDuelCharacterMovementComponent::ComputeAirStrafe(const FVector& In
 	const FVector Direction = WishDirection.GetSafeNormal2D();
 	if (Direction.IsNearlyZero() || DeltaTime <= 0.0f) return Horizontal;
 	const double SpeedBefore = Horizontal.Size();
-	// Integrated in slices of at most 1/240 s. In each slice the sideways part of the push only turns the
-	// velocity; speed comes from the part that points along it. Adding the whole push as a vector, as Source
-	// does, turns the sideways part into speed as well, and that share grows with the length of a step, so a
-	// low frame rate would gain more than a high one.
+	// Source air acceleration (as in CS:GO on bunnyhop servers): the push goes along the wished direction for as
+	// long as the velocity along it is below WishSpeedCap. With the strafe key held and the view turning with it,
+	// the wished direction stays just ahead of sideways, the push turns the velocity and adds speed. Holding
+	// forward at speed adds nothing, so the forward key is let go while strafing.
+	// Integrated in fixed slices of at most 1/240 s so a long frame does not push past the window in one jump.
 	const int32 Slices = FMath::Clamp(FMath::CeilToInt32(DeltaTime * 240.0f), 1, 64);
 	const double SliceAcceleration = AccelerationPerSecond * DeltaTime / Slices;
 	for (int32 Slice = 0; Slice < Slices; ++Slice)
@@ -675,11 +676,7 @@ FVector UArenaDuelCharacterMovementComponent::ComputeAirStrafe(const FVector& In
 		const double Along = FVector::DotProduct(Horizontal, Direction);
 		const double AddSpeed = WishSpeedCap - Along;
 		if (AddSpeed <= 0.0) break;
-		const double Push = FMath::Min(SliceAcceleration, AddSpeed);
-		const double Speed = Horizontal.Size();
-		const FVector Pushed = Horizontal + Direction * Push;
-		// Pushing against the travel direction brakes as plain vector addition; otherwise only the forward share adds speed.
-		Horizontal = Along < 0.0 || Speed < UE_KINDA_SMALL_NUMBER ? Pushed : Pushed.GetSafeNormal() * (Speed + Push * Along / Speed);
+		Horizontal += Direction * FMath::Min(SliceAcceleration, AddSpeed);
 	}
 	const double Limit = FMath::Max(static_cast<double>(MaxGainSpeed), SpeedBefore);
 	if (Horizontal.Size() > Limit) Horizontal = Horizontal.GetSafeNormal() * Limit;

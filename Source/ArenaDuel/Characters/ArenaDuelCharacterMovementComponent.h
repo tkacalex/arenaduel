@@ -198,15 +198,20 @@ public:
 
 	/** Air strafing cannot push the horizontal speed above this. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0"))
-	float BhopMaxSpeed = 1300.0f;
+	float BhopMaxSpeed = 1350.0f;
 
 	/** Air strafe strength: speed along the wished direction up to which air input still adds speed. Smaller needs more precise turning. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0"))
 	float AirStrafeWishSpeed = 70.0f;
 
-	/** Air strafe acceleration, as a multiple of WalkSpeed per second. */
+	/** Air strafe acceleration, as a multiple of WalkSpeed per second (Source: sv_airaccelerate). High, as on
+	 *  bunnyhop servers: the push fills the strafe window at once, so the gain is set by how well the view turns. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0"))
-	float AirStrafeAccelerate = 3.0f;
+	float AirStrafeAccelerate = 30.0f;
+
+	/** Plain air steering below AirLowSpeedControl, as a multiple of WalkSpeed per second. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0"))
+	float AirLowSpeedAccelerate = 3.0f;
 
 	/** Below this speed the air is steered plainly and input may accelerate up to it, so a jump at walking pace handles like before. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement|Bhop", meta = (ClampMin = "0"))

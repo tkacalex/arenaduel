@@ -4,7 +4,9 @@ Everything lives in `UArenaDuelCharacterMovementComponent` and runs inside the e
 
 ## How it works
 
-**Air strafing.** While falling with a movement key held, the engine's air acceleration is replaced by a Source style step (`ComputeAirStrafe`): the push acts along the wished direction only while the velocity along that direction is below `AirStrafeWishSpeed`. Holding forward at speed adds nothing. Holding a strafe key and turning the view with it keeps the wished direction just ahead of sideways, and the velocity turns and grows. Gains stop at `BhopMaxSpeed`. Two things differ from Source on purpose: the step is integrated in slices of 1/240 s, and the sideways part of the push only turns the velocity while the part along it adds speed. Plain vector addition would turn the sideways part into speed too, by an amount that grows with the length of a frame. Below `AirLowSpeedControl` the air is steered plainly: input accelerates where it points, up to that speed, so a jump at walking pace handles as it always did.
+**Air strafing (CS:GO bunnyhop servers, since 2026-10-26).** While falling with a movement key held, the engine's air acceleration is replaced by Source's air acceleration (`ComputeAirStrafe`): the push is added along the wished direction for as long as the velocity along that direction is below `AirStrafeWishSpeed`, and `AirStrafeAccelerate` is high, as `sv_airaccelerate` is on bunnyhop servers, so the push fills that window at once. Holding forward at speed adds nothing. Run, jump, let go of W and strafe: hold A while turning the mouse left (or D and right) and every hop gains speed, more the more cleanly the view turns with the strafe. Holding back in the air brakes, as in Source. Gains stop at `BhopMaxSpeed`. The step is integrated in slices of 1/240 s. Below `AirLowSpeedControl` the air is steered plainly with `AirLowSpeedAccelerate`, so a jump at walking pace handles as it always did.
+
+The earlier rule (until 2026-10-25) let the sideways part of the push only turn the velocity, to keep the gain independent of the frame rate. It gained about 70 to 100 per second and did not feel like strafing in CS, so it was replaced. As in Source the gain now grows with how often the view is re-aimed: a higher frame rate strafes somewhat better, a lower one never gains more.
 
 **Keeping speed over a landing.** For `BhopLandingGrace` after touching down the ground does not brake. A jump inside that window leaves with the speed it arrived with. The window is the same for every landing and does not depend on input, so the server and the owning client simulate it identically. Without a jump, normal ground braking brings the player back to sprint or walk speed.
 
@@ -21,10 +23,11 @@ All are `EditDefaultsOnly` properties of the movement component.
 | Property | Value | Meaning |
 |---|---|---|
 | `WalkSpeed` / `SprintSpeed` | 600 / 900 | Ground speeds, unchanged |
-| `BhopMaxSpeed` | 1300 | Highest speed air strafing can reach |
+| `BhopMaxSpeed` | 1350 | Highest speed air strafing can reach |
 | `GlobalMomentumCap` | 1350 | Hard limit in the air, unchanged |
 | `GroundAcceleration` | 4200 | Ground acceleration, unchanged |
-| `AirStrafeAccelerate` | 3 | Air strafe acceleration, times `WalkSpeed` per second |
+| `AirStrafeAccelerate` | 30 | Air strafe acceleration, times `WalkSpeed` per second (bunnyhop server value) |
+| `AirLowSpeedAccelerate` | 3 | Plain air steering below `AirLowSpeedControl`, times `WalkSpeed` per second |
 | `AirStrafeWishSpeed` | 70 | Air strafe strength; smaller needs more precise turning |
 | `AirLowSpeedControl` | 600 | Plain air steering below this speed |
 | `GroundBrakingFriction` / `GroundBrakingDeceleration` | 12 / 6000 | Ground braking after the grace, unchanged |
@@ -35,7 +38,7 @@ All are `EditDefaultsOnly` properties of the movement component.
 
 Jump height and gravity are the engine properties `JumpZVelocity` and `GravityScale` on the same component. They were not changed.
 
-With these values a strafe held in the middle of the window gains roughly 70 to 100 per second at sprint speed and needs the view to turn at about 115 degrees per second. A scripted strafe that corrects its angle once per step gains about a quarter more at 60 steps per second than at 240, because a coarser step drifts deeper into the window before the next correction; holding a strafe key without turning gains next to nothing at any rate.
+With these values a hop of about 0.86 s strafed at a view turn of 180 to 360 degrees per second takes sprint speed 900 to roughly 1050 to 1130 at 120 frames per second (simulated with the same rule), so three to four good hops reach the limit. Holding a strafe key without turning gains next to nothing.
 
 ## Camera and animation
 

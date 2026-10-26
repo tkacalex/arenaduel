@@ -34,6 +34,9 @@ HALL_LAMP_INTENSITY = 260.0
 NEON_INTENSITY = 26.0
 AMBIENT_INTENSITY = 4.0
 EXPOSURE = 1.0
+# A rectangular LED bar spreads its light over a half space, a shaded lamp's cone over far less: the same
+# lamp values times this give about the same brightness on the floor in front of the bar.
+LED_SCALE = 2.4
 count = {'pieces': 0, 'windows': 0, 'decor': 0, 'lights': 0}
 
 
@@ -192,12 +195,50 @@ def down_light(label, x, y, z, color, intensity, radius, mirror=False):
         down_light(label, -x, y, z, color, intensity, radius, False)
 
 
-def sconce(x, y, nx, ny, z=255.0, mirror=True, scale=1.0, intensity=None, radius=560.0):
-    """A shaded wall lamp on a wall face at (x, y) looking along (nx, ny), and its light under the shade."""
+def led_light(label, x, y, z, nx, ny, width, height, intensity, radius):
+    """The light of a recessed LED bar: a rectangular light as large as the bar, sitting on its face and tilted
+    down, so it washes the wall below the bar and the floor in front of it like a real wall-mounted LED."""
     import math
-    prop('SM_WallLamp', x, y, z, math.degrees(math.atan2(ny, nx)), scale=scale, mirror=mirror, shadow=False)
-    reach = 18.0 * scale
-    down_light('LampLight', x + nx * reach, y + ny * reach, z - 13.0 * scale, (255, 170, 88), intensity or SCONCE_INTENSITY, radius, mirror)
+    yaw = math.degrees(math.atan2(ny, nx))
+    light = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.RectLight, unreal.Vector(x + nx * 3.0, y + ny * 3.0, z), unreal.Rotator(roll=0.0, pitch=-38.0, yaw=yaw))
+    light.set_actor_label('%s%s_%03d' % (PREFIX, label, count['lights']))
+    component = light.get_component_by_class(unreal.RectLightComponent)
+    component.set_mobility(unreal.ComponentMobility.MOVABLE)
+    component.set_cast_shadows(False)
+    component.set_editor_property('intensity', intensity)
+    component.set_editor_property('attenuation_radius', radius)
+    component.set_editor_property('source_width', width)
+    component.set_editor_property('source_height', height)
+    component.set_editor_property('barn_door_angle', 70.0)
+    component.set_editor_property('barn_door_length', 6.0)
+    component.set_editor_property('light_color', unreal.Color(r=255, g=214, b=168, a=255))
+    count['lights'] += 1
+
+
+def sconce(x, y, nx, ny, z=255.0, mirror=True, scale=1.0, intensity=None, radius=560.0):
+    """A recessed LED bar set into the wall face at (x, y), facing along (nx, ny): a dark aluminium frame flush
+    with the wall, a warm diffuser sunk a few millimetres into it, and its light. No collision, like all decor.
+
+    scale 1 is the 120 cm bar of the cover walls and the house, scale 2 the 260 cm bar of the hall walls."""
+    length = 120.0 if scale < 1.5 else 260.0
+    tall = 7.0 if scale < 1.5 else 10.0
+    frame, lens = 1.6, 1.0
+    # Along the wall: the axis that is not the facing axis.
+    along_x = abs(ny) > abs(nx)
+    for (sx, sy) in ((x, y), (-x, y)) if mirror and abs(x) > 0.5 else ((x, y),):
+        fx = nx if (sx, sy) == (x, y) else -nx
+        half = length * 0.5
+        def slab(label, depth, extra, height, material):
+            # A box from the wall face out to depth, extra wider than the bar on every side.
+            if along_x:
+                y0, y1 = (sy, sy + ny * depth) if ny > 0 else (sy + ny * depth, sy)
+                decor(label, sx - half - extra, sx + half + extra, y0, y1, z - height * 0.5 - extra, z + height * 0.5 + extra, material, shadow=False)
+            else:
+                x0, x1 = (sx, sx + fx * depth) if fx > 0 else (sx + fx * depth, sx)
+                decor(label, x0, x1, sy - half - extra, sy + half + extra, z - height * 0.5 - extra, z + height * 0.5 + extra, material, shadow=False)
+        slab('LedFrame', frame, 1.8, tall, LOOK['cap'])
+        slab('LedLens', frame + 0.2, 0.0, tall, LOOK['led'])
+        led_light('LedLight', sx, sy, z, fx, ny, length, tall, (intensity or SCONCE_INTENSITY) * LED_SCALE, radius)
 
 
 def both(label, x0, x1, y0, y1, z0, z1, material, yaw=0.0):
@@ -359,6 +400,8 @@ def build():
     paint = look('MI_District_PaintWhite', lambda: None)
     orange = look('MI_District_PaintOrange', lambda: None)
     LOOK['sconce'] = look('M_DistrictSconce', lambda: None)
+    # Warm white LED diffuser: bright enough to bloom a little, not so bright that it burns out to white.
+    LOOK['led'] = make_material('M_DistrictLedStrip', (0.9, 0.78, 0.62, 1), 0.0, 0.4, (9.0, 6.6, 4.4, 1))
     LOOK['wood'] = look('MI_District_Wood', lambda: None)
     wood = LOOK['wood'] or concrete
 
@@ -446,6 +489,16 @@ def build():
     pad = unreal.EditorLevelLibrary.spawn_actor_from_class(pad_class, unreal.Vector(0, 900, 2), unreal.Rotator(roll=0.0, pitch=0.0, yaw=0.0))
     pad.set_actor_label(PREFIX + 'HealPad')
     pad.get_component_by_class(unreal.StaticMeshComponent).set_material(0, green)
+    glow = unreal.EditorLevelLibrary.spawn_actor_from_class(unreal.PointLight, unreal.Vector(0, 900, 9), unreal.Rotator())
+    glow.set_actor_label(PREFIX + 'HealPadGlow')
+    component = glow.get_component_by_class(unreal.PointLightComponent)
+    component.set_mobility(unreal.ComponentMobility.MOVABLE)
+    component.set_cast_shadows(False)
+    component.set_editor_property('intensity', 4.0)
+    component.set_editor_property('attenuation_radius', 200.0)
+    component.set_editor_property('source_radius', 12.0)
+    component.set_editor_property('light_color', unreal.Color(r=70, g=255, b=120, a=255))
+    component.set_editor_property('use_inverse_squared_falloff', True)
 
     # The game mode looks for these two tags.
     for x, yaw, name in ((-3050, 0, 'P1'), (3050, 180, 'P2')):
@@ -476,12 +529,12 @@ def build():
         sconce(-2500 - T * 0.5, y, -1.0, 0.0)
         sconce(-2500 + T * 0.5, y, 1.0, 0.0)
     sconce(-600 - T * 0.5, 0.0, -1.0, 0.0)
-    for x in (-150, 150):
+    for x in (-175, 175):
         sconce(x, 450 + T * 0.5, 0.0, 1.0, mirror=False)
         sconce(x, -450 - T * 0.5, 0.0, -1.0, mirror=False)
     for y in (1090, -1090):
         sconce(-900 - T * 0.5, y, -1.0, 0.0, z=235.0)
-    for x in (-2300, -1700, -1100, -700):
+    for x in (-2270, -1700, -1100, -700):
         sconce(x, -1280 + T * 0.5, 0.0, 1.0)
     sconce(-2380, 1280 - T * 0.5, 0.0, -1.0)
     sconce(-2020, 1280 - T * 0.5, 0.0, -1.0)

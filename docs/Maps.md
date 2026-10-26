@@ -86,3 +86,11 @@ Build order with the editor closed: `build_district_textures.py`, `build_distric
 Cost in the same two view editor measurement as above: 22.3 ms of GPU time (19.4 ms on the map before any of this, 26.2 ms after the first pass): the many small lamp lights cost less than the fewer wide washes they replace. Lights: 82 small shadowless ones and 18 under the ceiling, against 62 before.
 
 Checked in a play session: the lamps and their cones, the neon, the engraving up close, crates, ivy, and bullet marks from a burst at a wall (11 rounds, marks where they hit). Not checked: the marks and the missing tracers seen from the other player's machine, a played round, how well an opponent reads in the darker corners, frame times in a standalone game.
+
+## L_ArenaDistrict: LED wall lights and a round heal pad (2026-10-26)
+
+At the owner's request the shaded wall lamps on arms are gone. Every place that had one now has an LED bar set into the wall: a dark aluminium frame flush with the wall face and a warm white diffuser (`M_DistrictLedStrip`) sunk into it, 120 x 7 cm on the cover walls, the house and the parkour lane, 260 x 10 cm on the hall walls. Each bar carries a rectangular light as large as the bar, tilted 38 degrees down, which washes the wall below it and the floor in front (`sconce()` and `led_light()` in `Tools/Editor/SetupArenaDistrict.py`). Like all decor the bars have no collision. Positions near openings were moved a little so no bar overhangs a door or the end of a wall.
+
+The heal pad (`SM_HealPad`, `heal_pad()` in `Tools/Art/build_props.py`) is round now and built like a real floor pad: a steel plinth 126 cm across with a chamfered edge, a raised rim with twelve bolts, a recessed green light ring, a dark frosted panel (`M_HealPadPanel`) and a raised green cross. A small shadowless green light just above it tints the floor around it. The healing area, 120 x 120 cm, and the actor are unchanged.
+
+To rebuild: Blender with `ARENADUEL_PROPS=HealPad` (only that prop is exported), `Tools/Editor/SetupProps.py` twice with the same variable, then `SetupArenaDistrict.py`. All three also ran inside a live editor through the `py` console command.

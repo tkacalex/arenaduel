@@ -172,20 +172,26 @@ namespace
 		Arc.DisplayName = TEXT("Arc Rifle");
 		Arc.AimSensitivityMultiplier = 0.75f;
 		Arc.BodyDamage = 27.0f; Arc.HeadshotMultiplier = 1.5f;
+		// Camera recoil per shot, in look-input units. Kept small on purpose: a burst stays on target with a
+		// light pull down, the way the owner asked for (about a third of the earlier 0.35 / 0.08).
+		Arc.RecoilVertical = 0.12f; Arc.RecoilHorizontal = 0.03f;
 		FArenaDuelWeaponDefinition SMG = Arc;
 		SMG.Id = EArenaDuelWeaponId::ShadeSMG; SMG.DisplayName = TEXT("Shade SMG"); SMG.MagazineCapacity = 32; SMG.ReserveCapacity = 128; SMG.RoundsPerMinute = 900.0f; SMG.BaseSpreadDegrees = 0.65f; SMG.MovementSpreadDegrees = 1.8f;
 		SMG.AimFOV = 80.0f; SMG.AimSensitivityMultiplier = 0.80f; SMG.AimSpreadMultiplier = 0.75f; SMG.AimViewmodelLocation = FVector(48.0f, 3.0f, -13.0f);
 		SMG.BodyDamage = 20.0f; SMG.HeadshotMultiplier = 1.4f;
+		SMG.RecoilVertical = 0.09f; SMG.RecoilHorizontal = 0.025f;
 		FArenaDuelWeaponDefinition DMR = Arc;
 		DMR.Id = EArenaDuelWeaponId::RuneDMR; DMR.DisplayName = TEXT("Rune DMR"); DMR.MagazineCapacity = 12; DMR.ReserveCapacity = 48; DMR.RoundsPerMinute = 280.0f; DMR.BaseSpreadDegrees = 0.08f; DMR.MovementSpreadDegrees = 0.55f; DMR.bAutomatic = false;
 		DMR.AimFOV = 68.0f; DMR.AimSensitivityMultiplier = 0.65f; DMR.AimSpreadMultiplier = 0.35f; DMR.AimViewmodelLocation = FVector(58.0f, 1.0f, -11.0f);
 		// A head shot with the marksman rifle kills from full health: 42 x 2.5 = 105.
 		DMR.BodyDamage = 42.0f; DMR.HeadshotMultiplier = 2.5f;
 		DMR.bHasScope = true;
+		DMR.RecoilVertical = 0.22f; DMR.RecoilHorizontal = 0.03f;
 		FArenaDuelWeaponDefinition Shotgun = Arc;
 		Shotgun.Id = EArenaDuelWeaponId::HexShotgun; Shotgun.DisplayName = TEXT("Hex Shotgun"); Shotgun.MagazineCapacity = 6; Shotgun.ReserveCapacity = 30; Shotgun.RoundsPerMinute = 75.0f; Shotgun.BaseSpreadDegrees = 5.0f; Shotgun.MovementSpreadDegrees = 2.0f; Shotgun.Pellets = 8; Shotgun.bAutomatic = false;
 		Shotgun.AimFOV = 82.0f; Shotgun.AimSensitivityMultiplier = 0.80f; Shotgun.AimSpreadMultiplier = 0.85f; Shotgun.AimViewmodelLocation = FVector(45.0f, 4.0f, -15.0f);
 		Shotgun.BodyDamage = 11.0f; Shotgun.HeadshotMultiplier = 1.25f;
+		Shotgun.RecoilVertical = 0.25f; Shotgun.RecoilHorizontal = 0.04f;
 		return { Arc, SMG, DMR, Shotgun };
 	}
 
@@ -381,7 +387,11 @@ void UArenaDuelWeaponComponent::SpawnImpactMark(const FVector& Muzzle, const FVe
 	// Each mark is turned a little differently, so a burst does not stamp the same picture again and again.
 	FRotator Facing = (-Surface.ImpactNormal).Rotation();
 	Facing.Roll = FMath::FRandRange(0.0f, 360.0f);
-	const float Size = FMath::FRandRange(9.0f, 12.5f);
+	// Small holes for the automatic weapons and the pellets, a larger one for the marksman rifle.
+	const EArenaDuelWeaponId Weapon = WeaponDefinitions.IsValidIndex(EquippedWeaponIndex) ? WeaponDefinitions[EquippedWeaponIndex].Id : EArenaDuelWeaponId::ArcRifle;
+	const float Size = Weapon == EArenaDuelWeaponId::RuneDMR ? FMath::FRandRange(8.0f, 10.0f)
+		: Weapon == EArenaDuelWeaponId::HexShotgun ? FMath::FRandRange(2.4f, 3.2f)
+		: FMath::FRandRange(3.2f, 4.2f);
 	if (UDecalComponent* Mark = UGameplayStatics::SpawnDecalAtLocation(World, ImpactMarkMaterial, FVector(6.0f, Size, Size), Surface.ImpactPoint, Facing, ImpactMarkSeconds))
 	{
 		Mark->SetFadeOut(ImpactMarkSeconds - 2.0f, 2.0f, false);

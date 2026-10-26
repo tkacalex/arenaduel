@@ -33,11 +33,11 @@ bool FArenaDuelBhopAirStrafeTest::RunTest(const FString& Parameters)
 
 	const FVector Running(900.0, 0.0, 0.0);
 	TestTrue(TEXT("Holding forward at speed adds nothing"), FMath::IsNearlyEqual(Strafe(Running, FVector::XAxisVector).Size(), 900.0, 0.01));
-	TestTrue(TEXT("Holding back in the air does not brake to a stop in one step"), Strafe(Running, -FVector::XAxisVector).X > 800.0);
+	const FVector Back = Strafe(Running, -FVector::XAxisVector);
+	TestTrue(TEXT("Holding back in the air brakes, as in Source"), Back.X < 900.0 && Back.X > 0.0);
 	const FVector Sideways = Strafe(Running, FVector::YAxisVector);
-	TestTrue(TEXT("A push sideways turns the velocity and adds next to no speed"), Sideways.Size() >= 900.0 && Sideways.Size() < 901.0 && Sideways.Y > 0.0);
-	const FVector Diagonal = Strafe(Running, FVector(0.05, 1.0, 0.0));
-	TestTrue(TEXT("A push slightly ahead of sideways adds a little speed"), Diagonal.Size() > 900.0 && Diagonal.Size() < 905.0);
+	TestTrue(TEXT("A push sideways turns the velocity and adds only a little speed"), Sideways.Size() > 900.0 && Sideways.Size() < 905.0 && Sideways.Y > 0.0);
+	TestTrue(TEXT("A push sideways stops at the strafe window"), Sideways.Y <= Cap + 0.01);
 	TestTrue(TEXT("No input leaves the velocity alone"), Strafe(Running, FVector::ZeroVector).Equals(Running));
 
 	// A good strafe: the wish is kept just inside the window while the view turns with the velocity.
@@ -64,11 +64,10 @@ bool FArenaDuelBhopAirStrafeTest::RunTest(const FString& Parameters)
 	};
 	const double At60 = StrafeSecond(60), At240 = StrafeSecond(240);
 	const double At20 = StrafeSecond(20);
-	TestTrue(FString::Printf(TEXT("A second of good strafing gains speed (%.1f at 20 steps, %.1f at 60, %.1f at 240)"), At20 - 900.0, At60 - 900.0, At240 - 900.0), At60 > 940.0 && At240 > 940.0);
-	// The scripted strafe corrects its angle once per step, so a coarser step drifts deeper into the window
-	// before the next correction and gains somewhat more. The difference stays bounded by the window.
-	TestTrue(TEXT("And a similar amount at 60 and at 240 steps"), FMath::Abs(At60 - At240) < 0.4 * (At240 - 900.0));
-	TestTrue(TEXT("A low frame rate never gains more"), At20 <= At60 + 0.5);
+	// Bunnyhop server feel: a second of good strafing at 60 frames is worth roughly a sprint hop's extra 100.
+	TestTrue(FString::Printf(TEXT("A second of good strafing gains clear speed (%.1f at 20 steps, %.1f at 60, %.1f at 240)"), At20 - 900.0, At60 - 900.0, At240 - 900.0), At60 > 990.0 && At240 > 990.0);
+	// As in Source, the gain grows with the rate the view is re-aimed at; a low frame rate never gains more.
+	TestTrue(TEXT("A low frame rate never gains more"), At20 <= At60 + 0.5 && At60 <= At240 + 0.5);
 	// Speed from somewhere else, above the limit, is not cut by the strafe step.
 	const FVector Dashing(3000.0, 0.0, 0.0);
 	TestTrue(TEXT("Speed above the limit is not reduced by strafing"), Strafe(Dashing, FVector::YAxisVector).Size() >= 3000.0 - 0.01);

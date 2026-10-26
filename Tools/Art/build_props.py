@@ -13,13 +13,14 @@ import bmesh
 import bpy
 from mathutils import Matrix, Vector
 
-MAIN, TRIM = 0, 1
+MAIN, TRIM, PANEL = 0, 1, 2
 
 
 class Prop:
     def __init__(self, name):
         self.name = name
         self.bm = bmesh.new()
+        self.panel = False
 
     def _paint(self, verts, slot, smooth=False):
         for face in {f for v in verts if v.is_valid for f in v.link_faces}:
@@ -41,12 +42,33 @@ class Prop:
         made = bmesh.ops.create_cone(self.bm, cap_ends=True, segments=segments, radius1=radius, radius2=radius, depth=height, matrix=Matrix.Translation(Vector(centre)) @ turn)
         self._paint(made['verts'], slot, smooth=segments >= 12)
 
+    def cone(self, centre, radius_bottom, radius_top, height, slot=MAIN, segments=96):
+        """A round piece whose top is a little narrower than its foot: a chamfered edge."""
+        made = bmesh.ops.create_cone(self.bm, cap_ends=True, segments=segments, radius1=radius_bottom, radius2=radius_top, depth=height, matrix=Matrix.Translation(Vector(centre)))
+        self._paint(made['verts'], slot, smooth=True)
+
+    def ring(self, inner, outer, z0, z1, slot=MAIN, segments=96):
+        """A flat ring (an annulus) between two radii: top, bottom, inner and outer wall, smooth shaded."""
+        bm = self.bm
+        rows = []
+        for radius, z in ((outer, z0), (outer, z1), (inner, z1), (inner, z0)):
+            rows.append([bm.verts.new((math.cos(2.0 * math.pi * i / segments) * radius, math.sin(2.0 * math.pi * i / segments) * radius, z)) for i in range(segments)])
+        made = []
+        for row in range(4):
+            a, b = rows[row], rows[(row + 1) % 4]
+            for i in range(segments):
+                j = (i + 1) % segments
+                made.append(bm.faces.new((a[i], a[j], b[j], b[i])))
+        for face in made:
+            face.material_index = slot
+            face.smooth = True
+
     def export(self, art_dir, collection):
         mesh = bpy.data.meshes.new('SM_' + self.name)
         bmesh.ops.recalc_face_normals(self.bm, faces=self.bm.faces)
         self.bm.to_mesh(mesh)
         self.bm.free()
-        for slot in ('P_Main', 'P_Trim'):
+        for slot in ('P_Main', 'P_Trim') + (('P_Panel',) if self.panel else ()):
             mesh.materials.append(bpy.data.materials.get(slot) or bpy.data.materials.new(slot))
         obj = bpy.data.objects.new('SM_' + self.name, mesh)
         collection.objects.link(obj)
@@ -126,19 +148,26 @@ def ammo_box():
 
 
 def heal_pad():
-    """120 x 120 x 6 cm: an eight-sided plate with a raised ring and cross.
+    """A round medical floor pad, 126 cm across and 5.5 cm high, built like a real one: a brushed steel plinth
+    with a chamfered edge, a raised rim held by twelve bolts, a recessed light ring, and a frosted panel with
+    a raised cross under it.
 
-    Here slot 0 is the ring and the cross: the pads placed in the maps carry their green on slot 0.
+    Slot 0 is the light ring and the cross (the placed pads carry their green there), slot 1 the steel, slot 2
+    the frosted panel.
     """
     prop = Prop('HealPad')
-    prop.disc((0, 0, -1.0), 64.0, 4.0, TRIM, segments=8)
-    prop.disc((0, 0, 0.2), 58.0, 2.4, TRIM, segments=8)
-    steps = 24
-    for index in range(steps):
-        angle = 2.0 * math.pi * index / steps
-        prop.box((math.cos(angle) * 50.0, math.sin(angle) * 50.0, 1.8), (13.5, 4.0, 1.6), MAIN, bevel=0.3, turn=Matrix.Rotation(angle + math.pi / 2.0, 4, 'Z'))
-    prop.box((0, 0, 2.0), (56, 16, 2.0), MAIN, bevel=0.6)
-    prop.box((0, 0, 2.0), (16, 56, 2.0), MAIN, bevel=0.6)
+    prop.panel = True
+    prop.cone((0, 0, 1.5), 63.0, 61.0, 3.0, TRIM)                 # plinth with a chamfered edge
+    prop.ring(55.0, 61.0, 3.0, 5.5, TRIM)                          # raised rim
+    prop.ring(54.2, 55.0, 3.0, 5.5, TRIM)                          # inner wall of the rim, a step down into the light
+    prop.ring(51.0, 54.2, 3.0, 4.4, MAIN)                          # recessed light ring
+    prop.ring(49.0, 51.0, 3.0, 5.0, TRIM)                          # frame of the panel
+    prop.cone((0, 0, 3.7), 49.0, 49.0, 1.4, PANEL)                 # frosted panel, 4.4 cm high, below the frame
+    prop.box((0, 0, 4.7), (60, 15, 0.8), MAIN, bevel=0.35)         # the cross, raised on the panel
+    prop.box((0, 0, 4.7), (15, 60, 0.8), MAIN, bevel=0.35)
+    for index in range(12):                                        # bolts on the rim
+        angle = 2.0 * math.pi * (index + 0.5) / 12.0
+        prop.cone((math.cos(angle) * 58.0, math.sin(angle) * 58.0, 5.8), 1.3, 1.1, 0.6, TRIM, segments=12)
     return prop
 
 
@@ -147,13 +176,20 @@ def build_all(art_dir):
         bpy.data.objects.remove(obj, do_unlink=True)
     collection = bpy.context.scene.collection
     made = []
+    only = [name for name in os.environ.get('ARENADUEL_PROPS', '').split(',') if name]
     for index, factory in enumerate((crate, container, ammo_box, heal_pad)):
-        obj = factory().export(art_dir, collection)
+        prop = factory()
+        if only and prop.name not in only:
+            prop.bm.free()
+            continue
+        obj = prop.export(art_dir, collection)
         obj.location.y = (-3.0, 3.0, -1.0, 0.5)[index]
         made.append('%s:%d' % (obj.name, len(obj.data.vertices)))
-    for name, color in (('P_Main', (0.25, 0.2, 0.16, 1)), ('P_Trim', (0.08, 0.09, 0.1, 1))):
-        bpy.data.materials[name].diffuse_color = color
-    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(art_dir, 'props.blend'))
+    for name, color in (('P_Main', (0.25, 0.2, 0.16, 1)), ('P_Trim', (0.08, 0.09, 0.1, 1)), ('P_Panel', (0.8, 0.85, 0.8, 1))):
+        if name in bpy.data.materials:
+            bpy.data.materials[name].diffuse_color = color
+    if not only:
+        bpy.ops.wm.save_as_mainfile(filepath=os.path.join(art_dir, 'props.blend'))
     print('PROPS', made)
 
 

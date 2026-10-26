@@ -28,7 +28,7 @@ struct FArenaDuelWeaponVisualDefinition
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FVector ThirdPersonGripLocation = FVector::ZeroVector;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FRotator ThirdPersonGripRotation = FRotator::ZeroRotator;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FVector ThirdPersonScale = FVector(0.75f);
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float VisualRecoilKick = 1.0f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float VisualRecoilKick = 0.6f;
 	/** How far the bolt (or the pump) travels back on a shot, in mesh units, and how long one cycle takes. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float BoltTravel = 5.0f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float BoltCycleSeconds = 0.09f;

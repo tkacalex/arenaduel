@@ -218,3 +218,9 @@ Not checked: nobody has looked at the marker in a running game, in hip fire or t
 6. With master volume at 30 % and at 100 %: still balanced against the weapons?
 7. In survival, with zombie growls, hits and deaths around: can a head shot be told from a zombie's own hit sound?
 8. Any click at the start or the end of either sound, any ringing that lasts too long (the head shot is 0.42 s)?
+
+## Less recoil, smaller bullet holes (2026-10-26)
+
+The owner asked for much less recoil. Camera recoil per shot (`RecoilVertical` / `RecoilHorizontal`, in look input units) is now Arc Rifle 0.12 / 0.03, Shade SMG 0.09 / 0.025, Rune DMR 0.22 / 0.03 and Hex Shotgun 0.25 / 0.04; before, every weapon used 0.35 / 0.08. The weapon's kick on screen (`VisualRecoilKick`) is 0.6 instead of 1. Spread, damage and fire rates are unchanged.
+
+Bullet holes (`SpawnImpactMark`) were one size for every weapon, 9 to 12.5 decal units. Now the marksman rifle leaves the large hole (8 to 10), the rifle and the SMG a small one (3.2 to 4.2) and every shotgun pellet a smaller one still (2.4 to 3.2).

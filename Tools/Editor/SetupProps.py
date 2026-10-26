@@ -19,8 +19,38 @@ PROPS = (
     ('HealPad', 'M_DistrictHealGreen', 'M_DistrictDarkMetal', False),
 )
 FINISH = os.environ.get('ARENADUEL_PROP_FINISH') == '1'
+ONLY = [name for name in os.environ.get('ARENADUEL_PROPS', '').split(',') if name]
 done = []
+
+
+def panel_material():
+    """The frosted panel of the heal pad: dark milky glass, a little glossy, lit faintly green from the ring, so
+    the green cross on it reads clearly. Created once, its values set on every run."""
+    path = COMMON + 'M_HealPadPanel'
+    edit = unreal.MaterialEditingLibrary
+    mat = unreal.load_asset(path) if LIB.does_asset_exist(path) else unreal.AssetToolsHelpers.get_asset_tools().create_asset('M_HealPadPanel', COMMON[:-1], unreal.Material, unreal.MaterialFactoryNew())
+    colours = ((unreal.MaterialProperty.MP_BASE_COLOR, (0.13, 0.16, 0.15)), (unreal.MaterialProperty.MP_EMISSIVE_COLOR, (0.004, 0.035, 0.012)))
+    scalars = ((unreal.MaterialProperty.MP_ROUGHNESS, 0.22), (unreal.MaterialProperty.MP_METALLIC, 0.0), (unreal.MaterialProperty.MP_SPECULAR, 0.6))
+    for prop, value in colours:
+        node = edit.get_material_property_input_node(mat, prop)
+        if not node:
+            node = edit.create_material_expression(mat, unreal.MaterialExpressionConstant3Vector)
+            edit.connect_material_property(node, '', prop)
+        node.set_editor_property('constant', unreal.LinearColor(value[0], value[1], value[2], 1.0))
+    for prop, value in scalars:
+        node = edit.get_material_property_input_node(mat, prop)
+        if not node:
+            node = edit.create_material_expression(mat, unreal.MaterialExpressionConstant)
+            edit.connect_material_property(node, '', prop)
+        node.set_editor_property('r', value)
+    edit.recompile_material(mat)
+    LIB.save_loaded_asset(mat)
+    return mat
+
+
 for name, main, trim, blocks in PROPS:
+    if ONLY and name not in ONLY:
+        continue
     asset_path = DEST + '/SM_' + name
     if not FINISH:
         source = os.path.join(ART, 'SM_%s.fbx' % name)
@@ -56,6 +86,12 @@ for name, main, trim, blocks in PROPS:
         asset = unreal.load_asset(COMMON + material)
         if asset and index < len(mesh.get_editor_property('static_materials')):
             mesh.set_material(index, asset)
+    if name == 'HealPad' and len(mesh.get_editor_property('static_materials')) > 2:
+        # Brushed steel for plinth and rim where the district materials are there, and the frosted panel.
+        steel = '/Game/ArenaDuel/Maps/District/MI_District_SteelDark'
+        if LIB.does_asset_exist(steel):
+            mesh.set_material(1, unreal.load_asset(steel))
+        mesh.set_material(2, panel_material())
     meshes = unreal.get_editor_subsystem(unreal.StaticMeshEditorSubsystem)
     if blocks and meshes.get_simple_collision_count(mesh) == 0:
         # One box of the prop's own size: the same obstacle as the block it replaces.
